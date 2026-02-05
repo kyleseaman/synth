@@ -139,17 +139,20 @@ struct EditorViewSimple: View {
     @State private var text: String = ""
     
     var body: some View {
-        TextEditor(text: $text)
-            .font(.custom("Georgia", size: 18))
-            .scrollContentBackground(.hidden)
-            .padding(.horizontal, 40)
-            .background(Color(nsColor: .textBackgroundColor))
-            .onChange(of: store.currentIndex) { _ in
-                loadText()
-            }
-            .onAppear {
-                loadText()
-            }
+        ScrollView {
+            TextEditor(text: $text)
+                .font(.custom("Georgia", size: 18))
+                .scrollDisabled(true)
+                .padding(.horizontal, 40)
+                .frame(minHeight: 500)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .onChange(of: store.currentIndex) { _ in
+            loadText()
+        }
+        .onAppear {
+            loadText()
+        }
     }
     
     func loadText() {
