@@ -107,7 +107,7 @@ struct FileRow: View {
             .fontWeight(isOpen ? .semibold : .regular)
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
-            .background(isHovering ? Color.white.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            .background(isHovering ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
             .onHover { isHovering = $0 }
     }
 }
