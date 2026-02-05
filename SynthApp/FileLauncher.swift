@@ -96,7 +96,7 @@ struct FileLauncher: View {
         .frame(width: 500)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 20)
+        .shadow(radius: 8)
         .onAppear { isSearchFocused = true }
         .onChange(of: query) { selectedIndex = 0 }
         .background {
