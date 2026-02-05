@@ -295,7 +295,7 @@ struct MarkdownEditor: NSViewRepresentable {
                         let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
                         positions.append(rect.origin.y + textInset + rect.height / 2 + 4)
                     }
-                } else if i == 0 {
+                } else if lineIndex == 0 {
                     positions.append(textInset + 12)
                 }
                 charIndex += line.count + 1 // +1 for newline
