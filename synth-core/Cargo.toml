@@ -1,0 +1,10 @@
+[package]
+name = "synth-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+docx-rs = "0.4"
