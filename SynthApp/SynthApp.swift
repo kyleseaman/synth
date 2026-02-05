@@ -35,6 +35,12 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("j")
             }
+            CommandGroup(after: .toolbar) {
+                ForEach(1...9, id: \.self) { i in
+                    Button("Tab \(i)") { store.switchTo(i - 1) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(i)")), modifiers: .command)
+                }
+            }
         }
     }
 }

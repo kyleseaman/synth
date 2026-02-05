@@ -14,7 +14,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             List(store.fileTree, children: \.children) { node in
-                Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
+                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
                     .onTapGesture {
                         if !node.isDirectory {
                             store.open(node.url)
@@ -53,20 +53,19 @@ struct ContentView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    GlassEffectContainer(spacing: 8) {
-                        HStack(spacing: 4) {
-                            ForEach(store.openFiles.indices, id: \.self) { i in
-                                TabButton(
-                                    title: store.openFiles[i].url.lastPathComponent,
-                                    isSelected: i == store.currentIndex,
-                                    onSelect: { store.switchTo(i) },
-                                    onClose: { store.closeTab(at: i) }
-                                )
-                            }
+                    HStack(spacing: 4) {
+                        ForEach(store.openFiles.indices, id: \.self) { i in
+                            TabButton(
+                                title: store.openFiles[i].url.lastPathComponent,
+                                isSelected: i == store.currentIndex,
+                                onSelect: { store.switchTo(i) },
+                                onClose: { store.closeTab(at: i) }
+                            )
                         }
                     }
                 }
             }
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .frame(minWidth: 800, minHeight: 500)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
@@ -79,6 +78,21 @@ struct ContentView: View {
                 showChat.toggle()
             }
         }
+    }
+}
+
+struct FileRow: View {
+    let node: FileTreeNode
+    let isOpen: Bool
+    @State private var isHovering = false
+    
+    var body: some View {
+        Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
+            .fontWeight(isOpen ? .semibold : .regular)
+            .padding(.vertical, 2)
+            .padding(.horizontal, 4)
+            .background(isHovering ? Color.white.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+            .onHover { isHovering = $0 }
     }
 }
 
@@ -98,7 +112,7 @@ struct TabButton: View {
                 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -106,10 +120,14 @@ struct TabButton: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
+            .background {
+                if isSelected {
+                    Capsule().fill(.ultraThinMaterial)
+                }
+            }
         }
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
-        .glassEffect(isSelected ? .regular : .identity)
         .onHover { isHovering = $0 }
     }
 }
@@ -117,14 +135,15 @@ struct TabButton: View {
 
 struct EditorViewSimple: View {
     @EnvironmentObject var store: DocumentStore
+    @Environment(\.colorScheme) var colorScheme
     @State private var text: String = ""
     
     var body: some View {
         TextEditor(text: $text)
             .font(.custom("Georgia", size: 18))
-            .foregroundColor(.black)
             .scrollContentBackground(.hidden)
-            .background(Color(white: 0.95))
+            .padding(.horizontal, 40)
+            .background(Color(nsColor: .textBackgroundColor))
             .onChange(of: store.currentIndex) { _ in
                 loadText()
             }
