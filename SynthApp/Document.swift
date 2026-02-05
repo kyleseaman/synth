@@ -3,6 +3,7 @@ import Cocoa
 struct Document {
     let url: URL
     var content: NSAttributedString
+    var isDirty: Bool = false
 
     static func load(from url: URL) -> Document? {
         let ext = url.pathExtension.lowercased()

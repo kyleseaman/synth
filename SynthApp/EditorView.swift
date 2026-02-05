@@ -350,6 +350,22 @@ class LineNumberRulerView: NSRulerView {
         var glyphIndex = 0
         let numberOfGlyphs = layoutManager.numberOfGlyphs
 
+        // Handle empty document - still show line 1
+        if numberOfGlyphs == 0 {
+            let numStr = "1"
+            let size = numStr.size(withAttributes: attrs)
+            let lineHeight = textView.font?.pointSize ?? 14
+            let drawY = textInset.height + (lineHeight - size.height) / 2
+            let drawRect = NSRect(
+                x: ruleThickness - size.width - 8,
+                y: drawY,
+                width: size.width,
+                height: size.height
+            )
+            numStr.draw(in: drawRect, withAttributes: attrs)
+            return
+        }
+
         while glyphIndex < numberOfGlyphs {
             var lineRange = NSRange()
             let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)

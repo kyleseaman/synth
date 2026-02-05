@@ -9,8 +9,11 @@ class DocumentStore: ObservableObject {
     @Published var steeringFiles: [String] = []
     @Published var customAgents: [AgentInfo] = []
     @Published var recentFiles: [URL] = []
+    @Published var expandedFolders: Set<URL> = []
 
     private let maxRecentFiles = 20
+    private var fileWatcher: DispatchSourceFileSystemObject?
+    private var watcherFD: Int32 = -1
 
     init() {
         loadRecentFiles()
@@ -18,7 +21,40 @@ class DocumentStore: ObservableObject {
            FileManager.default.fileExists(atPath: path) {
             workspace = URL(fileURLWithPath: path)
             loadFileTree()
+            startWatching()
         }
+    }
+
+    deinit {
+        stopWatching()
+    }
+
+    private func startWatching() {
+        guard let workspace = workspace else { return }
+        stopWatching()
+
+        watcherFD = Darwin.open(workspace.path, O_EVTONLY)
+        guard watcherFD >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: watcherFD,
+            eventMask: .write,
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            self?.loadFileTree()
+        }
+        source.setCancelHandler { [weak self] in
+            if let fd = self?.watcherFD, fd >= 0 { close(fd) }
+            self?.watcherFD = -1
+        }
+        source.resume()
+        fileWatcher = source
+    }
+
+    private func stopWatching() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
     }
 
     func loadRecentFiles() {
@@ -47,6 +83,7 @@ class DocumentStore: ObservableObject {
             openFiles.removeAll()
             currentIndex = -1
         }
+        startWatching()
     }
 
     func loadFileTree() {
@@ -103,12 +140,25 @@ class DocumentStore: ObservableObject {
 
     func updateContent(_ content: NSAttributedString) {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
-        openFiles[currentIndex].content = content
+        let current = openFiles[currentIndex].content.string
+        let new = content.string
+        if current != new {
+            openFiles[currentIndex].content = content
+            openFiles[currentIndex].isDirty = true
+        }
     }
 
     func save() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
         try? openFiles[currentIndex].save(openFiles[currentIndex].content)
+        openFiles[currentIndex].isDirty = false
+    }
+
+    func saveAll() {
+        for index in openFiles.indices where openFiles[index].isDirty {
+            try? openFiles[index].save(openFiles[index].content)
+            openFiles[index].isDirty = false
+        }
     }
 
     func closeCurrentTab() {
@@ -130,11 +180,52 @@ class DocumentStore: ObservableObject {
         guard let workspace = workspace else { return }
         let drafts = workspace.appendingPathComponent("drafts")
         try? FileManager.default.createDirectory(at: drafts, withIntermediateDirectories: true)
-        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        let url = drafts.appendingPathComponent("untitled-\(timestamp).md")
+        
+        // Find next available Untitled number
+        var num = 1
+        var url = drafts.appendingPathComponent("Untitled.md")
+        while FileManager.default.fileExists(atPath: url.path) {
+            num += 1
+            url = drafts.appendingPathComponent("Untitled \(num).md")
+        }
+        
         try? "".write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
+    }
+
+    func delete(_ url: URL) {
+        // Close if open
+        if let idx = openFiles.firstIndex(where: { $0.url == url }) {
+            closeTab(at: idx)
+        }
+        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        loadFileTree()
+    }
+
+    func promptRename(_ url: URL) {
+        let alert = NSAlert()
+        alert.messageText = "Rename"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        input.stringValue = url.lastPathComponent
+        alert.accessoryView = input
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            let newName = input.stringValue.trimmingCharacters(in: .whitespaces)
+            guard !newName.isEmpty, newName != url.lastPathComponent else { return }
+            let newURL = url.deletingLastPathComponent().appendingPathComponent(newName)
+            do {
+                try FileManager.default.moveItem(at: url, to: newURL)
+                // Update open file if renamed
+                if let idx = openFiles.firstIndex(where: { $0.url == url }) {
+                    openFiles[idx] = Document(url: newURL, content: openFiles[idx].content)
+                }
+                loadFileTree()
+            } catch {}
+        }
     }
 
     func pickWorkspace() {

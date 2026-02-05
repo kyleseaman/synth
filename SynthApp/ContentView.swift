@@ -15,22 +15,19 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(store.fileTree, children: \.children) { node in
-                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
-                    .onTapGesture {
-                        if !node.isDirectory {
-                            store.open(node.url)
-                        }
-                    }
+            List {
+                FileTreeView(nodes: store.fileTree, store: store)
             }
             .listStyle(.sidebar)
             .contentTransition(.identity)
             .transaction { $0.animation = nil }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
+            .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
         } detail: {
             VStack(spacing: 0) {
-                if !store.openFiles.isEmpty {
+                if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     EditorViewSimple()
+                        .id(store.openFiles[store.currentIndex].url)
                 } else {
                     Text("Open a file to start editing")
                         .foregroundStyle(.secondary)
@@ -62,6 +59,7 @@ struct ContentView: View {
                             TabButton(
                                 title: store.openFiles[index].url.lastPathComponent,
                                 isSelected: index == store.currentIndex,
+                                isDirty: store.openFiles[index].isDirty,
                                 onSelect: { store.switchTo(index) },
                                 onClose: { store.closeTab(at: index) }
                             )
@@ -114,9 +112,65 @@ struct FileRow: View {
     }
 }
 
+struct FileTreeView: View {
+    let nodes: [FileTreeNode]
+    @ObservedObject var store: DocumentStore
+
+    var body: some View {
+        ForEach(nodes) { node in
+            FileNodeView(node: node, store: store)
+        }
+    }
+}
+
+struct FileNodeView: View {
+    let node: FileTreeNode
+    @ObservedObject var store: DocumentStore
+
+    private var isExpanded: Binding<Bool> {
+        Binding(
+            get: { store.expandedFolders.contains(node.url) },
+            set: { newValue in
+                if newValue {
+                    store.expandedFolders.insert(node.url)
+                } else {
+                    store.expandedFolders.remove(node.url)
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        if node.isDirectory {
+            DisclosureGroup(isExpanded: isExpanded) {
+                if let children = node.children {
+                    FileTreeView(nodes: children, store: store)
+                }
+            } label: {
+                FileRow(node: node, isOpen: false)
+                    .contentShape(Rectangle())
+                    .onTapGesture { isExpanded.wrappedValue.toggle() }
+                    .contextMenu {
+                        Button("Rename...") { store.promptRename(node.url) }
+                    }
+            }
+        } else {
+            FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
+                .contentShape(Rectangle())
+                .onTapGesture { store.open(node.url) }
+                .contextMenu {
+                    Button("Rename...") { store.promptRename(node.url) }
+                    Divider()
+                    Button("Delete", role: .destructive) { store.delete(node.url) }
+                }
+        }
+    }
+}
+
 struct TabButton: View {
     let title: String
     let isSelected: Bool
+    let isDirty: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
     @State private var isHovering = false
@@ -129,12 +183,12 @@ struct TabButton: View {
                     .lineLimit(1)
 
                 Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.secondary)
+                    Image(systemName: isDirty ? "circle.fill" : "xmark")
+                        .font(.system(size: isDirty ? 6 : 9, weight: .bold))
+                        .foregroundStyle(isDirty ? .orange : .secondary)
                 }
                 .buttonStyle(.plain)
-                .opacity(isHovering || isSelected ? 1 : 0)
+                .opacity(isHovering || isSelected || isDirty ? 1 : 0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -166,15 +220,13 @@ struct EditorViewSimple: View {
             MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
                 .background(Color(nsColor: .textBackgroundColor))
         }
-        .onChange(of: store.currentIndex) { loadText() }
         .onChange(of: text) { saveText() }
         .onAppear { loadText() }
     }
 
     func loadText() {
         guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
-        let newText = store.openFiles[store.currentIndex].content.string
-        if text != newText { text = newText }
+        text = store.openFiles[store.currentIndex].content.string
     }
 
     func saveText() {
