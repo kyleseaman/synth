@@ -4,7 +4,7 @@ import AppKit
 @main
 struct SynthApp: App {
     @StateObject private var store = DocumentStore()
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -29,16 +29,16 @@ struct SynthApp: App {
                     NotificationCenter.default.post(name: .toggleSidebar, object: nil)
                 }
                 .keyboardShortcut("\\", modifiers: .command)
-                
+
                 Button("Toggle Chat") {
                     NotificationCenter.default.post(name: .toggleChat, object: nil)
                 }
                 .keyboardShortcut("j")
             }
             CommandGroup(after: .toolbar) {
-                ForEach(1...9, id: \.self) { i in
-                    Button("Tab \(i)") { store.switchTo(i - 1) }
-                        .keyboardShortcut(KeyEquivalent(Character("\(i)")), modifiers: .command)
+                ForEach(1...9, id: \.self) { tabNum in
+                    Button("Tab \(tabNum)") { store.switchTo(tabNum - 1) }
+                        .keyboardShortcut(KeyEquivalent(Character("\(tabNum)")), modifiers: .command)
                 }
             }
             CommandGroup(replacing: .textFormatting) {

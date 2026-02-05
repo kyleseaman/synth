@@ -1,6 +1,8 @@
 # Synth
 
-AI-first collaborative text editor for macOS, powered by Kiro CLI.
+A minimal, fast, native macOS text editor built around AI workflows and keyboard shortcuts.
+
+Minimal and fast, Synth combines SwiftUI with a Rust core for performance. Press `Cmd+K` to invoke AI assistance—choose between an editing agent that refines your existing text or a writing agent that generates new content.
 
 ## Structure
 
@@ -87,3 +89,23 @@ kiro-cli chat --no-interactive -a '<your prompt>'
 ```
 
 Requires `kiro-cli` to be installed and in your PATH.
+
+## Development
+
+### Prerequisites
+
+```bash
+brew install swiftlint
+```
+
+### Pre-commit Hooks
+
+The repo includes a pre-commit hook that runs:
+- `cargo fmt --check` on Rust code
+- `swiftlint` on Swift code
+
+To fix issues before committing:
+```bash
+cd synth-core && cargo fmt
+swiftlint lint --fix SynthApp/
+```

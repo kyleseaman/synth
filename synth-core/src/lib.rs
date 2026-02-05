@@ -1,9 +1,9 @@
+use docx_rs::*;
 use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
 use std::fs::File;
 use std::io::Read;
+use std::os::raw::c_char;
 use std::process::{Command, Stdio};
-use docx_rs::*;
 
 /// Extract plain text from a .docx file
 #[no_mangle]
@@ -45,16 +45,19 @@ pub extern "C" fn extract_text(path: *const c_char) -> *mut c_char {
         }
     }
 
-    CString::new(text).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    CString::new(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[no_mangle]
 pub extern "C" fn free_string(s: *mut c_char) {
     if !s.is_null() {
-        unsafe { drop(CString::from_raw(s)); }
+        unsafe {
+            drop(CString::from_raw(s));
+        }
     }
 }
-
 
 /// Send a prompt to kiro-cli and get the response
 #[no_mangle]
@@ -75,7 +78,9 @@ pub extern "C" fn kiro_chat(prompt: *const c_char) -> *mut c_char {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             let cleaned = strip_ansi(&stdout);
-            CString::new(cleaned).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+            CString::new(cleaned)
+                .map(|s| s.into_raw())
+                .unwrap_or(std::ptr::null_mut())
         }
         Err(_) => std::ptr::null_mut(),
     }
@@ -90,7 +95,9 @@ fn strip_ansi(s: &str) -> String {
                 chars.next();
                 while let Some(&nc) = chars.peek() {
                     chars.next();
-                    if nc.is_ascii_alphabetic() { break; }
+                    if nc.is_ascii_alphabetic() {
+                        break;
+                    }
                 }
             }
         } else {

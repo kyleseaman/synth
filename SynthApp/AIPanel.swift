@@ -3,7 +3,7 @@ import Cocoa
 class AIPanel: NSPanel {
     private var input: NSTextField!
     private var output: NSTextView!
-    
+
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
                    styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
@@ -13,7 +13,7 @@ class AIPanel: NSPanel {
         backgroundColor = Theme.offWhite
         setupUI()
     }
-    
+
     private func setupUI() {
         input = NSTextField(frame: NSRect(x: 10, y: 260, width: 300, height: 24))
         input.placeholderString = "Ask Kiro..."
@@ -41,13 +41,13 @@ class AIPanel: NSPanel {
         scroll.documentView = output
         contentView?.addSubview(scroll)
     }
-    
+
     @objc private func send() {
         let prompt = input.stringValue
         guard !prompt.isEmpty else { return }
         output.string = "Thinking..."
         input.stringValue = ""
-        
+
         DispatchQueue.global().async {
             var response = "Error: No response"
             if let cPrompt = prompt.cString(using: .utf8),

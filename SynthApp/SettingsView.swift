@@ -3,7 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var store: DocumentStore
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -17,9 +17,9 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
             .padding()
-            
+
             Divider()
-            
+
             List {
                 Section("Steering Files") {
                     if store.steeringFiles.isEmpty {
@@ -31,7 +31,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section("Custom Agents") {
                     if store.customAgents.isEmpty {
                         Text("No custom agents found")

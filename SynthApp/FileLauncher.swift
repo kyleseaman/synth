@@ -20,22 +20,22 @@ struct FileLauncher: View {
     @State private var query = ""
     @State private var selectedIndex = 0
     @FocusState private var isSearchFocused: Bool
-    
+
     var filteredFiles: [FileTreeNode] {
         let allFiles = flattenFiles(store.fileTree)
-        if query.trimmingCharacters(in: .whitespaces).isEmpty { 
-            return Array(allFiles.prefix(20)) 
+        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            return Array(allFiles.prefix(20))
         }
-        let q = query.lowercased()
-        return allFiles.filter { $0.name.lowercased().fuzzyMatch(q) }
-            .sorted { a, b in
-                let aPrefix = a.name.lowercased().hasPrefix(q)
-                let bPrefix = b.name.lowercased().hasPrefix(q)
-                if aPrefix != bPrefix { return aPrefix }
-                return a.name < b.name
+        let searchQuery = query.lowercased()
+        return allFiles.filter { $0.name.lowercased().fuzzyMatch(searchQuery) }
+            .sorted { first, second in
+                let firstPrefix = first.name.lowercased().hasPrefix(searchQuery)
+                let secondPrefix = second.name.lowercased().hasPrefix(searchQuery)
+                if firstPrefix != secondPrefix { return firstPrefix }
+                return first.name < second.name
             }
     }
-    
+
     func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
         var result: [FileTreeNode] = []
         for node in nodes {
@@ -46,7 +46,7 @@ struct FileLauncher: View {
         }
         return result
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -59,9 +59,9 @@ struct FileLauncher: View {
                     .onSubmit { openSelected() }
             }
             .padding(12)
-            
+
             Divider()
-            
+
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -107,7 +107,7 @@ struct FileLauncher: View {
             )
         }
     }
-    
+
     func openSelected() {
         guard selectedIndex >= 0 && selectedIndex < filteredFiles.count else { return }
         store.open(filteredFiles[selectedIndex].url)
@@ -119,13 +119,13 @@ struct KeyboardHandler: NSViewRepresentable {
     var onUp: () -> Void
     var onDown: () -> Void
     var onEscape: () -> Void
-    
+
     func makeNSView(context: Context) -> NSView {
         let view = KeyHandlerView()
         view.onUp = onUp
         view.onDown = onDown
         view.onEscape = onEscape
-        
+
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 126: view.onUp?(); return nil // up
@@ -136,7 +136,7 @@ struct KeyboardHandler: NSViewRepresentable {
         }
         return view
     }
-    
+
     func updateNSView(_ nsView: NSView, context: Context) {
         if let view = nsView as? KeyHandlerView {
             view.onUp = onUp
@@ -144,7 +144,7 @@ struct KeyboardHandler: NSViewRepresentable {
             view.onEscape = onEscape
         }
     }
-    
+
     class KeyHandlerView: NSView {
         var onUp: (() -> Void)?
         var onDown: (() -> Void)?

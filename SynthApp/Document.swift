@@ -3,11 +3,11 @@ import Cocoa
 struct Document {
     let url: URL
     var content: NSAttributedString
-    
+
     static func load(from url: URL) -> Document? {
         let ext = url.pathExtension.lowercased()
         let content: NSAttributedString
-        
+
         switch ext {
         case "docx":
             guard let attrStr = try? NSAttributedString(url: url, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil) else { return nil }
@@ -19,10 +19,10 @@ struct Document {
             let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             content = NSAttributedString(string: raw, attributes: [.font: Theme.editorFont, .foregroundColor: NSColor.black])
         }
-        
+
         return Document(url: url, content: content)
     }
-    
+
     func save(_ content: NSAttributedString) throws {
         let ext = url.pathExtension.lowercased()
         if ext == "docx" {
