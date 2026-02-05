@@ -345,26 +345,15 @@ class LineNumberRulerView: NSRulerView {
             .foregroundColor: NSColor.tertiaryLabelColor
         ]
 
+        let numberOfGlyphs = layoutManager.numberOfGlyphs
+        if numberOfGlyphs == 0 {
+            drawLineNumber(1, at: textInset.height, attrs: attrs, font: textView.font)
+            return
+        }
+
         let text = textView.string as NSString
         var lineNumber = 1
         var glyphIndex = 0
-        let numberOfGlyphs = layoutManager.numberOfGlyphs
-
-        // Handle empty document - still show line 1
-        if numberOfGlyphs == 0 {
-            let numStr = "1"
-            let size = numStr.size(withAttributes: attrs)
-            let lineHeight = textView.font?.pointSize ?? 14
-            let drawY = textInset.height + (lineHeight - size.height) / 2
-            let drawRect = NSRect(
-                x: ruleThickness - size.width - 8,
-                y: drawY,
-                width: size.width,
-                height: size.height
-            )
-            numStr.draw(in: drawRect, withAttributes: attrs)
-            return
-        }
 
         while glyphIndex < numberOfGlyphs {
             var lineRange = NSRange()
@@ -372,26 +361,31 @@ class LineNumberRulerView: NSRulerView {
             let yOffset = lineRect.origin.y + textInset.height - visibleRect.origin.y
 
             if yOffset + lineRect.height >= 0 && yOffset <= rect.height {
-                let numStr = "\(lineNumber)"
-                let size = numStr.size(withAttributes: attrs)
-                let drawY = yOffset + (lineRect.height - size.height) / 2
-                let drawRect = NSRect(
-                    x: ruleThickness - size.width - 8,
-                    y: drawY,
-                    width: size.width,
-                    height: size.height
-                )
-                numStr.draw(in: drawRect, withAttributes: attrs)
+                drawLineNumber(lineNumber, at: yOffset, lineHeight: lineRect.height, attrs: attrs)
             }
 
             glyphIndex = NSMaxRange(lineRange)
             lineNumber += 1
 
-            // Check if this is a soft wrap vs actual newline
             let charIndex = layoutManager.characterIndexForGlyph(at: max(0, glyphIndex - 1))
             if charIndex < text.length && text.character(at: charIndex) != Character("\n").asciiValue! {
                 lineNumber -= 1
             }
         }
+    }
+
+    private func drawLineNumber(
+        _ num: Int,
+        at yPos: CGFloat,
+        lineHeight: CGFloat = 0,
+        attrs: [NSAttributedString.Key: Any],
+        font: NSFont? = nil
+    ) {
+        let numStr = "\(num)"
+        let size = numStr.size(withAttributes: attrs)
+        let height = lineHeight > 0 ? lineHeight : (font?.pointSize ?? 14)
+        let drawY = yPos + (height - size.height) / 2
+        let drawRect = NSRect(x: ruleThickness - size.width - 8, y: drawY, width: size.width, height: size.height)
+        numStr.draw(in: drawRect, withAttributes: attrs)
     }
 }

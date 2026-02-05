@@ -45,7 +45,7 @@ class DocumentStore: ObservableObject {
             self?.loadFileTree()
         }
         source.setCancelHandler { [weak self] in
-            if let fd = self?.watcherFD, fd >= 0 { close(fd) }
+            if let fileDesc = self?.watcherFD, fileDesc >= 0 { close(fileDesc) }
             self?.watcherFD = -1
         }
         source.resume()
@@ -180,7 +180,7 @@ class DocumentStore: ObservableObject {
         guard let workspace = workspace else { return }
         let drafts = workspace.appendingPathComponent("drafts")
         try? FileManager.default.createDirectory(at: drafts, withIntermediateDirectories: true)
-        
+
         // Find next available Untitled number
         var num = 1
         var url = drafts.appendingPathComponent("Untitled.md")
@@ -188,7 +188,7 @@ class DocumentStore: ObservableObject {
             num += 1
             url = drafts.appendingPathComponent("Untitled \(num).md")
         }
-        
+
         try? "".write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)

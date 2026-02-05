@@ -3,7 +3,7 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var store: DocumentStore?
-    
+
     func applicationWillResignActive(_ notification: Notification) {
         store?.saveAll()
     }
