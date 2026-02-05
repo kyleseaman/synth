@@ -11,7 +11,7 @@ extension String {
         if query.isEmpty { return 1000 }
         let lower = self.lowercased()
         let queryLower = query.lowercased()
-        
+
         if lower == queryLower { return 10000 }
         if lower.contains(queryLower) {
             return 5000 + (lower.hasPrefix(queryLower) ? 1000 : 0)
@@ -19,13 +19,11 @@ extension String {
         var score = 0
         var remainder = queryLower[...]
         var lastMatchIndex = -1
-        for (index, char) in lower.enumerated() {
-            if char == remainder.first {
-                remainder.removeFirst()
-                score += (lastMatchIndex == index - 1) ? 10 : 1
-                lastMatchIndex = index
-                if remainder.isEmpty { return score }
-            }
+        for (index, char) in lower.enumerated() where char == remainder.first {
+            remainder.removeFirst()
+            score += (lastMatchIndex == index - 1) ? 10 : 1
+            lastMatchIndex = index
+            if remainder.isEmpty { return score }
         }
         return nil
     }
@@ -41,7 +39,7 @@ struct FileLauncher: View {
     var results: [SearchResult] {
         let allFiles = flattenFiles(store.fileTree)
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        
+
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
             let recentNodes = store.recentFiles.compactMap { url in
@@ -50,7 +48,7 @@ struct FileLauncher: View {
             let others = allFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
             return (recentNodes + others).map { SearchResult(node: $0, score: 0) }
         }
-        
+
         return allFiles
             .compactMap { file -> SearchResult? in
                 guard let nameScore = file.name.fuzzyScore(trimmed) else { return nil }

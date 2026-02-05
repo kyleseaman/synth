@@ -172,7 +172,8 @@ class ACPClient: ObservableObject {
            let id = response.id,
            let handler = pendingRequests.removeValue(forKey: id) {
             if let error = response.error {
-                handler(.failure(NSError(domain: "ACP", code: error.code, userInfo: [NSLocalizedDescriptionKey: error.message])))
+                let userInfo = [NSLocalizedDescriptionKey: error.message]
+                handler(.failure(NSError(domain: "ACP", code: error.code, userInfo: userInfo)))
             } else {
                 handler(.success(response.result))
             }
@@ -208,14 +209,19 @@ class ACPClient: ObservableObject {
         }
     }
 
-    private func sendRequest(method: String, params: [String: AnyCodable]? = nil, completion: @escaping (Result<AnyCodable?, Error>) -> Void) {
+    private func sendRequest(
+        method: String,
+        params: [String: AnyCodable]? = nil,
+        completion: @escaping (Result<AnyCodable?, Error>) -> Void
+    ) {
         requestId += 1
         let request = JsonRpcRequest(id: requestId, method: method, params: params)
         pendingRequests[requestId] = completion
 
         guard let data = try? JSONEncoder().encode(request),
               var json = String(data: data, encoding: .utf8) else {
-            completion(.failure(NSError(domain: "ACP", code: -1, userInfo: [NSLocalizedDescriptionKey: "Encoding failed"])))
+            let userInfo = [NSLocalizedDescriptionKey: "Encoding failed"]
+            completion(.failure(NSError(domain: "ACP", code: -1, userInfo: userInfo)))
             return
         }
 

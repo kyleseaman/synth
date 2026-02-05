@@ -30,6 +30,7 @@ Write tests first, then implementation. Tests prevent hallucination and scope dr
 - Use `index`, `offset`, `first`, `second` instead
 - No force unwrap (`!`) or force try (`try!`) without disable comment
 - Lines under 120 characters
+- Fix ALL swiftlint warnings, not just errors
 
 ### Rust
 - Run `cargo fmt` before committing
@@ -41,7 +42,7 @@ Every commit runs:
 - `cargo fmt --check` (Rust)
 - `swiftlint` (Swift)
 
-**Never bypass with `--no-verify`.** Fix issues first.
+**Never bypass with `--no-verify`.** Fix ALL issues first, including pre-existing warnings.
 
 ## Commit Messages
 Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`

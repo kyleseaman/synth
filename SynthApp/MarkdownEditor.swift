@@ -51,10 +51,15 @@ struct MarkdownFormat: DocumentFormat {
         // Bold **text**
         // swiftlint:disable:next force_try
         let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
-        for match in boldPattern.matches(in: text, range: NSRange(location: 0, length: text.utf16.count)).reversed() {
-            if let fullRange = Range(match.range, in: text), let innerRange = Range(match.range(at: 1), in: text) {
+        let fullNSRange = NSRange(location: 0, length: text.utf16.count)
+        for match in boldPattern.matches(in: text, range: fullNSRange).reversed() {
+            if let fullRange = Range(match.range, in: text),
+               let innerRange = Range(match.range(at: 1), in: text) {
                 let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
-                let replacement = NSAttributedString(string: String(text[innerRange]), attributes: [.font: boldFont, .foregroundColor: NSColor.textColor])
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: boldFont, .foregroundColor: NSColor.textColor
+                ]
+                let replacement = NSAttributedString(string: String(text[innerRange]), attributes: attrs)
                 str.replaceCharacters(in: NSRange(fullRange, in: text), with: replacement)
             }
         }
@@ -62,10 +67,18 @@ struct MarkdownFormat: DocumentFormat {
         // Italic *text*
         // swiftlint:disable:next force_try
         let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
-        for match in italicPattern.matches(in: str.string, range: NSRange(location: 0, length: str.string.utf16.count)).reversed() {
-            if let fullRange = Range(match.range, in: str.string), let innerRange = Range(match.range(at: 1), in: str.string) {
+        let strRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in italicPattern.matches(in: str.string, range: strRange).reversed() {
+            if let fullRange = Range(match.range, in: str.string),
+               let innerRange = Range(match.range(at: 1), in: str.string) {
                 let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
-                let replacement = NSAttributedString(string: String(str.string[innerRange]), attributes: [.font: italicFont, .foregroundColor: NSColor.textColor])
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: italicFont, .foregroundColor: NSColor.textColor
+                ]
+                let replacement = NSAttributedString(
+                    string: String(str.string[innerRange]),
+                    attributes: attrs
+                )
                 str.replaceCharacters(in: NSRange(fullRange, in: str.string), with: replacement)
             }
         }
@@ -73,13 +86,18 @@ struct MarkdownFormat: DocumentFormat {
         // Inline code `text`
         // swiftlint:disable:next force_try
         let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
-        for match in codePattern.matches(in: str.string, range: NSRange(location: 0, length: str.string.utf16.count)).reversed() {
-            if let fullRange = Range(match.range, in: str.string), let innerRange = Range(match.range(at: 1), in: str.string) {
-                let replacement = NSAttributedString(string: String(str.string[innerRange]), attributes: [
-                    .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
-                    .foregroundColor: NSColor.systemPink,
-                    .backgroundColor: NSColor.quaternaryLabelColor
-                ])
+        let codeRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in codePattern.matches(in: str.string, range: codeRange).reversed() {
+            if let fullRange = Range(match.range, in: str.string),
+               let innerRange = Range(match.range(at: 1), in: str.string) {
+                let replacement = NSAttributedString(
+                    string: String(str.string[innerRange]),
+                    attributes: [
+                        .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
+                        .foregroundColor: NSColor.systemPink,
+                        .backgroundColor: NSColor.quaternaryLabelColor
+                    ]
+                )
                 str.replaceCharacters(in: NSRange(fullRange, in: str.string), with: replacement)
             }
         }
@@ -88,7 +106,11 @@ struct MarkdownFormat: DocumentFormat {
 
 struct RichTextFormat: DocumentFormat {
     func render(_ text: String) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.textColor])
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 16),
+            .foregroundColor: NSColor.textColor
+        ]
+        return NSAttributedString(string: text, attributes: attrs)
     }
 
     func toPlainText(_ attributed: NSAttributedString) -> String {
@@ -185,13 +207,18 @@ class FormattingTextView: NSTextView {
         var hasTrait = false
         storage.enumerateAttribute(.font, in: range) { value, _, _ in
             if let font = value as? NSFont {
-                hasTrait = hasTrait || (trait == .boldFontMask ? font.fontDescriptor.symbolicTraits.contains(.bold) : font.fontDescriptor.symbolicTraits.contains(.italic))
+                let traits = font.fontDescriptor.symbolicTraits
+                let check = trait == .boldFontMask ? traits.contains(.bold) : traits.contains(.italic)
+                hasTrait = hasTrait || check
             }
         }
 
         storage.enumerateAttribute(.font, in: range) { value, attrRange, _ in
             if let font = value as? NSFont {
-                let newFont = hasTrait ? NSFontManager.shared.convert(font, toNotHaveTrait: trait) : NSFontManager.shared.convert(font, toHaveTrait: trait)
+                let mgr = NSFontManager.shared
+                let newFont = hasTrait
+                    ? mgr.convert(font, toNotHaveTrait: trait)
+                    : mgr.convert(font, toHaveTrait: trait)
                 storage.addAttribute(.font, value: newFont, range: attrRange)
             }
         }
@@ -241,7 +268,11 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
 
-        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main) { _ in
+        NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { _ in
             context.coordinator.updateScrollOffset()
         }
 

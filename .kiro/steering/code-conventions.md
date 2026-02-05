@@ -30,6 +30,7 @@ If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
 - Use conventional commit messages: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`.
 - Never push directly—all changes go through commits locally.
 - Build and verify before committing.
+- Fix ALL linter warnings before committing, including pre-existing ones in files you didn't modify.
 
 ## Testing
 

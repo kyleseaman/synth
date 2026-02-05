@@ -155,14 +155,19 @@ struct FileTreeNode: Identifiable, Equatable {
     }
 
     static func scan(_ url: URL) -> [FileTreeNode] {
-        guard let contents = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+        let keys: [URLResourceKey] = [.isDirectoryKey]
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: keys
+        ) else { return [] }
         return contents
             .filter { !$0.lastPathComponent.hasPrefix(".") || $0.lastPathComponent == ".kiro" }
             .sorted { first, second in
                 let firstDir = (try? first.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 let secondDir = (try? second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 if firstDir != secondDir { return firstDir }
-                return first.lastPathComponent.localizedCaseInsensitiveCompare(second.lastPathComponent) == .orderedAscending
+                let cmp = first.lastPathComponent.localizedCaseInsensitiveCompare(second.lastPathComponent)
+                return cmp == .orderedAscending
             }
             .map { item in
                 let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false

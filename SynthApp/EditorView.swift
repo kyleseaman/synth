@@ -4,6 +4,7 @@ import AppKit
 struct EditorView: NSViewRepresentable {
     @EnvironmentObject var store: DocumentStore
 
+    // swiftlint:disable:next function_body_length
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
 
@@ -28,7 +29,11 @@ struct EditorView: NSViewRepresentable {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = 6
         textView.defaultParagraphStyle = paragraphStyle
-        textView.typingAttributes = [.font: Theme.editorFont, .foregroundColor: NSColor.black, .paragraphStyle: paragraphStyle]
+        textView.typingAttributes = [
+            .font: Theme.editorFont,
+            .foregroundColor: NSColor.black,
+            .paragraphStyle: paragraphStyle
+        ]
 
         scrollView.documentView = textView
         scrollView.setupLineNumbers(for: textView)
@@ -49,7 +54,8 @@ struct EditorView: NSViewRepresentable {
         ]
 
         for (icon, action) in buttons {
-            let btn = NSButton(image: NSImage(systemSymbolName: icon, accessibilityDescription: nil)!, target: textView, action: action)
+            let img = NSImage(systemSymbolName: icon, accessibilityDescription: nil)!
+            let btn = NSButton(image: img, target: textView, action: action)
             btn.bezelStyle = .texturedRounded
             btn.isBordered = false
             toolbar.addArrangedSubview(btn)
@@ -102,7 +108,11 @@ struct EditorView: NSViewRepresentable {
 class RichTextView: NSTextView {
     var selectionPopover: NSPopover?
 
-    override func setSelectedRange(_ charRange: NSRange, affinity: NSSelectionAffinity, stillSelecting stillSelectingFlag: Bool) {
+    override func setSelectedRange(
+        _ charRange: NSRange,
+        affinity: NSSelectionAffinity,
+        stillSelecting stillSelectingFlag: Bool
+    ) {
         super.setSelectedRange(charRange, affinity: affinity, stillSelecting: stillSelectingFlag)
         if !stillSelectingFlag {
             DispatchQueue.main.async { self.updateSelectionPopover() }
@@ -192,12 +202,16 @@ class RichTextView: NSTextView {
 
         var hasBold = false
         storage.enumerateAttribute(.font, in: range) { value, _, _ in
-            if let font = value as? NSFont, font.fontDescriptor.symbolicTraits.contains(.bold) { hasBold = true }
+            if let font = value as? NSFont,
+               font.fontDescriptor.symbolicTraits.contains(.bold) { hasBold = true }
         }
 
         storage.enumerateAttribute(.font, in: range) { value, attrRange, _ in
             if let font = value as? NSFont {
-                let newFont = hasBold ? NSFontManager.shared.convert(font, toNotHaveTrait: .boldFontMask) : NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+                let mgr = NSFontManager.shared
+                let newFont = hasBold
+                    ? mgr.convert(font, toNotHaveTrait: .boldFontMask)
+                    : mgr.convert(font, toHaveTrait: .boldFontMask)
                 storage.addAttribute(.font, value: newFont, range: attrRange)
             }
         }
@@ -209,12 +223,16 @@ class RichTextView: NSTextView {
 
         var hasItalic = false
         storage.enumerateAttribute(.font, in: range) { value, _, _ in
-            if let font = value as? NSFont, font.fontDescriptor.symbolicTraits.contains(.italic) { hasItalic = true }
+            if let font = value as? NSFont,
+               font.fontDescriptor.symbolicTraits.contains(.italic) { hasItalic = true }
         }
 
         storage.enumerateAttribute(.font, in: range) { value, attrRange, _ in
             if let font = value as? NSFont {
-                let newFont = hasItalic ? NSFontManager.shared.convert(font, toNotHaveTrait: .italicFontMask) : NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+                let mgr = NSFontManager.shared
+                let newFont = hasItalic
+                    ? mgr.convert(font, toNotHaveTrait: .italicFontMask)
+                    : mgr.convert(font, toHaveTrait: .italicFontMask)
                 storage.addAttribute(.font, value: newFont, range: attrRange)
             }
         }
@@ -341,7 +359,12 @@ class LineNumberRulerView: NSRulerView {
                 let numStr = "\(lineNumber)"
                 let size = numStr.size(withAttributes: attrs)
                 let drawY = yOffset + (lineRect.height - size.height) / 2
-                let drawRect = NSRect(x: ruleThickness - size.width - 8, y: drawY, width: size.width, height: size.height)
+                let drawRect = NSRect(
+                    x: ruleThickness - size.width - 8,
+                    y: drawY,
+                    width: size.width,
+                    height: size.height
+                )
                 numStr.draw(in: drawRect, withAttributes: attrs)
             }
 
