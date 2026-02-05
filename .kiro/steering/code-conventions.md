@@ -36,3 +36,4 @@ If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
 - Write tests for new functionality.
 - Run `cargo test` for Rust changes.
 - Ensure the app builds and runs after changes.
+- Write tests first, then implementation. Tests prevent hallucination and scope drift.

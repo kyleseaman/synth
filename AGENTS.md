@@ -21,6 +21,8 @@ cd synth-core && cargo test
 ./SynthApp/Synth
 ```
 
+Write tests first, then implementation. Tests prevent hallucination and scope drift.
+
 ## Code Style
 
 ### Swift
