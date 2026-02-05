@@ -222,10 +222,10 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.delegate = context.coordinator
         textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.textColor]
         textView.insertionPointColor = NSColor.textColor
-        textView.textContainer?.widthTracksTextView = true
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
         
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -236,6 +236,7 @@ struct MarkdownEditor: NSViewRepresentable {
         
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView
+        context.coordinator.parent = self
         
         NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main) { _ in
             context.coordinator.updateScrollOffset()
@@ -246,6 +247,8 @@ struct MarkdownEditor: NSViewRepresentable {
     
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
+        context.coordinator.parent = self
+        
         if !context.coordinator.isEditing && textView.string != text {
             textView.textStorage?.setAttributedString(format.render(text))
             DispatchQueue.main.async {
@@ -275,17 +278,24 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView, let layoutManager = textView.layoutManager else { return }
             let textInset = textView.textContainerInset.height
             var positions: [CGFloat] = []
-            let text = textView.string as NSString
-            var lineStart = 0
+            let string = textView.string
             
-            while lineStart < text.length {
-                let lineRange = text.lineRange(for: NSRange(location: lineStart, length: 0))
-                let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
-                if glyphRange.location != NSNotFound {
-                    let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
-                    positions.append(rect.origin.y + textInset + rect.height / 2 + 4)
+            // Count lines by splitting on newlines
+            let lines = string.components(separatedBy: "\n")
+            var charIndex = 0
+            
+            for (i, line) in lines.enumerated() {
+                if layoutManager.numberOfGlyphs > 0 {
+                    let safeIndex = min(charIndex, max(0, (string as NSString).length - 1))
+                    let glyphIndex = layoutManager.glyphIndexForCharacter(at: safeIndex)
+                    if layoutManager.isValidGlyphIndex(glyphIndex) {
+                        let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
+                        positions.append(rect.origin.y + textInset + rect.height / 2 + 4)
+                    }
+                } else if i == 0 {
+                    positions.append(textInset + 12)
                 }
-                lineStart = NSMaxRange(lineRange)
+                charIndex += line.count + 1 // +1 for newline
             }
             
             if positions.isEmpty { positions = [textInset + 12] }

@@ -138,15 +138,14 @@ struct EditorViewSimple: View {
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
+    var centered: Bool = false
     
     var body: some View {
         HStack(spacing: 0) {
-            // Line numbers gutter
             LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
                 .frame(width: 44)
                 .background(Color(nsColor: .textBackgroundColor))
             
-            // Editor
             MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
                 .background(Color(nsColor: .textBackgroundColor))
         }
