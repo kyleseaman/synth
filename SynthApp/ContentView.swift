@@ -4,12 +4,14 @@ import AppKit
 extension Notification.Name {
     static let toggleSidebar = Notification.Name("toggleSidebar")
     static let toggleChat = Notification.Name("toggleChat")
+    static let showFileLauncher = Notification.Name("showFileLauncher")
 }
 
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showChat = false
+    @State private var showFileLauncher = false
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -68,6 +70,17 @@ struct ContentView: View {
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .frame(minWidth: 800, minHeight: 500)
+        .overlay {
+            if showFileLauncher {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture { showFileLauncher = false }
+                
+                FileLauncher(isPresented: $showFileLauncher)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: showFileLauncher)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
                 columnVisibility = columnVisibility == .all ? .detailOnly : .all
@@ -77,6 +90,9 @@ struct ContentView: View {
             withAnimation {
                 showChat.toggle()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
+            showFileLauncher = true
         }
     }
 }

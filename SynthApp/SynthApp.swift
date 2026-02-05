@@ -41,6 +41,12 @@ struct SynthApp: App {
                         .keyboardShortcut(KeyEquivalent(Character("\(i)")), modifiers: .command)
                 }
             }
+            CommandGroup(replacing: .textFormatting) {
+                Button("Go to File") {
+                    NotificationCenter.default.post(name: .showFileLauncher, object: nil)
+                }
+                .keyboardShortcut("p")
+            }
         }
     }
 }
