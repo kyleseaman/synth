@@ -26,22 +26,7 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty {
-                    // Tab bar
-                    HStack(spacing: 4) {
-                        ForEach(store.openFiles.indices, id: \.self) { i in
-                            TabButton(
-                                title: store.openFiles[i].url.lastPathComponent,
-                                isSelected: i == store.currentIndex,
-                                onSelect: { store.switchTo(i) },
-                                onClose: { store.closeTab(at: i) }
-                            )
-                        }
-                        Spacer()
-                    }
-                    .padding(8)
-                    
                     EditorViewSimple()
-                        .backgroundExtensionEffect()
                 } else {
                     Text("Open a file to start editing")
                         .foregroundStyle(.secondary)
@@ -64,6 +49,22 @@ struct ContentView: View {
                         .glassEffect(.regular.interactive())
                     }
                     .padding(8)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    GlassEffectContainer(spacing: 8) {
+                        HStack(spacing: 4) {
+                            ForEach(store.openFiles.indices, id: \.self) { i in
+                                TabButton(
+                                    title: store.openFiles[i].url.lastPathComponent,
+                                    isSelected: i == store.currentIndex,
+                                    onSelect: { store.switchTo(i) },
+                                    onClose: { store.closeTab(at: i) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -90,32 +91,25 @@ struct TabButton: View {
     
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 4) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                
+            HStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: 12))
                     .lineLimit(1)
                 
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .opacity(isHovering ? 1 : 0)
+                .opacity(isHovering || isSelected ? 1 : 0)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
-        .background {
-            if isSelected {
-                Capsule().fill(.regularMaterial)
-            }
-        }
+        .foregroundStyle(isSelected ? .primary : .secondary)
+        .glassEffect(isSelected ? .regular : .identity)
         .onHover { isHovering = $0 }
     }
 }
