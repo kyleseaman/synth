@@ -12,7 +12,8 @@ struct MarkdownFormat: DocumentFormat {
         let bodyFont = NSFont.systemFont(ofSize: 16)
         let defaultAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: NSColor.textColor]
 
-        for line in text.components(separatedBy: "\n") {
+        let lines = text.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
             var attrs = defaultAttrs
             var content = line
 
@@ -35,7 +36,9 @@ struct MarkdownFormat: DocumentFormat {
 
             let lineStr = NSMutableAttributedString(string: content, attributes: attrs)
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
-            lineStr.append(NSAttributedString(string: "\n", attributes: attrs))
+            if index < lines.count - 1 {
+                lineStr.append(NSAttributedString(string: "\n", attributes: attrs))
+            }
             result.append(lineStr)
         }
         return result
@@ -276,6 +279,12 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.updateScrollOffset()
         }
 
+        // Initialize line positions for empty documents and set focus
+        DispatchQueue.main.async {
+            context.coordinator.updateLinePositions()
+            textView.window?.makeFirstResponder(textView)
+        }
+
         return scrollView
     }
 
@@ -309,30 +318,38 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func updateLinePositions() {
-            guard let textView = textView, let layoutManager = textView.layoutManager else { return }
+            guard let textView = textView,
+                  let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else { return }
+
+            // Force layout to complete
+            layoutManager.ensureLayout(for: textContainer)
+
             let textInset = textView.textContainerInset.height
+            let font = textView.typingAttributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 16)
             var positions: [CGFloat] = []
             let string = textView.string
 
-            // Count lines by splitting on newlines
-            let lines = string.components(separatedBy: "\n")
-            var charIndex = 0
-
-            for (lineIndex, line) in lines.enumerated() {
-                if layoutManager.numberOfGlyphs > 0 {
-                    let safeIndex = min(charIndex, max(0, (string as NSString).length - 1))
-                    let glyphIndex = layoutManager.glyphIndexForCharacter(at: safeIndex)
-                    if layoutManager.isValidGlyphIndex(glyphIndex) {
-                        let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: nil)
-                        positions.append(rect.origin.y + textInset + rect.height / 2 + 4)
-                    }
-                } else if lineIndex == 0 {
-                    positions.append(textInset + 12)
-                }
-                charIndex += line.count + 1 // +1 for newline
+            // Empty document
+            if string.isEmpty {
+                positions.append(textInset + font.pointSize / 2)
+                parent.linePositions = positions
+                return
             }
 
-            if positions.isEmpty { positions = [textInset + 12] }
+            // Get default line height from first line fragment
+            var defaultLineHeight: CGFloat = font.pointSize * 1.4
+            if layoutManager.numberOfGlyphs > 0 {
+                let rect = layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
+                defaultLineHeight = rect.height
+            }
+
+            // Count actual lines by newlines
+            let lines = string.components(separatedBy: "\n")
+            for lineIndex in 0..<lines.count {
+                let yPos = textInset + CGFloat(lineIndex) * defaultLineHeight + defaultLineHeight / 2
+                positions.append(yPos)
+            }
 
             DispatchQueue.main.async {
                 self.parent.linePositions = positions

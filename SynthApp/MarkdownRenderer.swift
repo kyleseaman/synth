@@ -5,7 +5,8 @@ enum MarkdownRenderer {
         let result = NSMutableAttributedString()
         let defaultAttrs: [NSAttributedString.Key: Any] = [.font: Theme.editorFont, .foregroundColor: NSColor.black]
 
-        for line in text.components(separatedBy: "\n") {
+        let lines = text.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
             var attrs = defaultAttrs
             var content = line
 
@@ -22,7 +23,8 @@ enum MarkdownRenderer {
                 content = "• " + String(line.dropFirst(2))
             }
 
-            result.append(NSAttributedString(string: content + "\n", attributes: attrs))
+            let suffix = index < lines.count - 1 ? "\n" : ""
+            result.append(NSAttributedString(string: content + suffix, attributes: attrs))
         }
         return result
     }
