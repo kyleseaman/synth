@@ -1,0 +1,16 @@
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Rust
+synth-core/target/
+
+# Build artifacts
+*.o
+*.a
+*.dylib
