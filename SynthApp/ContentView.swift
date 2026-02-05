@@ -136,13 +136,23 @@ struct TabButton: View {
 struct EditorViewSimple: View {
     @EnvironmentObject var store: DocumentStore
     @State private var text: String = ""
+    @State private var linePositions: [CGFloat] = []
+    @State private var scrollOffset: CGFloat = 0
     
     var body: some View {
-        MarkdownEditor(text: $text)
-            .background(Color(nsColor: .textBackgroundColor))
-            .onChange(of: store.currentIndex) { _ in loadText() }
-            .onChange(of: text) { _ in saveText() }
-            .onAppear { loadText() }
+        HStack(spacing: 0) {
+            // Line numbers gutter
+            LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
+                .frame(width: 44)
+                .background(Color(nsColor: .textBackgroundColor))
+            
+            // Editor
+            MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
+                .background(Color(nsColor: .textBackgroundColor))
+        }
+        .onChange(of: store.currentIndex) { _ in loadText() }
+        .onChange(of: text) { _ in saveText() }
+        .onAppear { loadText() }
     }
     
     func loadText() {
@@ -154,5 +164,27 @@ struct EditorViewSimple: View {
     func saveText() {
         guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
         store.updateContent(NSAttributedString(string: text))
+    }
+}
+
+struct LineNumberGutter: View {
+    let linePositions: [CGFloat]
+    let scrollOffset: CGFloat
+    
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { context, size in
+                for (i, yPos) in linePositions.enumerated() {
+                    let y = yPos - scrollOffset
+                    if y > -20 && y < size.height + 20 {
+                        let text = Text("\(i + 1)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color(nsColor: .tertiaryLabelColor))
+                        context.draw(text, at: CGPoint(x: size.width - 8, y: y), anchor: .trailing)
+                    }
+                }
+            }
+        }
+        .clipped()
     }
 }

@@ -208,13 +208,15 @@ class FormattingTextView: NSTextView {
 
 struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
+    @Binding var scrollOffset: CGFloat
+    @Binding var linePositions: [CGFloat]
     var format: DocumentFormat = MarkdownFormat()
     
     func makeNSView(context: Context) -> NSScrollView {
         let textView = FormattingTextView()
         textView.isEditable = true
         textView.isRichText = true
-        textView.textContainerInset = NSSize(width: 40, height: 20)
+        textView.textContainerInset = NSSize(width: 20, height: 20)
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
@@ -230,8 +232,14 @@ struct MarkdownEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.documentView = textView
+        scrollView.contentView.postsBoundsChangedNotifications = true
         
         context.coordinator.textView = textView
+        context.coordinator.scrollView = scrollView
+        
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main) { _ in
+            context.coordinator.updateScrollOffset()
+        }
         
         return scrollView
     }
@@ -240,6 +248,9 @@ struct MarkdownEditor: NSViewRepresentable {
         guard let textView = context.coordinator.textView else { return }
         if !context.coordinator.isEditing && textView.string != text {
             textView.textStorage?.setAttributedString(format.render(text))
+            DispatchQueue.main.async {
+                context.coordinator.updateLinePositions()
+            }
         }
     }
     
@@ -248,9 +259,41 @@ struct MarkdownEditor: NSViewRepresentable {
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
+        var scrollView: NSScrollView?
         var isEditing = false
         
         init(_ parent: MarkdownEditor) { self.parent = parent }
+        
+        func updateScrollOffset() {
+            guard let scrollView = scrollView else { return }
+            DispatchQueue.main.async {
+                self.parent.scrollOffset = scrollView.contentView.bounds.origin.y
+            }
+        }
+        
+        func updateLinePositions() {
+            guard let textView = textView, let layoutManager = textView.layoutManager else { return }
+            let textInset = textView.textContainerInset.height
+            var positions: [CGFloat] = []
+            let text = textView.string as NSString
+            var lineStart = 0
+            
+            while lineStart < text.length {
+                let lineRange = text.lineRange(for: NSRange(location: lineStart, length: 0))
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: lineRange, actualCharacterRange: nil)
+                if glyphRange.location != NSNotFound {
+                    let rect = layoutManager.lineFragmentRect(forGlyphAt: glyphRange.location, effectiveRange: nil)
+                    positions.append(rect.origin.y + textInset + rect.height / 2 + 4)
+                }
+                lineStart = NSMaxRange(lineRange)
+            }
+            
+            if positions.isEmpty { positions = [textInset + 12] }
+            
+            DispatchQueue.main.async {
+                self.parent.linePositions = positions
+            }
+        }
         
         func textDidBeginEditing(_ notification: Notification) { isEditing = true }
         func textDidEndEditing(_ notification: Notification) { isEditing = false }
@@ -258,53 +301,7 @@ struct MarkdownEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = textView else { return }
             parent.text = textView.string
-        }
-    }
-}
-
-
-class MarkdownLineRuler: NSRulerView {
-    private weak var textView: NSTextView?
-    
-    init(scrollView: NSScrollView, textView: NSTextView) {
-        self.textView = textView
-        super.init(scrollView: scrollView, orientation: .verticalRuler)
-        self.ruleThickness = 36
-    }
-    
-    required init(coder: NSCoder) { fatalError() }
-    
-    override func drawHashMarksAndLabels(in rect: NSRect) {
-        guard let textView = textView, let layoutManager = textView.layoutManager else { return }
-        
-        NSColor.textBackgroundColor.setFill()
-        rect.fill()
-        
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor.tertiaryLabelColor
-        ]
-        
-        let visibleRect = scrollView?.contentView.bounds ?? rect
-        let textInset = textView.textContainerInset
-        
-        var lineNumber = 1
-        var glyphIndex = 0
-        let numberOfGlyphs = layoutManager.numberOfGlyphs
-        
-        while glyphIndex < numberOfGlyphs {
-            var lineRange = NSRange()
-            let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)
-            let y = lineRect.origin.y + textInset.height - visibleRect.origin.y
-            
-            if y + lineRect.height >= 0 && y <= rect.height {
-                let numStr = "\(lineNumber)"
-                let size = numStr.size(withAttributes: attrs)
-                numStr.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: y + (lineRect.height - size.height) / 2), withAttributes: attrs)
-            }
-            
-            glyphIndex = NSMaxRange(lineRange)
-            lineNumber += 1
+            updateLinePositions()
         }
     }
 }
