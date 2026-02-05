@@ -1,10 +1,25 @@
 import SwiftUI
 
+extension String {
+    func fuzzyMatch(_ query: String) -> Bool {
+        if query.isEmpty { return true }
+        var remainder = query[...]
+        for char in self {
+            if char == remainder.first {
+                remainder.removeFirst()
+                if remainder.isEmpty { return true }
+            }
+        }
+        return false
+    }
+}
+
 struct FileLauncher: View {
     @EnvironmentObject var store: DocumentStore
     @Binding var isPresented: Bool
     @State private var query = ""
     @State private var selectedIndex = 0
+    @FocusState private var isSearchFocused: Bool
     
     var filteredFiles: [FileTreeNode] {
         let allFiles = flattenFiles(store.fileTree)
@@ -12,7 +27,13 @@ struct FileLauncher: View {
             return Array(allFiles.prefix(20)) 
         }
         let q = query.lowercased()
-        return allFiles.filter { $0.name.lowercased().contains(q) }
+        return allFiles.filter { $0.name.lowercased().fuzzyMatch(q) }
+            .sorted { a, b in
+                let aPrefix = a.name.lowercased().hasPrefix(q)
+                let bPrefix = b.name.lowercased().hasPrefix(q)
+                if aPrefix != bPrefix { return aPrefix }
+                return a.name < b.name
+            }
     }
     
     func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
@@ -31,13 +52,11 @@ struct FileLauncher: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                QuickOpenField(
-                    text: $query,
-                    onArrowUp: { selectedIndex = max(0, selectedIndex - 1) },
-                    onArrowDown: { selectedIndex = min(filteredFiles.count - 1, selectedIndex + 1) },
-                    onEnter: { openSelected() },
-                    onEscape: { isPresented = false }
-                )
+                TextField("Search files...", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 18))
+                    .focused($isSearchFocused)
+                    .onSubmit { openSelected() }
             }
             .padding(12)
             
@@ -69,9 +88,7 @@ struct FileLauncher: View {
                     }
                 }
                 .onChange(of: selectedIndex) { newValue in
-                    withAnimation {
-                        proxy.scrollTo(newValue, anchor: .center)
-                    }
+                    withAnimation { proxy.scrollTo(newValue, anchor: .center) }
                 }
             }
             .frame(maxHeight: 300)
@@ -80,8 +97,14 @@ struct FileLauncher: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 20)
-        .onChange(of: query) { _ in
-            selectedIndex = 0
+        .onAppear { isSearchFocused = true }
+        .onChange(of: query) { _ in selectedIndex = 0 }
+        .background {
+            KeyboardHandler(
+                onUp: { selectedIndex = max(0, selectedIndex - 1) },
+                onDown: { selectedIndex = min(filteredFiles.count - 1, selectedIndex + 1) },
+                onEscape: { isPresented = false }
+            )
         }
     }
     
@@ -92,64 +115,39 @@ struct FileLauncher: View {
     }
 }
 
-struct QuickOpenField: NSViewRepresentable {
-    @Binding var text: String
-    var onArrowUp: () -> Void
-    var onArrowDown: () -> Void
-    var onEnter: () -> Void
+struct KeyboardHandler: NSViewRepresentable {
+    var onUp: () -> Void
+    var onDown: () -> Void
     var onEscape: () -> Void
-
-    func makeNSView(context: Context) -> NSTextField {
-        let textField = NSTextField()
-        textField.delegate = context.coordinator
-        textField.isBordered = false
-        textField.drawsBackground = false
-        textField.focusRingType = .none
-        textField.placeholderString = "Search files..."
-        textField.font = .systemFont(ofSize: 18)
-        DispatchQueue.main.async {
-            textField.window?.makeFirstResponder(textField)
-        }
-        return textField
-    }
-
-    func updateNSView(_ nsView: NSTextField, context: Context) {
-        if nsView.stringValue != text {
-            nsView.stringValue = text
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: QuickOpenField
-
-        init(parent: QuickOpenField) {
-            self.parent = parent
-        }
-
-        func controlTextDidChange(_ obj: Notification) {
-            guard let textField = obj.object as? NSTextField else { return }
-            parent.text = textField.stringValue
-        }
-
-        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            if commandSelector == #selector(NSResponder.moveUp(_:)) {
-                parent.onArrowUp()
-                return true
-            } else if commandSelector == #selector(NSResponder.moveDown(_:)) {
-                parent.onArrowDown()
-                return true
-            } else if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-                parent.onEnter()
-                return true
-            } else if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-                parent.onEscape()
-                return true
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyHandlerView()
+        view.onUp = onUp
+        view.onDown = onDown
+        view.onEscape = onEscape
+        
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            switch event.keyCode {
+            case 126: view.onUp?(); return nil // up
+            case 125: view.onDown?(); return nil // down  
+            case 53: view.onEscape?(); return nil // escape
+            default: return event
             }
-            return false
         }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        if let view = nsView as? KeyHandlerView {
+            view.onUp = onUp
+            view.onDown = onDown
+            view.onEscape = onEscape
+        }
+    }
+    
+    class KeyHandlerView: NSView {
+        var onUp: (() -> Void)?
+        var onDown: (() -> Void)?
+        var onEscape: (() -> Void)?
     }
 }
