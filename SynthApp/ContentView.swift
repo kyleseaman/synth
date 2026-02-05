@@ -103,12 +103,15 @@ struct FileRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
-            .fontWeight(isOpen ? .semibold : .regular)
-            .padding(.vertical, 2)
-            .padding(.horizontal, 4)
-            .background(isHovering ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-            .onHover { isHovering = $0 }
+        HStack {
+            Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
+                .fontWeight(isOpen ? .semibold : .regular)
+            Spacer()
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isHovering ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+        .onHover { isHovering = $0 }
     }
 }
 

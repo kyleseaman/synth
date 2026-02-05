@@ -150,7 +150,28 @@ class DocumentStore: ObservableObject {
 
     func save() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
-        try? openFiles[currentIndex].save(openFiles[currentIndex].content)
+        var doc = openFiles[currentIndex]
+        try? doc.save(doc.content)
+
+        // Rename Untitled files based on first line
+        if doc.url.lastPathComponent.hasPrefix("Untitled") {
+            let firstLine = doc.content.string.components(separatedBy: "\n").first ?? ""
+            let cleaned = firstLine
+                .trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "#", with: "")
+                .trimmingCharacters(in: .whitespaces)
+                .prefix(50)
+            if !cleaned.isEmpty {
+                let safeName = String(cleaned).replacingOccurrences(of: "/", with: "-")
+                let ext = doc.url.pathExtension
+                let newURL = doc.url.deletingLastPathComponent().appendingPathComponent("\(safeName).\(ext)")
+                if !FileManager.default.fileExists(atPath: newURL.path) {
+                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
+                    openFiles[currentIndex] = Document(url: newURL, content: doc.content)
+                    loadFileTree()
+                }
+            }
+        }
         openFiles[currentIndex].isDirty = false
     }
 
