@@ -60,8 +60,8 @@ struct ContentView: View {
                             TabButton(
                                 title: store.openFiles[index].url.lastPathComponent,
                                 isSelected: index == store.currentIndex,
-                                onSelect: { store.switchTo(i) },
-                                onClose: { store.closeTab(at: i) }
+                                onSelect: { store.switchTo(index) },
+                                onClose: { store.closeTab(at: index) }
                             )
                         }
                     }
