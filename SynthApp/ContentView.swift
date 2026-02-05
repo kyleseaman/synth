@@ -135,28 +135,24 @@ struct TabButton: View {
 
 struct EditorViewSimple: View {
     @EnvironmentObject var store: DocumentStore
-    @Environment(\.colorScheme) var colorScheme
     @State private var text: String = ""
     
     var body: some View {
-        ScrollView {
-            TextEditor(text: $text)
-                .font(.custom("Georgia", size: 18))
-                .scrollDisabled(true)
-                .padding(.horizontal, 40)
-                .frame(minHeight: 500)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-        .onChange(of: store.currentIndex) { _ in
-            loadText()
-        }
-        .onAppear {
-            loadText()
-        }
+        MarkdownEditor(text: $text)
+            .background(Color(nsColor: .textBackgroundColor))
+            .onChange(of: store.currentIndex) { _ in loadText() }
+            .onChange(of: text) { _ in saveText() }
+            .onAppear { loadText() }
     }
     
     func loadText() {
         guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
-        text = store.openFiles[store.currentIndex].content.string
+        let newText = store.openFiles[store.currentIndex].content.string
+        if text != newText { text = newText }
+    }
+    
+    func saveText() {
+        guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
+        store.updateContent(NSAttributedString(string: text))
     }
 }
