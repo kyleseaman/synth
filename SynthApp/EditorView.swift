@@ -319,7 +319,7 @@ class LineNumberRulerView: NSRulerView {
         let visibleRect = scrollView?.contentView.bounds ?? rect
         let textInset = textView.textContainerInset
         
-        NSColor(white: 0.95, alpha: 1).setFill()
+        NSColor.textBackgroundColor.setFill()
         rect.fill()
         
         let attrs: [NSAttributedString.Key: Any] = [

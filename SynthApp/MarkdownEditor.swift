@@ -211,11 +211,6 @@ struct MarkdownEditor: NSViewRepresentable {
     var format: DocumentFormat = MarkdownFormat()
     
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        
         let textView = FormattingTextView()
         textView.isEditable = true
         textView.isRichText = true
@@ -223,8 +218,19 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
+        textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.textColor]
+        textView.insertionPointColor = NSColor.textColor
+        textView.textContainer?.widthTracksTextView = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
         
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
         scrollView.documentView = textView
+        
         context.coordinator.textView = textView
         
         return scrollView
@@ -252,6 +258,53 @@ struct MarkdownEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = textView else { return }
             parent.text = textView.string
+        }
+    }
+}
+
+
+class MarkdownLineRuler: NSRulerView {
+    private weak var textView: NSTextView?
+    
+    init(scrollView: NSScrollView, textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        self.ruleThickness = 36
+    }
+    
+    required init(coder: NSCoder) { fatalError() }
+    
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let textView = textView, let layoutManager = textView.layoutManager else { return }
+        
+        NSColor.textBackgroundColor.setFill()
+        rect.fill()
+        
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ]
+        
+        let visibleRect = scrollView?.contentView.bounds ?? rect
+        let textInset = textView.textContainerInset
+        
+        var lineNumber = 1
+        var glyphIndex = 0
+        let numberOfGlyphs = layoutManager.numberOfGlyphs
+        
+        while glyphIndex < numberOfGlyphs {
+            var lineRange = NSRange()
+            let lineRect = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex, effectiveRange: &lineRange)
+            let y = lineRect.origin.y + textInset.height - visibleRect.origin.y
+            
+            if y + lineRect.height >= 0 && y <= rect.height {
+                let numStr = "\(lineNumber)"
+                let size = numStr.size(withAttributes: attrs)
+                numStr.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: y + (lineRect.height - size.height) / 2), withAttributes: attrs)
+            }
+            
+            glyphIndex = NSMaxRange(lineRange)
+            lineNumber += 1
         }
     }
 }
