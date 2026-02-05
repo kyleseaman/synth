@@ -8,13 +8,33 @@ class DocumentStore: ObservableObject {
     @Published var currentIndex = -1
     @Published var steeringFiles: [String] = []
     @Published var customAgents: [AgentInfo] = []
+    @Published var recentFiles: [URL] = []
+
+    private let maxRecentFiles = 20
 
     init() {
+        loadRecentFiles()
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
             workspace = URL(fileURLWithPath: path)
             loadFileTree()
         }
+    }
+
+    func loadRecentFiles() {
+        if let paths = UserDefaults.standard.stringArray(forKey: "recentFiles") {
+            recentFiles = paths.compactMap { URL(fileURLWithPath: $0) }
+                .filter { FileManager.default.fileExists(atPath: $0.path) }
+        }
+    }
+
+    func addToRecent(_ url: URL) {
+        recentFiles.removeAll { $0 == url }
+        recentFiles.insert(url, at: 0)
+        if recentFiles.count > maxRecentFiles {
+            recentFiles = Array(recentFiles.prefix(maxRecentFiles))
+        }
+        UserDefaults.standard.set(recentFiles.map { $0.path }, forKey: "recentFiles")
     }
 
     func setWorkspace(_ url: URL) {
@@ -59,11 +79,13 @@ class DocumentStore: ObservableObject {
     func open(_ url: URL) {
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
+            addToRecent(url)
             return
         }
         guard let doc = Document.load(from: url) else { return }
         openFiles.append(doc)
         currentIndex = openFiles.count - 1
+        addToRecent(url)
     }
 
     func switchTo(_ index: Int) {
@@ -135,7 +157,7 @@ struct FileTreeNode: Identifiable, Equatable {
     static func scan(_ url: URL) -> [FileTreeNode] {
         guard let contents = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
         return contents
-            .filter { !$0.lastPathComponent.hasPrefix(".") }
+            .filter { !$0.lastPathComponent.hasPrefix(".") || $0.lastPathComponent == ".kiro" }
             .sorted { first, second in
                 let firstDir = (try? first.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 let secondDir = (try? second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false

@@ -1,16 +1,33 @@
 import SwiftUI
 
+struct SearchResult: Identifiable {
+    var id: URL { node.url }
+    let node: FileTreeNode
+    let score: Int
+}
+
 extension String {
-    func fuzzyMatch(_ query: String) -> Bool {
-        if query.isEmpty { return true }
-        var remainder = query[...]
-        for char in self {
+    func fuzzyScore(_ query: String) -> Int? {
+        if query.isEmpty { return 1000 }
+        let lower = self.lowercased()
+        let queryLower = query.lowercased()
+        
+        if lower == queryLower { return 10000 }
+        if lower.contains(queryLower) {
+            return 5000 + (lower.hasPrefix(queryLower) ? 1000 : 0)
+        }
+        var score = 0
+        var remainder = queryLower[...]
+        var lastMatchIndex = -1
+        for (index, char) in lower.enumerated() {
             if char == remainder.first {
                 remainder.removeFirst()
-                if remainder.isEmpty { return true }
+                score += (lastMatchIndex == index - 1) ? 10 : 1
+                lastMatchIndex = index
+                if remainder.isEmpty { return score }
             }
         }
-        return false
+        return nil
     }
 }
 
@@ -21,30 +38,26 @@ struct FileLauncher: View {
     @State private var selectedIndex = 0
     @FocusState private var isSearchFocused: Bool
 
-    var filteredFiles: [FileTreeNode] {
+    var results: [SearchResult] {
         let allFiles = flattenFiles(store.fileTree)
-        if query.trimmingCharacters(in: .whitespaces).isEmpty {
-            return Array(allFiles.prefix(20))
-        }
-        let searchQuery = query.lowercased()
-        return allFiles.filter { $0.name.lowercased().fuzzyMatch(searchQuery) }
-            .sorted { first, second in
-                let firstPrefix = first.name.lowercased().hasPrefix(searchQuery)
-                let secondPrefix = second.name.lowercased().hasPrefix(searchQuery)
-                if firstPrefix != secondPrefix { return firstPrefix }
-                return first.name < second.name
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        
+        if trimmed.isEmpty {
+            let recentSet = Set(store.recentFiles)
+            let recentNodes = store.recentFiles.compactMap { url in
+                allFiles.first { $0.url == url }
             }
-    }
-
-    func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
-        var result: [FileTreeNode] = []
-        for node in nodes {
-            if !node.isDirectory { result.append(node) }
-            if let children = node.children {
-                result.append(contentsOf: flattenFiles(children))
-            }
+            let others = allFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
+            return (recentNodes + others).map { SearchResult(node: $0, score: 0) }
         }
-        return result
+        
+        return allFiles
+            .compactMap { file -> SearchResult? in
+                guard let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
+                let recentBonus = store.recentFiles.contains(file.url) ? 2000 : 0
+                return SearchResult(node: file, score: nameScore + recentBonus)
+            }
+            .sorted { $0.score > $1.score }
     }
 
     var body: some View {
@@ -64,14 +77,14 @@ struct FileLauncher: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(filteredFiles.enumerated()), id: \.element.id) { index, file in
+                    VStack(spacing: 0) {
+                        ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                             HStack {
                                 Image(systemName: "doc.text")
                                     .foregroundStyle(.secondary)
-                                Text(file.name)
+                                Text(result.node.name)
                                 Spacer()
-                                Text(file.url.deletingLastPathComponent().lastPathComponent)
+                                Text(result.node.url.deletingLastPathComponent().lastPathComponent)
                                     .foregroundStyle(.tertiary)
                                     .font(.caption)
                             }
@@ -102,15 +115,26 @@ struct FileLauncher: View {
         .background {
             KeyboardHandler(
                 onUp: { selectedIndex = max(0, selectedIndex - 1) },
-                onDown: { selectedIndex = min(filteredFiles.count - 1, selectedIndex + 1) },
+                onDown: { selectedIndex = min(results.count - 1, selectedIndex + 1) },
                 onEscape: { isPresented = false }
             )
         }
     }
 
+    func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
+        var result: [FileTreeNode] = []
+        for node in nodes {
+            if !node.isDirectory { result.append(node) }
+            if let children = node.children {
+                result.append(contentsOf: flattenFiles(children))
+            }
+        }
+        return result
+    }
+
     func openSelected() {
-        guard selectedIndex >= 0 && selectedIndex < filteredFiles.count else { return }
-        store.open(filteredFiles[selectedIndex].url)
+        guard selectedIndex >= 0 && selectedIndex < results.count else { return }
+        store.open(results[selectedIndex].node.url)
         isPresented = false
     }
 }
@@ -128,9 +152,9 @@ struct KeyboardHandler: NSViewRepresentable {
 
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
-            case 126: view.onUp?(); return nil // up
-            case 125: view.onDown?(); return nil // down  
-            case 53: view.onEscape?(); return nil // escape
+            case 126: view.onUp?(); return nil
+            case 125: view.onDown?(); return nil
+            case 53: view.onEscape?(); return nil
             default: return event
             }
         }
