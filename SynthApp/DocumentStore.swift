@@ -38,16 +38,24 @@ class DocumentStore: ObservableObject {
     }
 
     func setWorkspace(_ url: URL) {
-        workspace = url
-        UserDefaults.standard.set(url.path, forKey: "lastWorkspace")
-        loadFileTree()
-        openFiles.removeAll()
-        currentIndex = -1
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            workspace = url
+            UserDefaults.standard.set(url.path, forKey: "lastWorkspace")
+            fileTree = FileTreeNode.scan(url)
+            openFiles.removeAll()
+            currentIndex = -1
+        }
     }
 
     func loadFileTree() {
         guard let workspace = workspace else { return }
-        fileTree = FileTreeNode.scan(workspace)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            fileTree = FileTreeNode.scan(workspace)
+        }
     }
 
     func loadKiroConfig() {

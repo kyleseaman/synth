@@ -24,6 +24,8 @@ struct ContentView: View {
                     }
             }
             .listStyle(.sidebar)
+            .contentTransition(.identity)
+            .transaction { $0.animation = nil }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
         } detail: {
             VStack(spacing: 0) {
