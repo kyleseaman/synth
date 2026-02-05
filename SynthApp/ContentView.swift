@@ -72,7 +72,7 @@ struct ContentView: View {
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
             if showFileLauncher {
-                Color.primary.opacity(0.15)
+                Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture { showFileLauncher = false }
 
