@@ -164,8 +164,8 @@ struct EditorViewSimple: View {
             MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
                 .background(Color(nsColor: .textBackgroundColor))
         }
-        .onChange(of: store.currentIndex) { _ in loadText() }
-        .onChange(of: text) { _ in saveText() }
+        .onChange(of: store.currentIndex) { loadText() }
+        .onChange(of: text) { saveText() }
         .onAppear { loadText() }
     }
 
