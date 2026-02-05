@@ -98,7 +98,7 @@ struct FileLauncher: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 20)
         .onAppear { isSearchFocused = true }
-        .onChange(of: query) { _ in selectedIndex = 0 }
+        .onChange(of: query) { selectedIndex = 0 }
         .background {
             KeyboardHandler(
                 onUp: { selectedIndex = max(0, selectedIndex - 1) },
