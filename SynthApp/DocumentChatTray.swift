@@ -15,7 +15,7 @@ struct DocumentChatTray: View {
     @FocusState private var isInputFocused: Bool
 
     private let minHeight: CGFloat = 150
-    private let maxHeight: CGFloat = 500
+    private let maxHeight: CGFloat = 600
 
     var body: some View {
         VStack(spacing: 0) {
