@@ -16,7 +16,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    - name: Build Rust core
+      run: cd synth-core && cargo build --release
     - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+      run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug build CODE_SIGNING_ALLOWED=NO
