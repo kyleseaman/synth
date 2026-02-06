@@ -127,7 +127,7 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if !store.openFiles.isEmpty {
+                if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {
@@ -137,9 +137,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive())
-                    .padding(.trailing, 12)
-                    .padding(.bottom, store.isChatVisibleForCurrentTab ? 270 : 12)
-                    .animation(.easeInOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
+                    .padding(12)
                 }
             }
             .toolbar(id: "tabs") {
