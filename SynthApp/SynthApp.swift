@@ -52,6 +52,11 @@ struct SynthApp: App {
                     NotificationCenter.default.post(name: .toggleChat, object: nil)
                 }
                 .keyboardShortcut("j")
+
+                Button("Toggle Chat (Terminal)") {
+                    NotificationCenter.default.post(name: .toggleChat, object: nil)
+                }
+                .keyboardShortcut("`", modifiers: .control)
             }
             CommandGroup(after: .toolbar) {
                 ForEach(1...9, id: \.self) { tabNum in
