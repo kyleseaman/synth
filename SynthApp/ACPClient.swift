@@ -1,5 +1,42 @@
 import Foundation
 
+// MARK: - Kiro CLI Path Resolution
+
+enum KiroCliResolver {
+    static func resolve() -> String? {
+        // Check user setting first
+        let userPath = UserDefaults.standard.string(forKey: "kiroCliPath") ?? ""
+        if !userPath.isEmpty && FileManager.default.isExecutableFile(atPath: userPath) {
+            return userPath
+        }
+        // Auto-detect from common locations
+        let home = NSHomeDirectory()
+        let candidates = [
+            "/usr/local/bin/kiro-cli",
+            "/opt/homebrew/bin/kiro-cli",
+            "\(home)/.local/bin/kiro-cli"
+        ]
+        if let found = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            return found
+        }
+        // Try `which` as last resort
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/which")
+        proc.arguments = ["kiro-cli"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        try? proc.run()
+        proc.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !path.isEmpty, FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        return nil
+    }
+}
+
 // MARK: - ACP Client
 
 class ACPClient: ObservableObject {
@@ -23,26 +60,11 @@ class ACPClient: ObservableObject {
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
 
-    static func resolveKiroCliPath() -> String? {
-        // Check user setting first
-        let userPath = UserDefaults.standard.string(forKey: "kiroCliPath") ?? ""
-        if !userPath.isEmpty && FileManager.default.isExecutableFile(atPath: userPath) {
-            return userPath
-        }
-        // Auto-detect
-        let candidates = [
-            "\(NSHomeDirectory())/.toolbox/bin/kiro-cli",
-            "/usr/local/bin/kiro-cli",
-            "/opt/homebrew/bin/kiro-cli"
-        ]
-        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
     func start(cwd: String) {
         self.cwd = cwd
         let proc = Process()
 
-        if let path = ACPClient.resolveKiroCliPath() {
+        if let path = KiroCliResolver.resolve() {
             print("[ACP] Using kiro-cli at: \(path)")
             proc.executableURL = URL(fileURLWithPath: path)
             proc.arguments = ["acp"]

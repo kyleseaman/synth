@@ -13,7 +13,7 @@ struct SettingsView: View {
         .frame(width: 480, height: 400)
         .onAppear {
             store.loadKiroConfig()
-            detectedPath = ACPClient.resolveKiroCliPath() ?? "Not found"
+            detectedPath = KiroCliResolver.resolve() ?? "Not found"
         }
     }
 
