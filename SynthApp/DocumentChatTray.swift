@@ -9,11 +9,11 @@ struct DocumentChatTray: View {
     var selectedLineRange: String?
 
     @State private var input = ""
-    @State private var trayHeight: CGFloat = 220
+    @State private var trayHeight: CGFloat = 180
     @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
-    private let minHeight: CGFloat = 150
+    private let minHeight: CGFloat = 120
     private let maxHeight: CGFloat = 500
 
     var body: some View {
