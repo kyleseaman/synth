@@ -95,7 +95,6 @@ struct ACPToolCall: Identifiable {
     }
 }
 
-
 // MARK: - Kiro CLI Path Resolution
 
 enum KiroCliResolver {
