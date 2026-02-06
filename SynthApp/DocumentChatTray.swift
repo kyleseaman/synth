@@ -176,7 +176,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(alignment: .center, spacing: 4) {
                             Text("Allow")
-                            Text("[↩]").font(.system(size: 11)).baselineOffset(-1)
+                            Text("[↩]").font(.system(size: 11)).baselineOffset(-2.5)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -186,7 +186,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(alignment: .center, spacing: 4) {
                             Text("Always Allow")
-                            Text("[⌘↩]").font(.system(size: 10)).baselineOffset(-1)
+                            Text("[⌘↩]").font(.system(size: 10)).baselineOffset(-2)
                         }
                     }
                     .buttonStyle(.bordered)
