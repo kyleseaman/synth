@@ -132,9 +132,10 @@ struct DocumentChatTray: View {
             ZStack(alignment: .topLeading) {
                 if input.isEmpty {
                     Text("Reply...")
+                        .font(.system(size: 13))
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 8)
+                        .padding(.top, 8)
+                        .padding(.leading, 5)
                 }
                 TextEditor(text: $input)
                     .font(.system(size: 13))
@@ -151,7 +152,7 @@ struct DocumentChatTray: View {
                     }
             }
             .padding(.horizontal, 8)
-            .padding(.top, 6)
+            .padding(.top, 2)
             .padding(.bottom, 2)
 
             HStack(spacing: 8) {
