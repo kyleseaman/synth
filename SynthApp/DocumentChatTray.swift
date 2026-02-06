@@ -161,22 +161,33 @@ struct DocumentChatTray: View {
                 }
                 HStack(spacing: 8) {
                     Spacer()
-                    Button("Deny") {
+                    Button {
                         denyPermission()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Deny")
+                            Text("[esc]").font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.escape, modifiers: [])
                     Button {
                         allowPermission()
                     } label: {
-                        Label("Allow", systemImage: "return")
+                        HStack(alignment: .center, spacing: 4) {
+                            Text("Allow")
+                            Text("[↩]").font(.system(size: 11)).baselineOffset(-2.5)
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: [])
                     Button {
                         alwaysAllowPermission()
                     } label: {
-                        Label("Always Allow", systemImage: "command")
+                        HStack(alignment: .center, spacing: 4) {
+                            Text("Always Allow")
+                            Text("[⌘↩]").font(.system(size: 10)).baselineOffset(-2)
+                        }
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.return, modifiers: .command)
@@ -207,6 +218,14 @@ struct DocumentChatTray: View {
     @ViewBuilder
     private func permissionDiffView(_ diff: DiffContent) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add:")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
             if !diff.oldText.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remove:")
@@ -217,14 +236,6 @@ struct DocumentChatTray: View {
                         .foregroundStyle(.red)
                         .strikethrough()
                 }
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Add:")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.green)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
