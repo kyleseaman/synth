@@ -123,20 +123,18 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-
+            }
+            .overlay(alignment: .bottomTrailing) {
                 if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button {
-                            store.toggleChatForCurrentTab()
-                        } label: {
-                            Image(systemName: "terminal")
-                                .padding(8)
-                        }
-                        .buttonStyle(.plain)
-                        .glassEffect(.regular.interactive())
+                    Button {
+                        store.toggleChatForCurrentTab()
+                    } label: {
+                        Image(systemName: "terminal")
+                            .padding(8)
                     }
-                    .padding(8)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive())
+                    .padding(12)
                 }
             }
             .toolbar(id: "tabs") {
