@@ -116,6 +116,8 @@ struct ContentView: View {
                             selectedText: nil,
                             selectedLineRange: nil
                         )
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 } else {
@@ -129,8 +131,9 @@ struct ContentView: View {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {
-                        Image(systemName: "terminal")
-                            .padding(8)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 16))
+                            .padding(10)
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive())

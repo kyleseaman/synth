@@ -26,12 +26,12 @@ struct DocumentChatTray: View {
         }
         .frame(height: trayHeight)
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(height: 1)
-                .shadow(color: .black.opacity(0.08), radius: 2, y: 2)
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 8, y: -2)
         .onAppear {
             isInputFocused = true
             wireFileCallbacks()
@@ -133,19 +133,11 @@ struct DocumentChatTray: View {
     private var inputBar: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                if input.isEmpty {
-                    Text("Reply...")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 8)
-                        .padding(.leading, 8)
-                        .allowsHitTesting(false)
-                }
                 TextEditor(text: $input)
                     .font(.system(size: 13))
                     .scrollContentBackground(.hidden)
                     .focused($isInputFocused)
-                    .frame(minHeight: 34, maxHeight: 80)
+                    .frame(minHeight: 28, maxHeight: 80)
                     .fixedSize(horizontal: false, vertical: true)
                     .onKeyPress(.return, phases: .down) { press in
                         if press.modifiers.contains(.shift) {
@@ -154,10 +146,17 @@ struct DocumentChatTray: View {
                         sendMessage()
                         return .handled
                     }
+                if input.isEmpty {
+                    Text("Reply...")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 7)
+                        .padding(.leading, 5)
+                        .allowsHitTesting(false)
+                }
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 2)
-            .padding(.bottom, 2)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
 
             HStack(spacing: 8) {
                 agentPicker
