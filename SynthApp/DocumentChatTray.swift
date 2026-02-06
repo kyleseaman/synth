@@ -137,16 +137,16 @@ struct DocumentChatTray: View {
                     Text("Reply...")
                         .font(.system(size: 13))
                         .foregroundStyle(.tertiary)
-                        .padding(.top, 7)
-                        .padding(.leading, 6)
+                        .padding(.top, 8)
+                        .padding(.leading, 8)
+                        .allowsHitTesting(false)
                 }
                 TextEditor(text: $input)
                     .font(.system(size: 13))
                     .scrollContentBackground(.hidden)
                     .focused($isInputFocused)
-                    .frame(minHeight: 20, maxHeight: 80)
+                    .frame(minHeight: 34, maxHeight: 80)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 1)
                     .onKeyPress(.return, phases: .down) { press in
                         if press.modifiers.contains(.shift) {
                             return .ignored
