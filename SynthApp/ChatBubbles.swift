@@ -4,16 +4,14 @@ import SwiftUI
 
 struct ChatBubble: View {
     let message: ChatMessage
-    var maxWidth: CGFloat = .infinity
     @State private var isHovered = false
 
     var body: some View {
         HStack {
-            if message.role == .user { Spacer() }
+            if message.role == .user { Spacer(minLength: 60) }
             MarkdownText(message.content)
                 .font(.system(size: 13))
                 .padding(10)
-                .frame(maxWidth: maxWidth, alignment: message.role == .user ? .trailing : .leading)
                 .background(
                     message.role == .user
                         ? Color.accentColor.opacity(0.15)
@@ -38,7 +36,7 @@ struct ChatBubble: View {
                     }
                 }
                 .onHover { isHovered = $0 }
-            if message.role == .assistant { Spacer() }
+            if message.role == .assistant { Spacer(minLength: 60) }
         }
     }
 }
@@ -48,7 +46,6 @@ struct ChatBubble: View {
 struct StreamingBubble: View {
     let text: String
     let isLoading: Bool
-    var maxWidth: CGFloat = .infinity
 
     var body: some View {
         HStack {
@@ -67,10 +64,9 @@ struct StreamingBubble: View {
                 }
             }
             .padding(10)
-            .frame(maxWidth: maxWidth, alignment: .leading)
             .background(Color.primary.opacity(0.05))
             .cornerRadius(8)
-            Spacer()
+            Spacer(minLength: 60)
         }
     }
 }

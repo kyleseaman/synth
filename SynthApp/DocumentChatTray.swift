@@ -81,33 +81,33 @@ struct DocumentChatTray: View {
     // MARK: - Messages
 
     private var messageList: some View {
-        GeometryReader { geo in
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(chatState.messages) { msg in
-                            ChatBubble(message: msg, maxWidth: geo.size.width - 24).id(msg.id)
-                        }
-                        if !chatState.currentResponse.isEmpty || chatState.isLoading {
-                            StreamingBubble(
-                                text: chatState.currentResponse,
-                                isLoading: chatState.isLoading,
-                                maxWidth: geo.size.width - 24
-                            ).id("streaming")
-                        }
-                    }.padding(.horizontal, 12).padding(.vertical, 6)
-                }
-                .scrollIndicators(.hidden)
-                .onChange(of: chatState.messages.count) {
-                    if let last = chatState.messages.last {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(chatState.messages) { msg in
+                        ChatBubble(message: msg).id(msg.id)
+                    }
+                    if !chatState.currentResponse.isEmpty || chatState.isLoading {
+                        StreamingBubble(
+                            text: chatState.currentResponse,
+                            isLoading: chatState.isLoading
+                        ).id("streaming")
                     }
                 }
-                .onChange(of: chatState.currentResponse) {
-                    proxy.scrollTo("streaming", anchor: .bottom)
+                .padding(.leading, 12)
+                .padding(.trailing, 56)
+                .padding(.vertical, 6)
+            }
+            .scrollIndicators(.hidden)
+            .onChange(of: chatState.messages.count) {
+                if let last = chatState.messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
                 }
+            }
+            .onChange(of: chatState.currentResponse) {
+                proxy.scrollTo("streaming", anchor: .bottom)
             }
         }
     }
