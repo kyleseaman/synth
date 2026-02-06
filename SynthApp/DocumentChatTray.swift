@@ -158,19 +158,8 @@ struct DocumentChatTray: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 4)
 
-            HStack(spacing: 8) {
-                Button {
-                    NotificationCenter.default.post(name: .toggleChat, object: nil)
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Minimize (⌘J)")
-
+            HStack {
                 Spacer()
-
                 Button(action: sendMessage) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 12, weight: .bold))
@@ -192,6 +181,7 @@ struct DocumentChatTray: View {
                 .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
         .padding(.horizontal, 12)
+        .padding(.trailing, 50)
         .padding(.bottom, 8)
     }
 
