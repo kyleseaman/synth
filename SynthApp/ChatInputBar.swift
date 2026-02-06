@@ -15,28 +15,12 @@ struct ChatInputBar: View {
             .buttonStyle(.plain)
 
             HStack(alignment: .center, spacing: 8) {
-                ZStack(alignment: .leading) {
-                    if input.isEmpty {
-                        Text("Message")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.tertiary)
-                    }
-                    TextEditor(text: $input)
-                        .font(.system(size: 13))
-                        .scrollContentBackground(.hidden)
-                        .scrollIndicators(.hidden)
-                        .focused($isInputFocused)
-                        .frame(minHeight: 18, maxHeight: 80)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .offset(x: -5, y: 1)
-                        .onKeyPress(.return, phases: .down) { press in
-                            if press.modifiers.contains(.shift) {
-                                return .ignored
-                            }
-                            onSend()
-                            return .handled
-                        }
-                }
+                TextField("Message", text: $input, axis: .vertical)
+                    .font(.system(size: 13))
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...5)
+                    .focused($isInputFocused)
+                    .onSubmit { onSend() }
 
                 Button(action: onSend) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -47,7 +31,7 @@ struct ChatInputBar: View {
                 .disabled(input.isEmpty)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .background(Capsule().fill(Color(nsColor: .controlBackgroundColor)))
             .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 1))
         }
