@@ -356,6 +356,7 @@ class ACPClient: ObservableObject {
 
     private func initialize() {
         let params: [String: AnyCodable] = [
+            "protocolVersion": AnyCodable(1),
             "version": AnyCodable(1),
             "clientCapabilities": AnyCodable([
                 "fs": AnyCodable([
