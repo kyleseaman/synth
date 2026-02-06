@@ -26,8 +26,22 @@ class ACPClient: ObservableObject {
     func start(cwd: String) {
         self.cwd = cwd
         let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        proc.arguments = ["kiro-cli", "acp"]
+
+        // Resolve kiro-cli path: GUI apps don't inherit shell PATH
+        let candidates = [
+            "\(NSHomeDirectory())/.toolbox/bin/kiro-cli",
+            "/usr/local/bin/kiro-cli",
+            "/opt/homebrew/bin/kiro-cli"
+        ]
+        let resolvedPath = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+
+        if let path = resolvedPath {
+            proc.executableURL = URL(fileURLWithPath: path)
+            proc.arguments = ["acp"]
+        } else {
+            proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            proc.arguments = ["kiro-cli", "acp"]
+        }
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
