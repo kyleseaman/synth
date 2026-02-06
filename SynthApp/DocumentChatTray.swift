@@ -218,6 +218,14 @@ struct DocumentChatTray: View {
     @ViewBuilder
     private func permissionDiffView(_ diff: DiffContent) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add:")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
             if !diff.oldText.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remove:")
@@ -228,14 +236,6 @@ struct DocumentChatTray: View {
                         .foregroundStyle(.red)
                         .strikethrough()
                 }
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Add:")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.green)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
