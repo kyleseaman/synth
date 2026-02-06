@@ -14,3 +14,4 @@ DerivedData/
 *.a
 *.dylib
 *.out
+SynthApp/Synth

@@ -1,8 +1,17 @@
 import SwiftUI
 import AppKit
 
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var store: DocumentStore?
+
+    func applicationWillResignActive(_ notification: Notification) {
+        store?.saveAll()
+    }
+}
+
 @main
 struct SynthApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var store = DocumentStore()
 
     init() {
@@ -14,7 +23,9 @@ struct SynthApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .onAppear { appDelegate.store = store }
         }
+        .defaultSize(width: 1200, height: 800)
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
