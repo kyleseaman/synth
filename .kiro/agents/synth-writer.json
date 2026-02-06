@@ -6,12 +6,14 @@
   "tools": [
     "fs_read",
     "fs_write",
-    "web_search"
+    "execute_bash",
+    "@fetch/*"
   ],
   "allowedTools": [
     "fs_read",
     "fs_write",
-    "web_search"
+    "execute_bash",
+    "@fetch/*"
   ],
   "resources": [],
   "includeMcpJson": false
