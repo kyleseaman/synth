@@ -165,6 +165,7 @@ struct DocumentChatTray: View {
                     TextEditor(text: $input)
                         .font(.system(size: 13))
                         .scrollContentBackground(.hidden)
+                        .scrollIndicators(.hidden)
                         .focused($isInputFocused)
                         .frame(minHeight: 18, maxHeight: 80)
                         .fixedSize(horizontal: false, vertical: true)
