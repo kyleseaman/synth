@@ -15,6 +15,7 @@ class ACPClient: ObservableObject {
     @Published var sessionId: String?
     @Published var connectionFailed = false
     @Published var toolCalls: [ACPToolCall] = []
+    @Published var pendingPermission: ACPPermissionRequest?
 
     var onUpdate: ((String) -> Void)?
     var onTurnComplete: (() -> Void)?
@@ -166,18 +167,37 @@ class ACPClient: ObservableObject {
             sendResponse(id: id, result: nil)
 
         case "session/request_permission":
-            // Auto-deny all permission requests
-            sendResponse(id: id, result: AnyCodable([
-                "outcome": AnyCodable([
-                    "outcome": AnyCodable("selected"),
-                    "optionId": AnyCodable("deny")
-                ])
-            ]))
+            let toolCall = params?["toolCall"] as? [String: Any]
+            let toolCallId = toolCall?["toolCallId"] as? String ?? ""
+            let title = toolCall?["title"] as? String ?? "Permission requested"
+            var opts: [(id: String, label: String, kind: String)] = []
+            if let options = params?["options"] as? [[String: Any]] {
+                for opt in options {
+                    if let oid = opt["optionId"] as? String,
+                       let label = opt["label"] as? String {
+                        let kind = opt["kind"] as? String ?? "other"
+                        opts.append((id: oid, label: label, kind: kind))
+                    }
+                }
+            }
+            let request = ACPPermissionRequest(id: id, toolCallId: toolCallId, title: title, options: opts)
+            DispatchQueue.main.async { self.pendingPermission = request }
 
         default:
             // Unknown method — respond with error
             sendErrorResponse(id: id, code: -32601, message: "Method not found: \(method)")
         }
+    }
+
+    func respondToPermission(optionId: String) {
+        guard let req = pendingPermission else { return }
+        sendResponse(id: req.id, result: AnyCodable([
+            "outcome": AnyCodable([
+                "outcome": AnyCodable("selected"),
+                "optionId": AnyCodable(optionId)
+            ])
+        ]))
+        DispatchQueue.main.async { self.pendingPermission = nil }
     }
 
     // MARK: - Session Update Handling

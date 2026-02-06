@@ -20,6 +20,7 @@ struct DocumentChatTray: View {
         VStack(spacing: 0) {
             dragHandle
             messageList
+            permissionBar
             selectionIndicator
             inputBar
         }
@@ -132,6 +133,36 @@ struct DocumentChatTray: View {
                 Spacer()
             }
             .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+        }
+    }
+
+    // MARK: - Permission Bar
+
+    @ViewBuilder
+    private var permissionBar: some View {
+        if let perm = chatState.acpClient?.pendingPermission {
+            VStack(spacing: 6) {
+                Text(perm.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
+                HStack(spacing: 8) {
+                    Button("Deny") {
+                        chatState.acpClient?.respondToPermission(optionId: "deny")
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Allow") {
+                        let allowOpt = perm.options.first { $0.kind.hasPrefix("allow") }?.id ?? "allow-once"
+                        chatState.acpClient?.respondToPermission(optionId: allowOpt)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(8)
             .padding(.horizontal, 12)
             .padding(.top, 6)
         }

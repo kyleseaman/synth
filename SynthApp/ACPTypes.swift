@@ -95,6 +95,15 @@ struct ACPToolCall: Identifiable {
     }
 }
 
+// MARK: - ACP Permission Request
+
+struct ACPPermissionRequest: Identifiable {
+    let id: Int  // JSON-RPC request ID
+    let toolCallId: String
+    let title: String
+    let options: [(id: String, label: String, kind: String)]
+}
+
 // MARK: - Kiro CLI Path Resolution
 
 enum KiroCliResolver {
