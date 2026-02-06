@@ -246,7 +246,7 @@ class ACPClient: ObservableObject {
 
         queue.asyncAfter(deadline: .now() + 60) { [weak self] in
             guard let self = self else { return }
-            let handler = self.queue.sync { self.pendingRequests.removeValue(forKey: currentId) }
+            let handler = self.pendingRequests.removeValue(forKey: currentId)
             if let handler = handler {
                 let err = NSError(
                     domain: "ACP", code: -2,
