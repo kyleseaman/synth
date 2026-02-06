@@ -179,14 +179,13 @@ struct DocumentChatTray: View {
                         }
                 }
 
-                if !input.isEmpty {
-                    Button(action: sendMessage) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
+                Button(action: sendMessage) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(input.isEmpty ? Color.secondary.opacity(0.3) : Color.accentColor)
                 }
+                .buttonStyle(.plain)
+                .disabled(input.isEmpty)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
