@@ -8,7 +8,7 @@ struct ChatBubble: View {
 
     var body: some View {
         HStack {
-            if message.role == .user { Spacer(minLength: 40) }
+            if message.role == .user { Spacer(minLength: 60) }
             MarkdownText(message.content)
                 .font(.system(size: 13))
                 .padding(10)
@@ -36,7 +36,7 @@ struct ChatBubble: View {
                     }
                 }
                 .onHover { isHovered = $0 }
-            if message.role == .assistant { Spacer(minLength: 40) }
+            if message.role == .assistant { Spacer(minLength: 60) }
         }
     }
 }
@@ -66,7 +66,7 @@ struct StreamingBubble: View {
             .padding(10)
             .background(Color.primary.opacity(0.05))
             .cornerRadius(8)
-            Spacer(minLength: 40)
+            Spacer(minLength: 60)
         }
     }
 }
