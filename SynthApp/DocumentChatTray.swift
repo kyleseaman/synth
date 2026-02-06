@@ -145,30 +145,30 @@ struct DocumentChatTray: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             // Plus button outside pill
             Button {} label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
 
             // Pill input field
-            HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 ZStack(alignment: .leading) {
                     if input.isEmpty {
                         Text("Message")
-                            .font(.system(size: 15))
+                            .font(.system(size: 13))
                             .foregroundStyle(.tertiary)
                     }
                     TextEditor(text: $input)
-                        .font(.system(size: 15))
+                        .font(.system(size: 13))
                         .scrollContentBackground(.hidden)
                         .focused($isInputFocused)
-                        .frame(minHeight: 22, maxHeight: 100)
+                        .frame(minHeight: 18, maxHeight: 80)
                         .fixedSize(horizontal: false, vertical: true)
-                        .offset(x: -5, y: 0)
+                        .offset(x: -5, y: 1)
                         .onKeyPress(.return, phases: .down) { press in
                             if press.modifiers.contains(.shift) {
                                 return .ignored
@@ -181,14 +181,14 @@ struct DocumentChatTray: View {
                 if !input.isEmpty {
                     Button(action: sendMessage) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
+                            .font(.system(size: 22))
                             .foregroundStyle(Color.accentColor)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 6)
             .background(
                 Capsule()
                     .fill(Color(nsColor: .controlBackgroundColor))
