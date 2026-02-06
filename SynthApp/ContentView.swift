@@ -38,7 +38,7 @@ struct ContentView: View {
             }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .automatic) {
                     Button {
                         store.pickWorkspace()
@@ -47,7 +47,7 @@ struct ContentView: View {
                     }
                     .help("Open Workspace (⌘O)")
                 }
-            }
+            })
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty, store.currentIndex >= 0 {
@@ -80,7 +80,7 @@ struct ContentView: View {
                     .padding(8)
                 }
             }
-            .toolbar {
+            .toolbar(content: {
                 ToolbarItem(placement: .principal) {
                     HStack(spacing: 4) {
                         ForEach(store.openFiles.indices, id: \.self) { index in
@@ -94,7 +94,7 @@ struct ContentView: View {
                         }
                     }
                 }
-            }
+            })
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .frame(minWidth: 800, minHeight: 500)
