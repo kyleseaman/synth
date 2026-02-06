@@ -171,6 +171,7 @@ class ACPClient: ObservableObject {
             sendResponse(id: id, result: nil)
 
         case "session/request_permission":
+            print("[ACP] Permission request received, id=\(id)")
             let toolCall = params?["toolCall"] as? [String: Any]
             let toolCallId = toolCall?["toolCallId"] as? String ?? ""
             let title = toolCall?["title"] as? String ?? "Permission requested"
@@ -188,6 +189,7 @@ class ACPClient: ObservableObject {
                 id: id, toolCallId: toolCallId, title: title, options: opts, diffContent: nil
             )
             request.diffContent = self.lastToolCallDiff[toolCallId]
+            print("[ACP] Setting pendingPermission: \(title), hasDiff=\(request.diffContent != nil)")
             DispatchQueue.main.async {
                 self.pendingPermission = request
                 self.onPermissionRequest?(request)

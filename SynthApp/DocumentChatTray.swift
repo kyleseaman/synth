@@ -11,7 +11,7 @@ struct DocumentChatTray: View {
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 250
-    @State private var selectedAgent: String? = "synth-editor"
+    @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
     private let minHeight: CGFloat = 150
@@ -156,7 +156,7 @@ struct DocumentChatTray: View {
                             .font(.system(size: 11, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxHeight: 100)
+                    .frame(height: 120)
                     .padding(6)
                     .background(Color.primary.opacity(0.05))
                     .cornerRadius(4)
@@ -164,23 +164,35 @@ struct DocumentChatTray: View {
                 HStack(spacing: 8) {
                     Spacer()
                     Button("Deny") {
-                        chatState.respondToPermission(optionId: "deny")
+                        denyPermission()
                     }
                     .buttonStyle(.bordered)
+                    .keyboardShortcut(.escape, modifiers: [])
                     Button("Allow") {
-                        let allowOpt = perm.options.first { $0.kind.hasPrefix("allow") }?.id ?? "allow-once"
-                        chatState.respondToPermission(optionId: allowOpt)
+                        allowPermission()
                     }
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: [])
                 }
             }
             .padding(10)
             .frame(maxWidth: .infinity)
             .background(Color.orange.opacity(0.1))
             .cornerRadius(8)
-            .padding(.horizontal, 12)
+            .padding(.leading, 38)
+            .padding(.trailing, 56)
             .padding(.top, 6)
         }
+    }
+
+    private func allowPermission() {
+        guard let perm = chatState.pendingPermission else { return }
+        let allowOpt = perm.options.first { $0.kind.hasPrefix("allow") }?.id ?? "allow_once"
+        chatState.respondToPermission(optionId: allowOpt)
+    }
+
+    private func denyPermission() {
+        chatState.respondToPermission(optionId: "reject_once")
     }
 
     private func permissionPreview(_ perm: ACPPermissionRequest) -> String? {
