@@ -1,5 +1,7 @@
 import Foundation
 
+// swiftlint:disable type_body_length
+
 // MARK: - ACP Client
 
 class ACPClient: ObservableObject {
@@ -24,6 +26,7 @@ class ACPClient: ObservableObject {
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
 
+    // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
         self.agent = agent
