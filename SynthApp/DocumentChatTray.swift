@@ -9,11 +9,11 @@ struct DocumentChatTray: View {
     var selectedLineRange: String?
 
     @State private var input = ""
-    @State private var trayHeight: CGFloat = 140
+    @State private var trayHeight: CGFloat = 250
     @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
-    private let minHeight: CGFloat = 100
+    private let minHeight: CGFloat = 150
     private let maxHeight: CGFloat = 500
 
     var body: some View {
@@ -31,6 +31,20 @@ struct DocumentChatTray: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
+        .overlay(alignment: .topTrailing) {
+            Button {
+                NotificationCenter.default.post(name: .toggleChat, object: nil)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(8)
+        }
         .shadow(color: .black.opacity(0.1), radius: 8, y: -2)
         .onAppear {
             isInputFocused = true

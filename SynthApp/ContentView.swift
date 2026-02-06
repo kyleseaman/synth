@@ -138,7 +138,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive())
                     .padding(.trailing, 12)
-                    .padding(.bottom, store.isChatVisibleForCurrentTab ? 160 : 12)
+                    .padding(.bottom, store.isChatVisibleForCurrentTab ? 270 : 12)
                     .animation(.easeInOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
                 }
             }
