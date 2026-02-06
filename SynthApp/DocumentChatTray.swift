@@ -93,7 +93,7 @@ struct DocumentChatTray: View {
                             isLoading: chatState.isLoading
                         ).id("streaming")
                     }
-                }.padding(.horizontal, 10).padding(.vertical, 6)
+                }.padding(.leading, 10).padding(.trailing, 28).padding(.vertical, 6)
             }
             .scrollIndicators(.hidden)
             .onChange(of: chatState.messages.count) {
