@@ -12,6 +12,7 @@ struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showFileLauncher = false
+    @State private var dismissedSetup = false
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -70,6 +71,15 @@ struct ContentView: View {
             }
         } detail: {
             VStack(spacing: 0) {
+                // Kiro setup banner
+                if store.needsKiroSetup && store.workspace != nil && !dismissedSetup {
+                    KiroSetupBanner {
+                        store.bootstrapKiroConfig()
+                    } onDismiss: {
+                        dismissedSetup = true
+                    }
+                }
+
                 if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
@@ -277,6 +287,40 @@ struct TabButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(isSelected ? .primary : .secondary)
         .onHover { isHovering = $0 }
+    }
+}
+
+// MARK: - Kiro Setup Banner
+
+struct KiroSetupBanner: View {
+    let onSetup: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 16))
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Set up AI for this workspace")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Create .kiro/ with steering context and agents")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Initialize", action: onSetup)
+                .controlSize(.small)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.accentColor.opacity(0.08))
     }
 }
 

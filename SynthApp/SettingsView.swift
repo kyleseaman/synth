@@ -79,6 +79,18 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            if store.needsKiroSetup && store.workspace != nil {
+                Section {
+                    Button("Initialize .kiro") {
+                        store.bootstrapKiroConfig()
+                    }
+                } footer: {
+                    Text("Creates .kiro/ folder with steering context and a doc-writer agent.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

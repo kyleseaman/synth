@@ -30,7 +30,7 @@ class DocumentChatState: ObservableObject {
     private(set) var acpClient: ACPClient?
     private(set) var isStarted = false
 
-    func startIfNeeded(cwd: String, filePath: String) {
+    func startIfNeeded(cwd: String, filePath: String, agent: String? = nil) {
         guard !isStarted else { return }
         isStarted = true
 
@@ -60,7 +60,7 @@ class DocumentChatState: ObservableObject {
             }
         }
 
-        client.start(cwd: cwd)
+        client.start(cwd: cwd, agent: agent)
     }
 
     func stop() {

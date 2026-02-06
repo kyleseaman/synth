@@ -10,6 +10,7 @@ struct DocumentChatTray: View {
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 220
+    @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
     private let minHeight: CGFloat = 150
@@ -129,8 +130,7 @@ struct DocumentChatTray: View {
 
     private var inputBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.tint)
+            agentPicker
 
             TextField("Ask Kiro...", text: $input)
                 .textFieldStyle(.plain)
@@ -156,6 +156,47 @@ struct DocumentChatTray: View {
             .help("Close (⌘J)")
         }
         .padding(10)
+    }
+
+    @ViewBuilder
+    private var agentPicker: some View {
+        Menu {
+            Button {
+                selectedAgent = nil
+            } label: {
+                if selectedAgent == nil {
+                    Label("Default", systemImage: "checkmark")
+                } else {
+                    Text("Default")
+                }
+            }
+            if !store.customAgents.isEmpty {
+                Divider()
+                ForEach(store.customAgents, id: \.name) { agent in
+                    Button {
+                        selectedAgent = agent.name
+                    } label: {
+                        if selectedAgent == agent.name {
+                            Label(agent.name, systemImage: "checkmark")
+                        } else {
+                            Text(agent.name)
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "sparkles")
+                if let agent = selectedAgent {
+                    Text(agent)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(.tint)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     // MARK: - Actions
@@ -202,7 +243,7 @@ struct DocumentChatTray: View {
         chatState.toolCalls.removeAll()
 
         let cwdPath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
-        chatState.startIfNeeded(cwd: cwdPath, filePath: documentURL.path)
+        chatState.startIfNeeded(cwd: cwdPath, filePath: documentURL.path, agent: selectedAgent)
         wireFileCallbacks()
 
         guard chatState.acpClient?.isConnected == true else {

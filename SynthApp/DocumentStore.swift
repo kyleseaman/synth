@@ -11,6 +11,7 @@ class DocumentStore: ObservableObject {
     @Published var recentFiles: [URL] = []
     @Published var expandedFolders: Set<URL> = []
     @Published var chatVisibleTabs: Set<URL> = []
+    @Published var needsKiroSetup = false
 
     private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
@@ -86,6 +87,8 @@ class DocumentStore: ObservableObject {
             currentIndex = -1
         }
         startWatching()
+        loadKiroConfig()
+        checkKiroSetup()
     }
 
     func loadFileTree() {
@@ -122,6 +125,66 @@ class DocumentStore: ObservableObject {
                 }
             }
         }
+    }
+
+    func checkKiroSetup() {
+        guard let workspace = workspace else { return }
+        let kiroDir = workspace.appendingPathComponent(".kiro")
+        needsKiroSetup = !FileManager.default.fileExists(atPath: kiroDir.path)
+    }
+
+    func bootstrapKiroConfig() {
+        guard let workspace = workspace else { return }
+        let kiroDir = workspace.appendingPathComponent(".kiro")
+        let steeringDir = kiroDir.appendingPathComponent("steering")
+        let agentsDir = kiroDir.appendingPathComponent("agents")
+        let fileManager = FileManager.default
+
+        try? fileManager.createDirectory(at: steeringDir, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: agentsDir, withIntermediateDirectories: true)
+
+        // Bootstrap product.md steering file
+        let productMd = """
+        # Product Overview
+
+        Describe your project here. This file provides context to the AI.
+
+        ## Purpose
+        What does this project do?
+
+        ## Target Users
+        Who is this for?
+        """
+        let productPath = steeringDir.appendingPathComponent("product.md")
+        if !fileManager.fileExists(atPath: productPath.path) {
+            try? productMd.write(to: productPath, atomically: true, encoding: .utf8)
+        }
+
+        // Bootstrap doc-writer agent
+        let writerAgent: [String: Any] = [
+            "name": "doc-writer",
+            "description": "Document writer — drafts and generates content",
+            "prompt": """
+                You are a document writer integrated into Synth. \
+                Draft new documents, expand outlines into prose, \
+                write in various styles (technical, creative, business). \
+                Start with structure, then fill in content. \
+                Use markdown formatting. Be concise and direct.
+                """,
+            "tools": ["fs_read", "fs_write"],
+            "allowedTools": ["fs_read", "fs_write"]
+        ]
+        let writerPath = agentsDir.appendingPathComponent("doc-writer.json")
+        if !fileManager.fileExists(atPath: writerPath.path),
+           let data = try? JSONSerialization.data(
+               withJSONObject: writerAgent, options: [.prettyPrinted, .sortedKeys]
+           ) {
+            try? data.write(to: writerPath)
+        }
+
+        needsKiroSetup = false
+        loadKiroConfig()
+        loadFileTree()
     }
 
     func open(_ url: URL) {

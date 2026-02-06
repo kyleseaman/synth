@@ -47,6 +47,7 @@ class ACPClient: ObservableObject {
     private var buffer = Data()
     private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
     private var cwd: String = ""
+    private var agent: String?
 
     @Published var isConnected = false
     @Published var sessionId: String?
@@ -60,8 +61,9 @@ class ACPClient: ObservableObject {
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
 
-    func start(cwd: String) {
+    func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
+        self.agent = agent
         let proc = Process()
 
         if let path = KiroCliResolver.resolve() {
@@ -383,12 +385,15 @@ class ACPClient: ObservableObject {
     }
 
     private func createSession() {
-        let params: [String: AnyCodable] = [
+        var params: [String: AnyCodable] = [
             "cwd": AnyCodable(cwd),
             "mcpServers": AnyCodable([AnyCodable]())
         ]
+        if let agent = agent {
+            params["agent"] = AnyCodable(agent)
+        }
 
-        print("[ACP] Sending session/new with cwd=\(cwd)")
+        print("[ACP] Sending session/new with cwd=\(cwd), agent=\(agent ?? "default")")
         sendRequest(method: "session/new", params: params) { [weak self] result in
             if case .success(let response) = result,
                let dict = response?.dictValue,
