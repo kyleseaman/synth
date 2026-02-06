@@ -235,21 +235,19 @@ struct DocumentChatTray: View {
     private func buildContentBlocks(prompt: String) -> [[String: AnyCodable]] {
         var blocks: [[String: AnyCodable]] = []
 
-        // Add document context
+        // Add document context as text (agent doesn't support embeddedContext)
         if let selection = selectedText, !selection.isEmpty {
             let label = selectedLineRange ?? "selection"
             blocks.append([
                 "type": AnyCodable("text"),
-                "text": AnyCodable("[Selected \(label)]:\n\(selection)")
+                "text": AnyCodable("[Selected \(label) from \(documentURL.lastPathComponent)]:\n\(selection)")
             ])
         } else {
             blocks.append([
-                "type": AnyCodable("resource"),
-                "resource": AnyCodable([
-                    "uri": AnyCodable("file://\(documentURL.path)"),
-                    "mimeType": AnyCodable(mimeType(for: documentURL)),
-                    "text": AnyCodable(documentContent)
-                ])
+                "type": AnyCodable("text"),
+                "text": AnyCodable(
+                    "[Current file: \(documentURL.path)]\n\n\(documentContent)"
+                )
             ])
         }
 
@@ -260,16 +258,5 @@ struct DocumentChatTray: View {
         ])
 
         return blocks
-    }
-
-    private func mimeType(for url: URL) -> String {
-        switch url.pathExtension.lowercased() {
-        case "md": return "text/markdown"
-        case "swift": return "text/x-swift"
-        case "rs": return "text/x-rust"
-        case "json": return "application/json"
-        case "txt": return "text/plain"
-        default: return "text/plain"
-        }
     }
 }
