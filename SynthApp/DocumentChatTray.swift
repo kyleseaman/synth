@@ -10,7 +10,7 @@ struct DocumentChatTray: View {
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 250
-    @State private var selectedAgent: String?
+    @State private var selectedAgent: String? = "synth-editor"
     @FocusState private var isInputFocused: Bool
 
     private let minHeight: CGFloat = 150
