@@ -13,6 +13,33 @@ struct ContentView: View {
     @State private var showChat = false
     @State private var showFileLauncher = false
 
+    private var openWorkspaceButton: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button {
+                store.pickWorkspace()
+            } label: {
+                Image(systemName: "folder")
+            }
+            .help("Open Workspace (⌘O)")
+        }
+    }
+
+    private var tabBar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: 4) {
+                ForEach(store.openFiles.indices, id: \.self) { index in
+                    TabButton(
+                        title: store.openFiles[index].url.lastPathComponent,
+                        isSelected: index == store.currentIndex,
+                        isDirty: store.openFiles[index].isDirty,
+                        onSelect: { store.switchTo(index) },
+                        onClose: { store.closeTab(at: index) }
+                    )
+                }
+            }
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             VStack {
@@ -38,16 +65,9 @@ struct ContentView: View {
             }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar(content: {
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        store.pickWorkspace()
-                    } label: {
-                        Image(systemName: "folder")
-                    }
-                    .help("Open Workspace (⌘O)")
-                }
-            })
+            .toolbar {
+                openWorkspaceButton
+            }
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty, store.currentIndex >= 0 {
@@ -80,21 +100,9 @@ struct ContentView: View {
                     .padding(8)
                 }
             }
-            .toolbar(content: {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 4) {
-                        ForEach(store.openFiles.indices, id: \.self) { index in
-                            TabButton(
-                                title: store.openFiles[index].url.lastPathComponent,
-                                isSelected: index == store.currentIndex,
-                                isDirty: store.openFiles[index].isDirty,
-                                onSelect: { store.switchTo(index) },
-                                onClose: { store.closeTab(at: index) }
-                            )
-                        }
-                    }
-                }
-            })
+            .toolbar {
+                tabBar
+            }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .frame(minWidth: 800, minHeight: 500)
