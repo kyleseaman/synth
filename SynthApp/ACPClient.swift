@@ -10,6 +10,7 @@ class ACPClient: ObservableObject {
     private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
     private var cwd: String = ""
     private var agent: String?
+    private var lastToolCallDiff: [String: (oldText: String, newText: String, path: String)] = [:]
 
     @Published var isConnected = false
     @Published var sessionId: String?
@@ -122,8 +123,9 @@ class ACPClient: ObservableObject {
         // Try as incoming request from agent (bidirectional: has method + id)
         if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let method = dict["method"] as? String,
-           let reqId = dict["id"] as? Int {
-            handleIncomingRequest(id: reqId, method: method, params: dict["params"] as? [String: Any])
+           let reqId = dict["id"] {
+            let idString = "\(reqId)"  // Handle both Int and String IDs
+            handleIncomingRequest(id: idString, method: method, params: dict["params"] as? [String: Any])
             return
         }
 
@@ -154,7 +156,7 @@ class ACPClient: ObservableObject {
 
     // MARK: - Incoming Requests from Agent
 
-    private func handleIncomingRequest(id: Int, method: String, params: [String: Any]?) {
+    private func handleIncomingRequest(id: String, method: String, params: [String: Any]?) {
         switch method {
         case "fs/read_text_file":
             let path = params?["path"] as? String ?? ""
@@ -171,22 +173,20 @@ class ACPClient: ObservableObject {
             let toolCall = params?["toolCall"] as? [String: Any]
             let toolCallId = toolCall?["toolCallId"] as? String ?? ""
             let title = toolCall?["title"] as? String ?? "Permission requested"
-            let toolName = toolCall?["toolName"] as? String ?? ""
-            let input = toolCall?["input"] as? [String: Any] ?? [:]
             var opts: [(id: String, label: String, kind: String)] = []
             if let options = params?["options"] as? [[String: Any]] {
                 for opt in options {
                     if let oid = opt["optionId"] as? String,
-                       let label = opt["label"] as? String {
+                       let name = opt["name"] as? String {
                         let kind = opt["kind"] as? String ?? "other"
-                        opts.append((id: oid, label: label, kind: kind))
+                        opts.append((id: oid, label: name, kind: kind))
                     }
                 }
             }
-            let request = ACPPermissionRequest(
-                id: id, toolCallId: toolCallId, title: title,
-                toolName: toolName, input: input, options: opts
+            var request = ACPPermissionRequest(
+                id: id, toolCallId: toolCallId, title: title, options: opts, diffContent: nil
             )
+            request.diffContent = self.lastToolCallDiff[toolCallId]
             DispatchQueue.main.async {
                 self.pendingPermission = request
                 self.onPermissionRequest?(request)
@@ -228,6 +228,15 @@ class ACPClient: ObservableObject {
                 let toolKind = update["kind"]?.stringValue ?? "other"
                 let status = update["status"]?.stringValue ?? "pending"
                 let call = ACPToolCall(id: toolCallId, title: title, kind: toolKind, status: status)
+                // Capture diff content if present
+                if let content = update["content"]?.arrayValue,
+                   let first = content.first?.dictValue,
+                   first["type"]?.stringValue == "diff",
+                   let path = first["path"]?.stringValue,
+                   let oldText = first["oldText"]?.stringValue,
+                   let newText = first["newText"]?.stringValue {
+                    self.lastToolCallDiff[toolCallId] = (oldText: oldText, newText: newText, path: path)
+                }
                 DispatchQueue.main.async {
                     self.toolCalls.append(call)
                     self.onToolCall?(call)
@@ -279,7 +288,7 @@ class ACPClient: ObservableObject {
         writeMessage(request)
     }
 
-    private func sendResponse(id: Int, result: AnyCodable?) {
+    private func sendResponse(id: String, result: AnyCodable?) {
         var dict: [String: Any] = ["jsonrpc": "2.0", "id": id]
         if let result = result {
             dict["result"] = encodeAnyCodable(result)
@@ -292,7 +301,7 @@ class ACPClient: ObservableObject {
         if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
     }
 
-    private func sendErrorResponse(id: Int, code: Int, message: String) {
+    private func sendErrorResponse(id: String, code: Int, message: String) {
         let dict: [String: Any] = [
             "jsonrpc": "2.0", "id": id,
             "error": ["code": code, "message": message]

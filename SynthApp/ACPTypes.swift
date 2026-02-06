@@ -98,12 +98,11 @@ struct ACPToolCall: Identifiable {
 // MARK: - ACP Permission Request
 
 struct ACPPermissionRequest: Identifiable {
-    let id: Int  // JSON-RPC request ID
+    let id: String  // JSON-RPC request ID (UUID string)
     let toolCallId: String
     let title: String
-    let toolName: String
-    let input: [String: Any]
     let options: [(id: String, label: String, kind: String)]
+    var diffContent: (oldText: String, newText: String, path: String)?
 }
 
 // MARK: - Kiro CLI Path Resolution

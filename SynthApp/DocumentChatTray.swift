@@ -181,18 +181,9 @@ struct DocumentChatTray: View {
     }
 
     private func permissionPreview(_ perm: ACPPermissionRequest) -> String? {
-        if perm.toolName == "fs_write" {
-            if let content = perm.input["file_text"] as? String {
-                return content.count > 500 ? String(content.prefix(500)) + "..." : content
-            }
-            if let content = perm.input["new_str"] as? String {
-                return content.count > 500 ? String(content.prefix(500)) + "..." : content
-            }
-        }
-        if perm.toolName == "execute_bash" {
-            if let cmd = perm.input["command"] as? String {
-                return cmd
-            }
+        if let diff = perm.diffContent {
+            let preview = diff.newText
+            return preview.count > 500 ? String(preview.prefix(500)) + "..." : preview
         }
         return nil
     }
