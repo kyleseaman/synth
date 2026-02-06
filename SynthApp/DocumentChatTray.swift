@@ -95,6 +95,7 @@ struct DocumentChatTray: View {
                     }
                 }.padding(.horizontal, 10).padding(.vertical, 6)
             }
+            .scrollIndicators(.hidden)
             .onChange(of: chatState.messages.count) {
                 if let last = chatState.messages.last {
                     withAnimation(.easeOut(duration: 0.2)) {
