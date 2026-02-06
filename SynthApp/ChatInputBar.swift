@@ -37,6 +37,7 @@ struct ChatInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.trailing, 44)
+        .padding(.top, 8)
         .padding(.bottom, 10)
     }
 }
