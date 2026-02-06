@@ -23,6 +23,7 @@ class ACPClient: ObservableObject {
     var onFileRead: ((String) -> String?)?
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
+    var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
 
     // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {
@@ -186,7 +187,10 @@ class ACPClient: ObservableObject {
                 id: id, toolCallId: toolCallId, title: title,
                 toolName: toolName, input: input, options: opts
             )
-            DispatchQueue.main.async { self.pendingPermission = request }
+            DispatchQueue.main.async {
+                self.pendingPermission = request
+                self.onPermissionRequest?(request)
+            }
 
         default:
             // Unknown method — respond with error

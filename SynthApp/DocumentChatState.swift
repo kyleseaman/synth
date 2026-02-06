@@ -26,6 +26,7 @@ class DocumentChatState: ObservableObject {
     @Published var isLoading = false
     @Published var undoSnapshot: UndoSnapshot?
     @Published var toolCalls: [ACPToolCall] = []
+    @Published var pendingPermission: ACPPermissionRequest?
 
     private(set) var acpClient: ACPClient?
     private(set) var isStarted = false
@@ -68,7 +69,18 @@ class DocumentChatState: ObservableObject {
             }
         }
 
+        client.onPermissionRequest = { [weak self] request in
+            DispatchQueue.main.async {
+                self?.pendingPermission = request
+            }
+        }
+
         client.start(cwd: cwd, agent: agent)
+    }
+
+    func respondToPermission(optionId: String) {
+        acpClient?.respondToPermission(optionId: optionId)
+        pendingPermission = nil
     }
 
     func stop() {

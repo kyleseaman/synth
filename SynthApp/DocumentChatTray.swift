@@ -142,7 +142,7 @@ struct DocumentChatTray: View {
 
     @ViewBuilder
     private var permissionBar: some View {
-        if let perm = chatState.acpClient?.pendingPermission {
+        if let perm = chatState.pendingPermission {
             VStack(alignment: .leading, spacing: 6) {
                 Text(perm.title)
                     .font(.system(size: 12, weight: .medium))
@@ -161,12 +161,12 @@ struct DocumentChatTray: View {
                 HStack(spacing: 8) {
                     Spacer()
                     Button("Deny") {
-                        chatState.acpClient?.respondToPermission(optionId: "deny")
+                        chatState.respondToPermission(optionId: "deny")
                     }
                     .buttonStyle(.bordered)
                     Button("Allow") {
                         let allowOpt = perm.options.first { $0.kind.hasPrefix("allow") }?.id ?? "allow-once"
-                        chatState.acpClient?.respondToPermission(optionId: allowOpt)
+                        chatState.respondToPermission(optionId: allowOpt)
                     }
                     .buttonStyle(.borderedProminent)
                 }
