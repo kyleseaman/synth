@@ -13,8 +13,8 @@ struct ContentView: View {
     @State private var showChat = false
     @State private var showFileLauncher = false
 
-    private var openWorkspaceButton: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
+    private var openWorkspaceButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "openWorkspace", placement: .automatic) {
             Button {
                 store.pickWorkspace()
             } label: {
@@ -24,8 +24,8 @@ struct ContentView: View {
         }
     }
 
-    private var tabBar: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
+    private var tabBar: some CustomizableToolbarContent {
+        ToolbarItem(id: "tabBar", placement: .principal) {
             HStack(spacing: 4) {
                 ForEach(store.openFiles.indices, id: \.self) { index in
                     TabButton(
@@ -65,7 +65,7 @@ struct ContentView: View {
             }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar {
+            .toolbar(id: "sidebar") {
                 openWorkspaceButton
             }
         } detail: {
@@ -100,7 +100,7 @@ struct ContentView: View {
                     .padding(8)
                 }
             }
-            .toolbar {
+            .toolbar(id: "tabs") {
                 tabBar
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
