@@ -22,7 +22,6 @@ struct DocumentChatTray: View {
             Divider()
             messageList
             toolCallList
-            Divider()
             selectionIndicator
             inputBar
         }
