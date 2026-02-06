@@ -1,0 +1,80 @@
+import SwiftUI
+import Combine
+
+// MARK: - Chat Message
+
+struct ChatMessage: Identifiable {
+    let id = UUID()
+    let role: Role
+    let content: String
+    enum Role { case user, assistant }
+}
+
+// MARK: - Undo Snapshot
+
+struct UndoSnapshot: Equatable {
+    let url: URL
+    let content: String
+    let timestamp: Date
+}
+
+// MARK: - Document Chat State
+
+class DocumentChatState: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+    @Published var currentResponse = ""
+    @Published var isLoading = false
+    @Published var undoSnapshot: UndoSnapshot?
+    @Published var toolCalls: [ACPToolCall] = []
+
+    private(set) var acpClient: ACPClient?
+    private(set) var isStarted = false
+
+    func startIfNeeded(cwd: String, filePath: String) {
+        guard !isStarted else { return }
+        isStarted = true
+
+        let client = ACPClient()
+        self.acpClient = client
+
+        client.onUpdate = { [weak self] chunk in
+            self?.currentResponse += chunk
+        }
+
+        client.onTurnComplete = { [weak self] in
+            guard let self = self else { return }
+            if !self.currentResponse.isEmpty {
+                self.messages.append(ChatMessage(role: .assistant, content: self.currentResponse))
+                self.currentResponse = ""
+            }
+            self.isLoading = false
+        }
+
+        client.onToolCall = { [weak self] call in
+            self?.toolCalls.append(call)
+        }
+
+        client.onToolCallUpdate = { [weak self] callId, status in
+            if let idx = self?.toolCalls.firstIndex(where: { $0.id == callId }) {
+                self?.toolCalls[idx].status = status
+            }
+        }
+
+        client.start(cwd: cwd)
+    }
+
+    func stop() {
+        acpClient?.stop()
+        acpClient = nil
+        isStarted = false
+        messages.removeAll()
+        currentResponse = ""
+        isLoading = false
+        undoSnapshot = nil
+        toolCalls.removeAll()
+    }
+
+    func dismissUndo() {
+        undoSnapshot = nil
+    }
+}

@@ -10,7 +10,9 @@ class DocumentStore: ObservableObject {
     @Published var customAgents: [AgentInfo] = []
     @Published var recentFiles: [URL] = []
     @Published var expandedFolders: Set<URL> = []
+    @Published var chatVisibleTabs: Set<URL> = []
 
+    private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var watcherFD: Int32 = -1
@@ -134,6 +136,30 @@ class DocumentStore: ObservableObject {
         addToRecent(url)
     }
 
+    // MARK: - Per-Document Chat State
+
+    func chatState(for url: URL) -> DocumentChatState {
+        if let existing = chatStates[url] { return existing }
+        let state = DocumentChatState()
+        chatStates[url] = state
+        return state
+    }
+
+    func toggleChatForCurrentTab() {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
+        let url = openFiles[currentIndex].url
+        if chatVisibleTabs.contains(url) {
+            chatVisibleTabs.remove(url)
+        } else {
+            chatVisibleTabs.insert(url)
+        }
+    }
+
+    var isChatVisibleForCurrentTab: Bool {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return false }
+        return chatVisibleTabs.contains(openFiles[currentIndex].url)
+    }
+
     func switchTo(_ index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
         currentIndex = index
@@ -190,11 +216,17 @@ class DocumentStore: ObservableObject {
 
     func closeTab(at index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
+        let url = openFiles[index].url
+
+        // Clean up chat state for this tab
+        chatStates[url]?.stop()
+        chatStates.removeValue(forKey: url)
+        chatVisibleTabs.remove(url)
+
         openFiles.remove(at: index)
         if openFiles.isEmpty {
             currentIndex = -1
         } else if currentIndex == index {
-            // Closed the active tab: switch to previous or first
             currentIndex = min(index, openFiles.count - 1)
         } else if currentIndex > index {
             currentIndex -= 1

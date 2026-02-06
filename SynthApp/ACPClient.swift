@@ -1,121 +1,41 @@
 import Foundation
 
-// MARK: - JSON-RPC Types
-
-struct JsonRpcRequest: Codable {
-    let jsonrpc: String
-    let id: Int
-    let method: String
-    let params: [String: AnyCodable]?
-
-    init(id: Int, method: String, params: [String: AnyCodable]? = nil) {
-        self.jsonrpc = "2.0"
-        self.id = id
-        self.method = method
-        self.params = params
-    }
-}
-
-struct JsonRpcNotification: Codable {
-    let jsonrpc: String
-    let method: String
-    let params: [String: AnyCodable]?
-}
-
-struct JsonRpcResponse: Codable {
-    let jsonrpc: String
-    let id: Int?
-    let result: AnyCodable?
-    let error: JsonRpcError?
-}
-
-struct JsonRpcError: Codable {
-    let code: Int
-    let message: String
-}
-
-// MARK: - ACP Types
-
-struct SessionUpdate: Codable {
-    let kind: String
-    let content: AnyCodable?
-}
-
-// MARK: - AnyCodable Helper
-
-struct AnyCodable: Codable {
-    let value: Any
-
-    init(_ value: Any) { self.value = value }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let str = try? container.decode(String.self) {
-            value = str
-        } else if let int = try? container.decode(Int.self) {
-            value = int
-        } else if let dbl = try? container.decode(Double.self) {
-            value = dbl
-        } else if let bool = try? container.decode(Bool.self) {
-            value = bool
-        } else if let dict = try? container.decode([String: AnyCodable].self) {
-            value = dict
-        } else if let arr = try? container.decode([AnyCodable].self) {
-            value = arr
-        } else {
-            value = NSNull()
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch value {
-        case let str as String: try container.encode(str)
-        case let int as Int: try container.encode(int)
-        case let dbl as Double: try container.encode(dbl)
-        case let bool as Bool: try container.encode(bool)
-        case let dict as [String: AnyCodable]: try container.encode(dict)
-        case let arr as [AnyCodable]: try container.encode(arr)
-        default: try container.encodeNil()
-        }
-    }
-
-    var stringValue: String? { value as? String }
-    var doubleValue: Double? { value as? Double }
-    var dictValue: [String: AnyCodable]? { value as? [String: AnyCodable] }
-}
-
 // MARK: - ACP Client
 
 class ACPClient: ObservableObject {
     private var process: Process?
     private var stdin: FileHandle?
-    private var stdout: FileHandle?
     private var requestId = 0
     private var pendingRequests: [Int: (Result<AnyCodable?, Error>) -> Void] = [:]
     private var buffer = Data()
-    private let queue = DispatchQueue(label: "com.synth.acp")
+    private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
+    private var cwd: String = ""
 
     @Published var isConnected = false
     @Published var sessionId: String?
     @Published var connectionFailed = false
+    @Published var toolCalls: [ACPToolCall] = []
 
     var onUpdate: ((String) -> Void)?
+    var onTurnComplete: (() -> Void)?
     var onFileWrite: ((String, String) -> Void)?
+    var onFileRead: ((String) -> String?)?
+    var onToolCall: ((ACPToolCall) -> Void)?
+    var onToolCallUpdate: ((String, String) -> Void)?
 
-    func start() {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["kiro-cli", "acp"]
+    func start(cwd: String) {
+        self.cwd = cwd
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["kiro-cli", "acp"]
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
-        process.standardInput = stdinPipe
-        process.standardOutput = stdoutPipe
-        process.standardError = FileHandle.nullDevice
+        proc.standardInput = stdinPipe
+        proc.standardOutput = stdoutPipe
+        proc.standardError = FileHandle.nullDevice
 
         self.stdin = stdinPipe.fileHandleForWriting
-        self.stdout = stdoutPipe.fileHandleForReading
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -124,21 +44,17 @@ class ACPClient: ObservableObject {
         }
 
         do {
-            try process.run()
-            self.process = process
+            try proc.run()
+            self.process = proc
             initialize()
 
-            // Timeout after 5 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
                 if self?.isConnected == false {
                     self?.connectionFailed = true
                 }
             }
         } catch {
-            print("Failed to start kiro-cli: \(error)")
-            DispatchQueue.main.async {
-                self.connectionFailed = true
-            }
+            DispatchQueue.main.async { self.connectionFailed = true }
         }
     }
 
@@ -146,28 +62,27 @@ class ACPClient: ObservableObject {
         process?.terminate()
         process = nil
         stdin = nil
-        stdout = nil
-        isConnected = false
-        sessionId = nil
+        DispatchQueue.main.async {
+            self.isConnected = false
+            self.sessionId = nil
+        }
     }
 
+    // MARK: - Data Handling
+
     private func handleData(_ data: Data) {
-        queue.sync {
-            buffer.append(data)
-        }
+        queue.sync { buffer.append(data) }
 
         while true {
             let lineData: Data? = queue.sync {
-                guard let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) else {
-                    return nil
-                }
-                let line = Data(buffer[..<newlineIndex])
-                buffer = buffer[(newlineIndex + 1)...]
+                guard let idx = buffer.firstIndex(of: UInt8(ascii: "\n")) else { return nil }
+                let line = Data(buffer[..<idx])
+                buffer = buffer[(idx + 1)...]
                 return line
             }
-            guard let data = lineData else { break }
-            guard let line = String(data: data, encoding: .utf8),
-                  !line.isEmpty else { continue }
+            guard let data = lineData,
+                  let line = String(data: data, encoding: .utf8),
+                  !line.isEmpty else { break }
             processMessage(line)
         }
     }
@@ -175,59 +90,121 @@ class ACPClient: ObservableObject {
     private func processMessage(_ json: String) {
         guard let data = json.data(using: .utf8) else { return }
 
-        if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data) {
-            handleNotification(notification)
+        // Try as incoming request from agent (bidirectional: has method + id)
+        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let method = dict["method"] as? String,
+           let reqId = dict["id"] as? Int {
+            handleIncomingRequest(id: reqId, method: method, params: dict["params"] as? [String: Any])
             return
         }
 
+        // Try as notification (has method, no id)
+        if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data),
+           notification.method == "session/update" {
+            handleSessionUpdate(notification.params)
+            return
+        }
+
+        // Try as response to our request
         if let response = try? JSONDecoder().decode(JsonRpcResponse.self, from: data),
-           let id = response.id {
-            let handler = queue.sync { pendingRequests.removeValue(forKey: id) }
+           let reqId = response.id {
+            let handler = queue.sync { pendingRequests.removeValue(forKey: reqId) }
             if let handler = handler {
                 if let error = response.error {
-                    let userInfo = [NSLocalizedDescriptionKey: error.message]
-                    DispatchQueue.main.async {
-                        handler(.failure(
-                            NSError(domain: "ACP", code: error.code, userInfo: userInfo)
-                        ))
-                    }
+                    let nsError = NSError(
+                        domain: "ACP", code: error.code,
+                        userInfo: [NSLocalizedDescriptionKey: error.message]
+                    )
+                    DispatchQueue.main.async { handler(.failure(nsError)) }
                 } else {
-                    DispatchQueue.main.async {
-                        handler(.success(response.result))
+                    DispatchQueue.main.async { handler(.success(response.result)) }
+                }
+            }
+        }
+    }
+
+    // MARK: - Incoming Requests from Agent
+
+    private func handleIncomingRequest(id: Int, method: String, params: [String: Any]?) {
+        switch method {
+        case "fs/read_text_file":
+            let path = params?["path"] as? String ?? ""
+            let content = onFileRead?(path) ?? ""
+            sendResponse(id: id, result: AnyCodable(["content": AnyCodable(content)]))
+
+        case "fs/write_text_file":
+            let path = params?["path"] as? String ?? ""
+            let content = params?["content"] as? String ?? ""
+            DispatchQueue.main.async { self.onFileWrite?(path, content) }
+            sendResponse(id: id, result: nil)
+
+        case "session/request_permission":
+            // Auto-allow: find first allow option
+            var optionId = "allow-once"
+            if let options = params?["options"] as? [[String: Any]] {
+                for option in options {
+                    if let kind = option["kind"] as? String, kind.hasPrefix("allow"),
+                       let oid = option["optionId"] as? String {
+                        optionId = oid
+                        break
                     }
                 }
             }
-        }
-    }
+            sendResponse(id: id, result: AnyCodable([
+                "outcome": AnyCodable([
+                    "outcome": AnyCodable("selected"),
+                    "optionId": AnyCodable(optionId)
+                ])
+            ]))
 
-    private func handleNotification(_ notification: JsonRpcNotification) {
-        switch notification.method {
-        case "session/update":
-            if let params = notification.params,
-               let kind = params["kind"]?.stringValue {
-                handleSessionUpdate(kind: kind, params: params)
-            }
         default:
-            break
+            // Unknown method — respond with error
+            sendErrorResponse(id: id, code: -32601, message: "Method not found: \(method)")
         }
     }
 
-    private func handleSessionUpdate(kind: String, params: [String: AnyCodable]) {
+    // MARK: - Session Update Handling
+
+    private func handleSessionUpdate(_ params: [String: AnyCodable]?) {
+        guard let update = params?["update"]?.dictValue,
+              let kind = update["sessionUpdate"]?.stringValue else { return }
+
         switch kind {
-        case "message_chunk":
-            if let chunk = params["chunk"]?.dictValue,
-               let text = chunk["text"]?.stringValue {
+        case "agent_message_chunk":
+            if let content = update["content"]?.dictValue,
+               let text = content["text"]?.stringValue {
+                DispatchQueue.main.async { self.onUpdate?(text) }
+            }
+
+        case "tool_call":
+            if let toolCallId = update["toolCallId"]?.stringValue,
+               let title = update["title"]?.stringValue {
+                let toolKind = update["kind"]?.stringValue ?? "other"
+                let status = update["status"]?.stringValue ?? "pending"
+                let call = ACPToolCall(id: toolCallId, title: title, kind: toolKind, status: status)
                 DispatchQueue.main.async {
-                    self.onUpdate?(text)
+                    self.toolCalls.append(call)
+                    self.onToolCall?(call)
                 }
             }
-        case "tool_call":
-            // Could show tool calls in UI
-            break
+
+        case "tool_call_update":
+            if let toolCallId = update["toolCallId"]?.stringValue {
+                let status = update["status"]?.stringValue ?? "in_progress"
+                DispatchQueue.main.async {
+                    if let idx = self.toolCalls.firstIndex(where: { $0.id == toolCallId }) {
+                        self.toolCalls[idx].status = status
+                    }
+                    self.onToolCallUpdate?(toolCallId, status)
+                }
+            }
+
         default:
             break
         }
     }
+
+    // MARK: - Send Helpers
 
     private func sendRequest(
         method: String,
@@ -236,109 +213,142 @@ class ACPClient: ObservableObject {
     ) {
         let currentId = queue.sync { () -> Int in
             requestId += 1
-            let rid = requestId
-            pendingRequests[rid] = completion
-            return rid
+            pendingRequests[requestId] = completion
+            return requestId
         }
 
-        // 30-second timeout
-        queue.asyncAfter(deadline: .now() + 30) { [weak self] in
+        queue.asyncAfter(deadline: .now() + 60) { [weak self] in
             guard let self = self else { return }
-            let handler = self.queue.sync {
-                self.pendingRequests.removeValue(forKey: currentId)
-            }
+            let handler = self.queue.sync { self.pendingRequests.removeValue(forKey: currentId) }
             if let handler = handler {
-                let userInfo = [NSLocalizedDescriptionKey: "Request timed out"]
-                DispatchQueue.main.async {
-                    handler(.failure(
-                        NSError(domain: "ACP", code: -2, userInfo: userInfo)
-                    ))
-                }
+                let err = NSError(
+                    domain: "ACP", code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: "Request timed out"]
+                )
+                DispatchQueue.main.async { handler(.failure(err)) }
             }
         }
 
-        let request = JsonRpcRequest(
-            id: currentId, method: method, params: params
-        )
-
-        guard let data = try? JSONEncoder().encode(request),
-              var json = String(data: data, encoding: .utf8) else {
-            let handler = queue.sync {
-                pendingRequests.removeValue(forKey: currentId)
-            }
-            let userInfo = [NSLocalizedDescriptionKey: "Encoding failed"]
-            DispatchQueue.main.async {
-                handler?(.failure(
-                    NSError(domain: "ACP", code: -1, userInfo: userInfo)
-                ))
-            }
-            return
-        }
-
-        json += "\n"
-        guard let writeData = json.data(using: .utf8) else { return }
-        stdin?.write(writeData)
+        let request = JsonRpcRequest(id: currentId, method: method, params: params)
+        writeMessage(request)
     }
 
-    // MARK: - ACP Methods
+    private func sendResponse(id: Int, result: AnyCodable?) {
+        var dict: [String: Any] = ["jsonrpc": "2.0", "id": id]
+        if let result = result {
+            dict["result"] = encodeAnyCodable(result)
+        } else {
+            dict["result"] = NSNull()
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              var json = String(data: data, encoding: .utf8) else { return }
+        json += "\n"
+        if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
+    }
+
+    private func sendErrorResponse(id: Int, code: Int, message: String) {
+        let dict: [String: Any] = [
+            "jsonrpc": "2.0", "id": id,
+            "error": ["code": code, "message": message]
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              var json = String(data: data, encoding: .utf8) else { return }
+        json += "\n"
+        if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
+    }
+
+    private func sendNotification(method: String, params: [String: AnyCodable]) {
+        let notification = JsonRpcNotification(jsonrpc: "2.0", method: method, params: params)
+        guard let data = try? JSONEncoder().encode(notification),
+              var json = String(data: data, encoding: .utf8) else { return }
+        json += "\n"
+        if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
+    }
+
+    private func writeMessage<T: Encodable>(_ message: T) {
+        guard let data = try? JSONEncoder().encode(message),
+              var json = String(data: data, encoding: .utf8) else { return }
+        json += "\n"
+        if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
+    }
+
+    private func encodeAnyCodable(_ value: AnyCodable) -> Any {
+        switch value.value {
+        case let str as String: return str
+        case let int as Int: return int
+        case let dbl as Double: return dbl
+        case let bool as Bool: return bool
+        case let dict as [String: AnyCodable]:
+            return dict.mapValues { encodeAnyCodable($0) }
+        case let arr as [AnyCodable]:
+            return arr.map { encodeAnyCodable($0) }
+        default: return NSNull()
+        }
+    }
+
+    // MARK: - ACP Protocol Methods
 
     private func initialize() {
         let params: [String: AnyCodable] = [
-            "client_info": AnyCodable([
-                "name": AnyCodable("Synth"),
-                "version": AnyCodable("1.0.0")
-            ]),
-            "capabilities": AnyCodable([
+            "protocolVersion": AnyCodable(1),
+            "clientCapabilities": AnyCodable([
                 "fs": AnyCodable([
                     "readTextFile": AnyCodable(true),
                     "writeTextFile": AnyCodable(true)
-                ])
+                ]),
+                "terminal": AnyCodable(false)
+            ]),
+            "clientInfo": AnyCodable([
+                "name": AnyCodable("synth"),
+                "title": AnyCodable("Synth"),
+                "version": AnyCodable("1.0.0")
             ])
         ]
 
         sendRequest(method: "initialize", params: params) { [weak self] result in
             switch result {
             case .success:
-                DispatchQueue.main.async {
-                    self?.isConnected = true
-                }
+                DispatchQueue.main.async { self?.isConnected = true }
                 self?.createSession()
-            case .failure(let error):
-                print("Initialize failed: \(error)")
+            case .failure:
+                DispatchQueue.main.async { self?.connectionFailed = true }
             }
         }
     }
 
     private func createSession() {
-        sendRequest(method: "session/new") { [weak self] result in
+        let params: [String: AnyCodable] = [
+            "cwd": AnyCodable(cwd)
+        ]
+
+        sendRequest(method: "session/new", params: params) { [weak self] result in
             if case .success(let response) = result,
                let dict = response?.dictValue,
-               let id = dict["session_id"]?.stringValue {
-                DispatchQueue.main.async {
-                    self?.sessionId = id
-                }
+               let sid = dict["sessionId"]?.stringValue {
+                DispatchQueue.main.async { self?.sessionId = sid }
             }
         }
     }
 
-    func sendPrompt(_ text: String, filePath: String? = nil) {
-        var content = text
-        if let path = filePath {
-            content = "Working on file: \(path)\n\n\(text)"
-        }
+    func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {
+        guard let sid = sessionId else { return }
 
         let params: [String: AnyCodable] = [
-            "session_id": AnyCodable(sessionId ?? ""),
-            "content": AnyCodable([
-                AnyCodable([
-                    "type": AnyCodable("text"),
-                    "text": AnyCodable(content)
-                ])
-            ])
+            "sessionId": AnyCodable(sid),
+            "prompt": AnyCodable(contentBlocks.map { AnyCodable($0) })
         ]
 
-        sendRequest(method: "session/prompt", params: params) { _ in
-            // Response indicates turn complete
+        toolCalls.removeAll()
+
+        sendRequest(method: "session/prompt", params: params) { [weak self] _ in
+            DispatchQueue.main.async { self?.onTurnComplete?() }
         }
+    }
+
+    func sendCancel() {
+        guard let sid = sessionId else { return }
+        sendNotification(method: "session/cancel", params: [
+            "sessionId": AnyCodable(sid)
+        ])
     }
 }

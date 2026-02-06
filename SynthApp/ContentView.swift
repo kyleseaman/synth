@@ -5,12 +5,12 @@ extension Notification.Name {
     static let toggleSidebar = Notification.Name("toggleSidebar")
     static let toggleChat = Notification.Name("toggleChat")
     static let showFileLauncher = Notification.Name("showFileLauncher")
+    static let reloadEditor = Notification.Name("reloadEditor")
 }
 
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showChat = false
     @State private var showFileLauncher = false
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
@@ -71,25 +71,54 @@ struct ContentView: View {
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty, store.currentIndex >= 0 {
-                    EditorViewSimple()
-                        .id(store.openFiles[store.currentIndex].url)
+                    let currentDoc = store.openFiles[store.currentIndex]
+                    let chatState = store.chatState(for: currentDoc.url)
+
+                    ZStack(alignment: .bottom) {
+                        EditorViewSimple()
+                            .id(currentDoc.url)
+
+                        // Undo toast overlay
+                        if chatState.undoSnapshot != nil {
+                            UndoToast {
+                                if let snapshot = chatState.undoSnapshot {
+                                    if let idx = store.openFiles.firstIndex(
+                                        where: { $0.url == snapshot.url }
+                                    ) {
+                                        store.openFiles[idx].content = NSAttributedString(
+                                            string: snapshot.content
+                                        )
+                                        store.openFiles[idx].isDirty = true
+                                        store.objectWillChange.send()
+                                    }
+                                    chatState.dismissUndo()
+                                }
+                            }
+                            .padding(.bottom, store.isChatVisibleForCurrentTab ? 8 : 16)
+                        }
+                    }
+
+                    if store.isChatVisibleForCurrentTab {
+                        DocumentChatTray(
+                            chatState: chatState,
+                            documentURL: currentDoc.url,
+                            documentContent: currentDoc.content.string,
+                            selectedText: nil,
+                            selectedLineRange: nil
+                        )
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 } else {
                     Text("Open a file to start editing")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
 
-                if showChat {
-                    ChatPanel()
-                        .frame(height: 200)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                if !showChat {
+                if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty {
                     HStack {
                         Spacer()
                         Button {
-                            NotificationCenter.default.post(name: .toggleChat, object: nil)
+                            store.toggleChatForCurrentTab()
                         } label: {
                             Image(systemName: "terminal")
                                 .padding(8)
@@ -117,6 +146,7 @@ struct ContentView: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: showFileLauncher)
+        .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
                 columnVisibility = columnVisibility == .all ? .detailOnly : .all
@@ -124,7 +154,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleChat)) { _ in
             withAnimation {
-                showChat.toggle()
+                store.toggleChatForCurrentTab()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
@@ -132,6 +162,8 @@ struct ContentView: View {
         }
     }
 }
+
+// MARK: - File Tree Views
 
 struct FileRow: View {
     let node: FileTreeNode
@@ -146,7 +178,10 @@ struct FileRow: View {
         }
         .padding(.vertical, 2)
         .padding(.horizontal, 4)
-        .background(isHovering ? Color.primary.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
+        .background(
+            isHovering ? Color.primary.opacity(0.1) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 4)
+        )
         .onHover { isHovering = $0 }
     }
 }
@@ -206,6 +241,8 @@ struct FileNodeView: View {
     }
 }
 
+// MARK: - Tab Button
+
 struct TabButton: View {
     let title: String
     let isSelected: Bool
@@ -243,12 +280,15 @@ struct TabButton: View {
     }
 }
 
+// MARK: - Editor View
+
 struct EditorViewSimple: View {
     @EnvironmentObject var store: DocumentStore
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
-    var centered: Bool = false
+    @State private var selectedText: String = ""
+    @State private var selectedLineRange: String = ""
 
     var body: some View {
         HStack(spacing: 0) {
@@ -256,12 +296,21 @@ struct EditorViewSimple: View {
                 .frame(width: 44)
                 .background(Color(nsColor: .textBackgroundColor))
 
-            MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
-                .background(Color(nsColor: .textBackgroundColor))
+            MarkdownEditor(
+                text: $text,
+                scrollOffset: $scrollOffset,
+                linePositions: $linePositions,
+                selectedText: $selectedText,
+                selectedLineRange: $selectedLineRange
+            )
+            .background(Color(nsColor: .textBackgroundColor))
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
         .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
+        .onReceive(NotificationCenter.default.publisher(for: .reloadEditor)) { _ in
+            loadText()
+        }
     }
 
     func loadText() {
@@ -288,7 +337,11 @@ struct LineNumberGutter: View {
                         let text = Text("\(lineIndex + 1)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundColor(Color(nsColor: .tertiaryLabelColor))
-                        context.draw(text, at: CGPoint(x: size.width - 8, y: yOffset), anchor: .trailing)
+                        context.draw(
+                            text,
+                            at: CGPoint(x: size.width - 8, y: yOffset),
+                            anchor: .trailing
+                        )
                     }
                 }
             }

@@ -15,8 +15,11 @@
 		1A0000000000000000000045 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000019 /* ContentView.swift */; };
 		1A0000000000000000000047 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001B /* DocumentStore.swift */; };
 		1A0000000000000000000048 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001C /* SettingsView.swift */; };
-		1A0000000000000000000049 /* ChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* ChatPanel.swift */; };
+		1A0000000000000000000049 /* DocumentChatTray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* DocumentChatTray.swift */; };
 		1A000000000000000000004A /* ACPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001E /* ACPClient.swift */; };
+		1A000000000000000000004B /* DocumentChatState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001F /* DocumentChatState.swift */; };
+		1A000000000000000000004C /* ACPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000025 /* ACPTypes.swift */; };
+		1A000000000000000000004D /* ChatBubbles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000026 /* ChatBubbles.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,8 +35,11 @@
 		1A0000000000000000000019 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1A000000000000000000001B /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
 		1A000000000000000000001C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		1A000000000000000000001D /* ChatPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanel.swift; sourceTree = "<group>"; };
+		1A000000000000000000001D /* DocumentChatTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatTray.swift; sourceTree = "<group>"; };
 		1A000000000000000000001E /* ACPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPClient.swift; sourceTree = "<group>"; };
+		1A000000000000000000001F /* DocumentChatState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatState.swift; sourceTree = "<group>"; };
+		1A0000000000000000000025 /* ACPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPTypes.swift; sourceTree = "<group>"; };
+		1A0000000000000000000026 /* ChatBubbles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbles.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,8 +74,11 @@
 				1A0000000000000000000019 /* ContentView.swift */,
 				1A000000000000000000001B /* DocumentStore.swift */,
 				1A000000000000000000001C /* SettingsView.swift */,
-				1A000000000000000000001D /* ChatPanel.swift */,
+				1A000000000000000000001D /* DocumentChatTray.swift */,
 				1A000000000000000000001E /* ACPClient.swift */,
+				1A000000000000000000001F /* DocumentChatState.swift */,
+				1A0000000000000000000025 /* ACPTypes.swift */,
+				1A0000000000000000000026 /* ChatBubbles.swift */,
 				1A0000000000000000000015 /* Theme.swift */,
 				1A0000000000000000000016 /* Document.swift */,
 				1A0000000000000000000013 /* BridgingHeader.h */,
@@ -174,8 +183,11 @@
 				1A0000000000000000000045 /* ContentView.swift in Sources */,
 				1A0000000000000000000047 /* DocumentStore.swift in Sources */,
 				1A0000000000000000000048 /* SettingsView.swift in Sources */,
-				1A0000000000000000000049 /* ChatPanel.swift in Sources */,
+				1A0000000000000000000049 /* DocumentChatTray.swift in Sources */,
 				1A000000000000000000004A /* ACPClient.swift in Sources */,
+				1A000000000000000000004B /* DocumentChatState.swift in Sources */,
+				1A000000000000000000004C /* ACPTypes.swift in Sources */,
+				1A000000000000000000004D /* ChatBubbles.swift in Sources */,
 				1A0000000000000000000041 /* Theme.swift in Sources */,
 				1A0000000000000000000042 /* Document.swift in Sources */,
 			);
