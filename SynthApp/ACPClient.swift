@@ -166,21 +166,11 @@ class ACPClient: ObservableObject {
             sendResponse(id: id, result: nil)
 
         case "session/request_permission":
-            // Auto-allow: find first allow option
-            var optionId = "allow-once"
-            if let options = params?["options"] as? [[String: Any]] {
-                for option in options {
-                    if let kind = option["kind"] as? String, kind.hasPrefix("allow"),
-                       let oid = option["optionId"] as? String {
-                        optionId = oid
-                        break
-                    }
-                }
-            }
+            // Auto-deny all permission requests
             sendResponse(id: id, result: AnyCodable([
                 "outcome": AnyCodable([
                     "outcome": AnyCodable("selected"),
-                    "optionId": AnyCodable(optionId)
+                    "optionId": AnyCodable("deny")
                 ])
             ]))
 
