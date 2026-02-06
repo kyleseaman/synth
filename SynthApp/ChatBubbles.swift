@@ -10,7 +10,6 @@ struct ChatBubble: View {
             if message.role == .user { Spacer(minLength: 40) }
             MarkdownText(message.content)
                 .font(.system(size: 13))
-                .textSelection(.enabled)
                 .padding(10)
                 .background(
                     message.role == .user
@@ -35,7 +34,6 @@ struct StreamingBubble: View {
                 if !text.isEmpty {
                     MarkdownText(text)
                         .font(.system(size: 13))
-                        .textSelection(.enabled)
                 }
                 if isLoading {
                     HStack(spacing: 4) {
@@ -69,8 +67,10 @@ struct MarkdownText: View {
             options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         ) {
             Text(attributed)
+                .textSelection(.enabled)
         } else {
             Text(source)
+                .textSelection(.enabled)
         }
     }
 }
