@@ -150,11 +150,9 @@ struct DocumentChatTray: View {
                 Text(perm.title)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
-                if let preview = permissionPreview(perm) {
+                if let diff = perm.diffContent {
                     ScrollView {
-                        Text(preview)
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        permissionDiffView(diff)
                     }
                     .frame(height: 120)
                     .padding(6)
@@ -206,12 +204,30 @@ struct DocumentChatTray: View {
         chatState.respondToPermission(optionId: "reject_once")
     }
 
-    private func permissionPreview(_ perm: ACPPermissionRequest) -> String? {
-        if let diff = perm.diffContent {
-            let preview = diff.newText
-            return preview.count > 500 ? String(preview.prefix(500)) + "..." : preview
+    @ViewBuilder
+    private func permissionDiffView(_ diff: DiffContent) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !diff.oldText.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Remove:")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(diff.oldText.prefix(300) + (diff.oldText.count > 300 ? "..." : ""))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.red)
+                        .strikethrough()
+                }
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Add:")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.green)
+            }
         }
-        return nil
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Input Bar
