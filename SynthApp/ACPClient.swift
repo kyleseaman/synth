@@ -170,6 +170,8 @@ class ACPClient: ObservableObject {
             let toolCall = params?["toolCall"] as? [String: Any]
             let toolCallId = toolCall?["toolCallId"] as? String ?? ""
             let title = toolCall?["title"] as? String ?? "Permission requested"
+            let toolName = toolCall?["toolName"] as? String ?? ""
+            let input = toolCall?["input"] as? [String: Any] ?? [:]
             var opts: [(id: String, label: String, kind: String)] = []
             if let options = params?["options"] as? [[String: Any]] {
                 for opt in options {
@@ -180,7 +182,10 @@ class ACPClient: ObservableObject {
                     }
                 }
             }
-            let request = ACPPermissionRequest(id: id, toolCallId: toolCallId, title: title, options: opts)
+            let request = ACPPermissionRequest(
+                id: id, toolCallId: toolCallId, title: title,
+                toolName: toolName, input: input, options: opts
+            )
             DispatchQueue.main.async { self.pendingPermission = request }
 
         default:

@@ -143,11 +143,23 @@ struct DocumentChatTray: View {
     @ViewBuilder
     private var permissionBar: some View {
         if let perm = chatState.acpClient?.pendingPermission {
-            VStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(perm.title)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
+                if let preview = permissionPreview(perm) {
+                    ScrollView {
+                        Text(preview)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 100)
+                    .padding(6)
+                    .background(Color.primary.opacity(0.05))
+                    .cornerRadius(4)
+                }
                 HStack(spacing: 8) {
+                    Spacer()
                     Button("Deny") {
                         chatState.acpClient?.respondToPermission(optionId: "deny")
                     }
@@ -166,6 +178,23 @@ struct DocumentChatTray: View {
             .padding(.horizontal, 12)
             .padding(.top, 6)
         }
+    }
+
+    private func permissionPreview(_ perm: ACPPermissionRequest) -> String? {
+        if perm.toolName == "fs_write" {
+            if let content = perm.input["file_text"] as? String {
+                return content.count > 500 ? String(content.prefix(500)) + "..." : content
+            }
+            if let content = perm.input["new_str"] as? String {
+                return content.count > 500 ? String(content.prefix(500)) + "..." : content
+            }
+        }
+        if perm.toolName == "execute_bash" {
+            if let cmd = perm.input["command"] as? String {
+                return cmd
+            }
+        }
+        return nil
     }
 
     // MARK: - Input Bar

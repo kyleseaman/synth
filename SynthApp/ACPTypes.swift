@@ -101,6 +101,8 @@ struct ACPPermissionRequest: Identifiable {
     let id: Int  // JSON-RPC request ID
     let toolCallId: String
     let title: String
+    let toolName: String
+    let input: [String: Any]
     let options: [(id: String, label: String, kind: String)]
 }
 
