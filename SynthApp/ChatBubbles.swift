@@ -4,19 +4,35 @@ import SwiftUI
 
 struct ChatBubble: View {
     let message: ChatMessage
+    @State private var isHovered = false
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
-            MarkdownText(message.content)
-                .font(.system(size: 13))
-                .padding(10)
-                .background(
-                    message.role == .user
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.primary.opacity(0.05)
-                )
-                .cornerRadius(8)
+            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
+                MarkdownText(message.content)
+                    .font(.system(size: 13))
+                    .padding(10)
+                    .background(
+                        message.role == .user
+                            ? Color.accentColor.opacity(0.15)
+                            : Color.primary.opacity(0.05)
+                    )
+                    .cornerRadius(8)
+
+                if message.role == .assistant && isHovered {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(message.content, forType: .string)
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .onHover { isHovered = $0 }
             if message.role == .assistant { Spacer(minLength: 40) }
         }
     }
