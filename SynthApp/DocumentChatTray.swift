@@ -156,9 +156,14 @@ struct DocumentChatTray: View {
                 agentPicker
                 Spacer()
                 Button(action: sendMessage) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(input.isEmpty ? Color.secondary.opacity(0.4) : Color.accentColor)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(input.isEmpty ? Color.secondary.opacity(0.3) : Color.accentColor)
+                        )
                 }
                 .buttonStyle(.plain)
                 .disabled(input.isEmpty)
@@ -203,13 +208,13 @@ struct DocumentChatTray: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "sparkles")
-                if let agent = selectedAgent {
-                    Text(agent)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                }
+                    .font(.system(size: 12))
+                Text(selectedAgent ?? "Auto")
+                    .font(.system(size: 12))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8))
             }
-            .foregroundStyle(.tint)
+            .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
