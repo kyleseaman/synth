@@ -129,33 +129,36 @@ struct DocumentChatTray: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        HStack(spacing: 8) {
-            agentPicker
-
-            TextField("Ask Kiro...", text: $input)
+        VStack(spacing: 0) {
+            TextField("Reply...", text: $input, axis: .vertical)
                 .textFieldStyle(.plain)
+                .lineLimit(1...5)
                 .focused($isInputFocused)
                 .onSubmit { sendMessage() }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
 
-            if !input.isEmpty {
+            HStack(spacing: 8) {
+                agentPicker
+                Spacer()
                 Button(action: sendMessage) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.tint)
-                }.buttonStyle(.plain)
+                        .font(.system(size: 22))
+                        .foregroundStyle(input.isEmpty ? Color.secondary.opacity(0.4) : Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .disabled(input.isEmpty)
             }
-
-            Button {
-                NotificationCenter.default.post(name: .toggleChat, object: nil)
-            } label: {
-                Image(systemName: "chevron.down.circle.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Close (⌘J)")
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
         }
-        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+        )
+        .padding(.horizontal, 10)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
