@@ -94,7 +94,7 @@ struct DocumentChatTray: View {
                         ).id("streaming")
                     }
                 }
-                .padding(.leading, 12)
+                .padding(.leading, 38)
                 .padding(.trailing, 56)
                 .padding(.vertical, 6)
             }
