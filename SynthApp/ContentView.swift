@@ -15,16 +15,41 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(store.fileTree, children: \.children) { node in
-                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
-                    .onTapGesture {
-                        if !node.isDirectory {
-                            store.open(node.url)
-                        }
+            VStack {
+                if store.workspace == nil {
+                    VStack(spacing: 12) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.secondary)
+                        Text("No workspace open")
+                            .foregroundStyle(.secondary)
+                        Button("Open Workspace...") { store.pickWorkspace() }
+                            .keyboardShortcut("o")
                     }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    List(store.fileTree, children: \.children) { node in
+                        FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
+                            .onTapGesture {
+                                if !node.isDirectory {
+                                    store.open(node.url)
+                                }
+                            }
+                    }
+                    .listStyle(.sidebar)
+                }
             }
-            .listStyle(.sidebar)
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        store.pickWorkspace()
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .help("Open Workspace (⌘O)")
+                }
+            }
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty {
@@ -38,7 +63,10 @@ struct ContentView: View {
                 if showChat {
                     ChatPanel()
                         .frame(height: 200)
-                } else {
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                if !showChat {
                     HStack {
                         Spacer()
                         Button {
@@ -164,8 +192,8 @@ struct EditorViewSimple: View {
             MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
                 .background(Color(nsColor: .textBackgroundColor))
         }
-        .onChange(of: store.currentIndex) { loadText() }
-        .onChange(of: text) { saveText() }
+        .onChange(of: store.currentIndex) { _, _ in loadText() }
+        .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
     }
 

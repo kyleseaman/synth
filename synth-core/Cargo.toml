@@ -7,4 +7,3 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
-docx-rs = "0.4"

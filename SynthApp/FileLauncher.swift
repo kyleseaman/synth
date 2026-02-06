@@ -34,22 +34,22 @@ struct FileLauncher: View {
     @Binding var isPresented: Bool
     @State private var query = ""
     @State private var selectedIndex = 0
+    @State private var cachedFiles: [FileTreeNode] = []
     @FocusState private var isSearchFocused: Bool
 
     var results: [SearchResult] {
-        let allFiles = flattenFiles(store.fileTree)
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
             let recentNodes = store.recentFiles.compactMap { url in
-                allFiles.first { $0.url == url }
+                cachedFiles.first { $0.url == url }
             }
-            let others = allFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
+            let others = cachedFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
             return (recentNodes + others).map { SearchResult(node: $0, score: 0) }
         }
 
-        return allFiles
+        return cachedFiles
             .compactMap { file -> SearchResult? in
                 guard let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
                 let recentBonus = store.recentFiles.contains(file.url) ? 2000 : 0
@@ -98,7 +98,7 @@ struct FileLauncher: View {
                         }
                     }
                 }
-                .onChange(of: selectedIndex) { newValue in
+                .onChange(of: selectedIndex) { _, newValue in
                     withAnimation { proxy.scrollTo(newValue, anchor: .center) }
                 }
             }
@@ -108,8 +108,14 @@ struct FileLauncher: View {
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 8)
-        .onAppear { isSearchFocused = true }
-        .onChange(of: query) { selectedIndex = 0 }
+        .onAppear {
+            isSearchFocused = true
+            cachedFiles = Self.flattenFiles(store.fileTree)
+        }
+        .onChange(of: store.fileTree) {
+            cachedFiles = Self.flattenFiles(store.fileTree)
+        }
+        .onChange(of: query) { _, _ in selectedIndex = 0 }
         .background {
             KeyboardHandler(
                 onUp: { selectedIndex = max(0, selectedIndex - 1) },
@@ -119,7 +125,7 @@ struct FileLauncher: View {
         }
     }
 
-    func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
+    static func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
         var result: [FileTreeNode] = []
         for node in nodes {
             if !node.isDirectory { result.append(node) }
@@ -148,7 +154,7 @@ struct KeyboardHandler: NSViewRepresentable {
         view.onDown = onDown
         view.onEscape = onEscape
 
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             switch event.keyCode {
             case 126: view.onUp?(); return nil
             case 125: view.onDown?(); return nil
@@ -156,6 +162,7 @@ struct KeyboardHandler: NSViewRepresentable {
             default: return event
             }
         }
+        view.monitor = monitor
         return view
     }
 
@@ -167,9 +174,19 @@ struct KeyboardHandler: NSViewRepresentable {
         }
     }
 
+    static func dismantleNSView(_ nsView: NSView, coordinator: ()) {
+        if let view = nsView as? KeyHandlerView {
+            if let monitor = view.monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            view.monitor = nil
+        }
+    }
+
     class KeyHandlerView: NSView {
         var onUp: (() -> Void)?
         var onDown: (() -> Void)?
         var onEscape: (() -> Void)?
+        var monitor: Any?
     }
 }

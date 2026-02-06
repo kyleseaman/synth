@@ -1,55 +1,8 @@
-use docx_rs::*;
 use std::ffi::{CStr, CString};
-use std::fs::File;
-use std::io::Read;
 use std::os::raw::c_char;
 use std::process::{Command, Stdio};
 
-/// Extract plain text from a .docx file
-#[no_mangle]
-pub extern "C" fn extract_text(path: *const c_char) -> *mut c_char {
-    let c_str = unsafe { CStr::from_ptr(path) };
-    let path_str = match c_str.to_str() {
-        Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
-    };
-
-    let mut file = match File::open(path_str) {
-        Ok(f) => f,
-        Err(_) => return std::ptr::null_mut(),
-    };
-
-    let mut buf = Vec::new();
-    if file.read_to_end(&mut buf).is_err() {
-        return std::ptr::null_mut();
-    }
-
-    let doc = match read_docx(&buf) {
-        Ok(d) => d,
-        Err(_) => return std::ptr::null_mut(),
-    };
-
-    let mut text = String::new();
-    for child in doc.document.children {
-        if let DocumentChild::Paragraph(p) = child {
-            for pc in p.children {
-                if let ParagraphChild::Run(r) = pc {
-                    for rc in r.children {
-                        if let RunChild::Text(t) = rc {
-                            text.push_str(&t.text);
-                        }
-                    }
-                }
-            }
-            text.push('\n');
-        }
-    }
-
-    CString::new(text)
-        .map(|s| s.into_raw())
-        .unwrap_or(std::ptr::null_mut())
-}
-
+/// Free a string allocated by Rust
 #[no_mangle]
 pub extern "C" fn free_string(s: *mut c_char) {
     if !s.is_null() {
@@ -62,6 +15,10 @@ pub extern "C" fn free_string(s: *mut c_char) {
 /// Send a prompt to kiro-cli and get the response
 #[no_mangle]
 pub extern "C" fn kiro_chat(prompt: *const c_char) -> *mut c_char {
+    if prompt.is_null() {
+        return std::ptr::null_mut();
+    }
+
     let c_str = unsafe { CStr::from_ptr(prompt) };
     let prompt_str = match c_str.to_str() {
         Ok(s) => s,

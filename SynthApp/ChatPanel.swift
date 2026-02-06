@@ -1,11 +1,15 @@
 import SwiftUI
 import AppKit
 
+class ChatMessageStore: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+}
+
 struct ChatPanel: View {
     @EnvironmentObject var store: DocumentStore
     @StateObject private var acp = ACPClient()
+    @StateObject private var messageStore = ChatMessageStore()
     @State private var input = ""
-    @State private var messages: [ChatMessage] = []
     @State private var currentResponse = ""
     @State private var isLoading = false
     @FocusState private var isInputFocused: Bool
@@ -28,7 +32,7 @@ struct ChatPanel: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(messages) { msg in
+                        ForEach(messageStore.messages) { msg in
                             ChatBubble(message: msg).id(msg.id)
                         }
                         if !currentResponse.isEmpty || isLoading {
@@ -37,8 +41,8 @@ struct ChatPanel: View {
                         }
                     }.padding(12)
                 }
-                .onChange(of: messages.count) {
-                    if let last = messages.last {
+                .onChange(of: messageStore.messages.count) {
+                    if let last = messageStore.messages.last {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
@@ -85,7 +89,6 @@ struct ChatPanel: View {
             acp.onUpdate = { chunk in
                 currentResponse += chunk
             }
-            ChatController.shared.send = sendWithContext
         }
         .onDisappear {
             acp.stop()
@@ -96,7 +99,7 @@ struct ChatPanel: View {
         let prompt = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
 
-        messages.append(ChatMessage(role: .user, content: prompt))
+        messageStore.messages.append(ChatMessage(role: .user, content: prompt))
         input = ""
         currentResponse = ""
         isLoading = true
@@ -127,8 +130,7 @@ struct ChatPanel: View {
 
             DispatchQueue.main.async {
                 self.isLoading = false
-                self.messages.append(ChatMessage(role: .assistant, content: response))
-                self.applyChanges(response)
+                self.messageStore.messages.append(ChatMessage(role: .assistant, content: response))
             }
         }
     }
@@ -136,48 +138,18 @@ struct ChatPanel: View {
     func checkStreamingComplete() {
         let lastLength = currentResponse.count
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if currentResponse.count == lastLength && !currentResponse.isEmpty {
-                // Streaming complete
-                messages.append(ChatMessage(role: .assistant, content: currentResponse))
-                applyChanges(currentResponse)
-                currentResponse = ""
-                isLoading = false
-            } else if isLoading {
-                checkStreamingComplete()
-            }
-        }
-    }
-
-    func sendWithContext(_ prompt: String, _ selectedText: String) {
-        let full = "\(prompt)\n\nSelected text:\n\"\"\"\n\(selectedText)\n\"\"\""
-        messages.append(ChatMessage(role: .user, content: full))
-        currentResponse = ""
-        isLoading = true
-
-        let filePath = store.currentIndex >= 0 ? store.openFiles[store.currentIndex].url.path : nil
-
-        if acp.isConnected {
-            acp.sendPrompt(full, filePath: filePath)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.currentResponse.count == lastLength && !self.currentResponse.isEmpty {
+                self.messageStore.messages.append(
+                    ChatMessage(role: .assistant, content: self.currentResponse)
+                )
+                self.currentResponse = ""
+                self.isLoading = false
+            } else if self.isLoading {
                 self.checkStreamingComplete()
             }
-        } else {
-            runFallbackChat(prompt: full, filePath: filePath)
         }
     }
 
-    func applyChanges(_ response: String) {
-        guard store.currentIndex >= 0,
-              let regex = try? NSRegularExpression(pattern: "```(?:markdown|md|text)?\\n([\\s\\S]*?)```"),
-              let match = regex.firstMatch(in: response, range: NSRange(response.startIndex..., in: response)),
-              let range = Range(match.range(at: 1), in: response) else { return }
-
-        let content = String(response[range])
-        let attrs: [NSAttributedString.Key: Any] = [.font: Theme.editorFont, .foregroundColor: Theme.offBlack]
-        store.openFiles[store.currentIndex].content = NSAttributedString(string: content, attributes: attrs)
-        store.objectWillChange.send()
-        NotificationCenter.default.post(name: .reloadEditor, object: nil)
-    }
 }
 
 struct ChatMessage: Identifiable {
@@ -230,12 +202,6 @@ struct StreamingBubble: View {
     }
 }
 
-class ChatController {
-    static let shared = ChatController()
-    var send: ((String, String) -> Void)?
-}
-
 extension Notification.Name {
     static let reloadEditor = Notification.Name("reloadEditor")
-    static let showChat = Notification.Name("showChat")
 }

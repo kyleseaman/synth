@@ -10,12 +10,9 @@
 		1A0000000000000000000001 /* SynthApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000011 /* SynthApp.swift */; };
 		1A0000000000000000000041 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000015 /* Theme.swift */; };
 		1A0000000000000000000042 /* Document.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000016 /* Document.swift */; };
-		1A0000000000000000000043 /* MarkdownRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000017 /* MarkdownRenderer.swift */; };
-		1A0000000000000000000044 /* AIPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000018 /* AIPanel.swift */; };
 		1B314FD176A9126C2D604BDE /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */; };
 		1D9182416C9E0B08F19A681C /* FileLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CED1C0DF1D02542388054A9 /* FileLauncher.swift */; };
 		1A0000000000000000000045 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000019 /* ContentView.swift */; };
-		1A0000000000000000000046 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001A /* EditorView.swift */; };
 		1A0000000000000000000047 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001B /* DocumentStore.swift */; };
 		1A0000000000000000000048 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001C /* SettingsView.swift */; };
 		1A0000000000000000000049 /* ChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* ChatPanel.swift */; };
@@ -30,12 +27,9 @@
 		1A0000000000000000000014 /* synth_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = synth_core.h; path = "synth-core/synth_core.h"; sourceTree = "<group>"; };
 		1A0000000000000000000015 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		1A0000000000000000000016 /* Document.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Document.swift; sourceTree = "<group>"; };
-		1A0000000000000000000017 /* MarkdownRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownRenderer.swift; sourceTree = "<group>"; };
-		1A0000000000000000000018 /* AIPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIPanel.swift; sourceTree = "<group>"; };
 		1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
 		1CED1C0DF1D02542388054A9 /* FileLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLauncher.swift; sourceTree = "<group>"; };
 		1A0000000000000000000019 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		1A000000000000000000001A /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
 		1A000000000000000000001B /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
 		1A000000000000000000001C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A000000000000000000001D /* ChatPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanel.swift; sourceTree = "<group>"; };
@@ -72,15 +66,12 @@
 
 
 				1A0000000000000000000019 /* ContentView.swift */,
-				1A000000000000000000001A /* EditorView.swift */,
 				1A000000000000000000001B /* DocumentStore.swift */,
 				1A000000000000000000001C /* SettingsView.swift */,
 				1A000000000000000000001D /* ChatPanel.swift */,
 				1A000000000000000000001E /* ACPClient.swift */,
 				1A0000000000000000000015 /* Theme.swift */,
 				1A0000000000000000000016 /* Document.swift */,
-				1A0000000000000000000017 /* MarkdownRenderer.swift */,
-				1A0000000000000000000018 /* AIPanel.swift */,
 				1A0000000000000000000013 /* BridgingHeader.h */,
 			);
 			path = SynthApp;
@@ -181,15 +172,12 @@
 
 
 				1A0000000000000000000045 /* ContentView.swift in Sources */,
-				1A0000000000000000000046 /* EditorView.swift in Sources */,
 				1A0000000000000000000047 /* DocumentStore.swift in Sources */,
 				1A0000000000000000000048 /* SettingsView.swift in Sources */,
 				1A0000000000000000000049 /* ChatPanel.swift in Sources */,
 				1A000000000000000000004A /* ACPClient.swift in Sources */,
 				1A0000000000000000000041 /* Theme.swift in Sources */,
 				1A0000000000000000000042 /* Document.swift in Sources */,
-				1A0000000000000000000043 /* MarkdownRenderer.swift in Sources */,
-				1A0000000000000000000044 /* AIPanel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

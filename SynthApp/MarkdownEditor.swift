@@ -268,7 +268,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
 
-        NotificationCenter.default.addObserver(
+        context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
             object: scrollView.contentView,
             queue: .main
@@ -298,8 +298,15 @@ struct MarkdownEditor: NSViewRepresentable {
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
+        var boundsObserver: NSObjectProtocol?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
+
+        deinit {
+            if let observer = boundsObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
 
         func updateScrollOffset() {
             guard let scrollView = scrollView else { return }
