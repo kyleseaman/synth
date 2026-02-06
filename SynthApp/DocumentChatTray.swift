@@ -161,22 +161,33 @@ struct DocumentChatTray: View {
                 }
                 HStack(spacing: 8) {
                     Spacer()
-                    Button("Deny") {
+                    Button {
                         denyPermission()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("Deny")
+                            Text("esc").font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.escape, modifiers: [])
                     Button {
                         allowPermission()
                     } label: {
-                        Label("Allow", systemImage: "return")
+                        HStack(spacing: 4) {
+                            Text("Allow")
+                            Text("↩").font(.system(size: 12))
+                        }
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: [])
                     Button {
                         alwaysAllowPermission()
                     } label: {
-                        Label("Always Allow", systemImage: "command")
+                        HStack(spacing: 4) {
+                            Text("Always Allow")
+                            Text("⌘↩").font(.system(size: 11))
+                        }
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.return, modifiers: .command)
