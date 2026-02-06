@@ -54,6 +54,8 @@ struct AnyCodable: Codable {
             value = str
         } else if let int = try? container.decode(Int.self) {
             value = int
+        } else if let dbl = try? container.decode(Double.self) {
+            value = dbl
         } else if let bool = try? container.decode(Bool.self) {
             value = bool
         } else if let dict = try? container.decode([String: AnyCodable].self) {
@@ -70,6 +72,7 @@ struct AnyCodable: Codable {
         switch value {
         case let str as String: try container.encode(str)
         case let int as Int: try container.encode(int)
+        case let dbl as Double: try container.encode(dbl)
         case let bool as Bool: try container.encode(bool)
         case let dict as [String: AnyCodable]: try container.encode(dict)
         case let arr as [AnyCodable]: try container.encode(arr)
@@ -78,6 +81,7 @@ struct AnyCodable: Codable {
     }
 
     var stringValue: String? { value as? String }
+    var doubleValue: Double? { value as? Double }
     var dictValue: [String: AnyCodable]? { value as? [String: AnyCodable] }
 }
 
@@ -90,6 +94,7 @@ class ACPClient: ObservableObject {
     private var requestId = 0
     private var pendingRequests: [Int: (Result<AnyCodable?, Error>) -> Void] = [:]
     private var buffer = Data()
+    private let queue = DispatchQueue(label: "com.synth.acp")
 
     @Published var isConnected = false
     @Published var sessionId: String?
@@ -147,13 +152,22 @@ class ACPClient: ObservableObject {
     }
 
     private func handleData(_ data: Data) {
-        buffer.append(data)
+        queue.sync {
+            buffer.append(data)
+        }
 
-        while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-            let lineData = buffer[..<newlineIndex]
-            buffer = buffer[(newlineIndex + 1)...]
-
-            guard let line = String(data: lineData, encoding: .utf8), !line.isEmpty else { continue }
+        while true {
+            let lineData: Data? = queue.sync {
+                guard let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) else {
+                    return nil
+                }
+                let line = Data(buffer[..<newlineIndex])
+                buffer = buffer[(newlineIndex + 1)...]
+                return line
+            }
+            guard let data = lineData else { break }
+            guard let line = String(data: data, encoding: .utf8),
+                  !line.isEmpty else { continue }
             processMessage(line)
         }
     }
@@ -161,21 +175,27 @@ class ACPClient: ObservableObject {
     private func processMessage(_ json: String) {
         guard let data = json.data(using: .utf8) else { return }
 
-        // Try as notification first
         if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data) {
             handleNotification(notification)
             return
         }
 
-        // Try as response
         if let response = try? JSONDecoder().decode(JsonRpcResponse.self, from: data),
-           let id = response.id,
-           let handler = pendingRequests.removeValue(forKey: id) {
-            if let error = response.error {
-                let userInfo = [NSLocalizedDescriptionKey: error.message]
-                handler(.failure(NSError(domain: "ACP", code: error.code, userInfo: userInfo)))
-            } else {
-                handler(.success(response.result))
+           let id = response.id {
+            let handler = queue.sync { pendingRequests.removeValue(forKey: id) }
+            if let handler = handler {
+                if let error = response.error {
+                    let userInfo = [NSLocalizedDescriptionKey: error.message]
+                    DispatchQueue.main.async {
+                        handler(.failure(
+                            NSError(domain: "ACP", code: error.code, userInfo: userInfo)
+                        ))
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        handler(.success(response.result))
+                    }
+                }
             }
         }
     }
@@ -214,19 +234,50 @@ class ACPClient: ObservableObject {
         params: [String: AnyCodable]? = nil,
         completion: @escaping (Result<AnyCodable?, Error>) -> Void
     ) {
-        requestId += 1
-        let request = JsonRpcRequest(id: requestId, method: method, params: params)
-        pendingRequests[requestId] = completion
+        let currentId = queue.sync { () -> Int in
+            requestId += 1
+            let rid = requestId
+            pendingRequests[rid] = completion
+            return rid
+        }
+
+        // 30-second timeout
+        queue.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self = self else { return }
+            let handler = self.queue.sync {
+                self.pendingRequests.removeValue(forKey: currentId)
+            }
+            if let handler = handler {
+                let userInfo = [NSLocalizedDescriptionKey: "Request timed out"]
+                DispatchQueue.main.async {
+                    handler(.failure(
+                        NSError(domain: "ACP", code: -2, userInfo: userInfo)
+                    ))
+                }
+            }
+        }
+
+        let request = JsonRpcRequest(
+            id: currentId, method: method, params: params
+        )
 
         guard let data = try? JSONEncoder().encode(request),
               var json = String(data: data, encoding: .utf8) else {
+            let handler = queue.sync {
+                pendingRequests.removeValue(forKey: currentId)
+            }
             let userInfo = [NSLocalizedDescriptionKey: "Encoding failed"]
-            completion(.failure(NSError(domain: "ACP", code: -1, userInfo: userInfo)))
+            DispatchQueue.main.async {
+                handler?(.failure(
+                    NSError(domain: "ACP", code: -1, userInfo: userInfo)
+                ))
+            }
             return
         }
 
         json += "\n"
-        stdin?.write(json.data(using: .utf8)!)
+        guard let writeData = json.data(using: .utf8) else { return }
+        stdin?.write(writeData)
     }
 
     // MARK: - ACP Methods

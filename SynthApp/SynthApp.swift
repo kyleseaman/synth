@@ -14,6 +14,11 @@ struct SynthApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var store = DocumentStore()
 
+    init() {
+        // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
+        signal(SIGPIPE, SIG_IGN)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -29,6 +34,8 @@ struct SynthApp: App {
                     .keyboardShortcut("n")
             }
             CommandGroup(after: .newItem) {
+                Button("Open Workspace...") { store.pickWorkspace() }
+                    .keyboardShortcut("o")
                 Button("Save") { store.save() }
                     .keyboardShortcut("s")
                 Divider()
@@ -52,7 +59,7 @@ struct SynthApp: App {
                         .keyboardShortcut(KeyEquivalent(Character("\(tabNum)")), modifiers: .command)
                 }
             }
-            CommandGroup(replacing: .textFormatting) {
+            CommandGroup(after: .textFormatting) {
                 Button("Go to File") {
                     NotificationCenter.default.post(name: .showFileLauncher, object: nil)
                 }

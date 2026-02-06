@@ -88,10 +88,11 @@ class DocumentStore: ObservableObject {
 
     func loadFileTree() {
         guard let workspace = workspace else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            fileTree = FileTreeNode.scan(workspace)
+        Task.detached(priority: .userInitiated) {
+            let tree = FileTreeNode.scan(workspace)
+            await MainActor.run {
+                self.fileTree = tree
+            }
         }
     }
 
@@ -150,7 +151,7 @@ class DocumentStore: ObservableObject {
 
     func save() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
-        var doc = openFiles[currentIndex]
+        let doc = openFiles[currentIndex]
         try? doc.save(doc.content)
 
         // Rename Untitled files based on first line
@@ -192,8 +193,11 @@ class DocumentStore: ObservableObject {
         openFiles.remove(at: index)
         if openFiles.isEmpty {
             currentIndex = -1
-        } else if currentIndex >= index {
-            currentIndex = max(0, currentIndex - 1)
+        } else if currentIndex == index {
+            // Closed the active tab: switch to previous or first
+            currentIndex = min(index, openFiles.count - 1)
+        } else if currentIndex > index {
+            currentIndex -= 1
         }
     }
 
@@ -263,12 +267,19 @@ class DocumentStore: ObservableObject {
 }
 
 struct FileTreeNode: Identifiable, Equatable {
-    let id = UUID()
+    let id: String
     let url: URL
     let isDirectory: Bool
     var children: [FileTreeNode]?
 
     var name: String { url.lastPathComponent }
+
+    init(url: URL, isDirectory: Bool, children: [FileTreeNode]?) {
+        self.id = url.path
+        self.url = url
+        self.isDirectory = isDirectory
+        self.children = children
+    }
 
     static func == (lhs: FileTreeNode, rhs: FileTreeNode) -> Bool {
         lhs.id == rhs.id

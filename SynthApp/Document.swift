@@ -6,6 +6,15 @@ struct Document {
     var isDirty: Bool = false
 
     static func load(from url: URL) -> Document? {
+        // Guard against very large files
+        let maxFileSize: UInt64 = 50 * 1024 * 1024 // 50MB
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let fileSize = attrs[.size] as? UInt64,
+           fileSize > maxFileSize {
+            print("File too large to open: \(url.lastPathComponent) (\(fileSize / 1024 / 1024)MB)")
+            return nil
+        }
+
         let ext = url.pathExtension.lowercased()
         let content: NSAttributedString
 
@@ -19,12 +28,12 @@ struct Document {
             content = attrStr
         case "md":
             let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            content = MarkdownRenderer.render(raw)
+            content = MarkdownFormat().render(raw)
         default:
             let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             content = NSAttributedString(
                 string: raw,
-                attributes: [.font: Theme.editorFont, .foregroundColor: NSColor.black]
+                attributes: [.font: Theme.editorFont, .foregroundColor: NSColor.textColor]
             )
         }
 

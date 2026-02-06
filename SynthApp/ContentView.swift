@@ -13,16 +13,61 @@ struct ContentView: View {
     @State private var showChat = false
     @State private var showFileLauncher = false
 
+    private var openWorkspaceButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "openWorkspace", placement: .automatic) {
+            Button {
+                store.pickWorkspace()
+            } label: {
+                Image(systemName: "folder")
+            }
+            .help("Open Workspace (⌘O)")
+        }
+    }
+
+    private var tabBar: some CustomizableToolbarContent {
+        ToolbarItem(id: "tabBar", placement: .principal) {
+            HStack(spacing: 4) {
+                ForEach(store.openFiles.indices, id: \.self) { index in
+                    TabButton(
+                        title: store.openFiles[index].url.lastPathComponent,
+                        isSelected: index == store.currentIndex,
+                        isDirty: store.openFiles[index].isDirty,
+                        onSelect: { store.switchTo(index) },
+                        onClose: { store.closeTab(at: index) }
+                    )
+                }
+            }
+        }
+    }
+
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List {
-                FileTreeView(nodes: store.fileTree, store: store)
+            VStack {
+                if store.workspace == nil {
+                    VStack(spacing: 12) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.secondary)
+                        Text("No workspace open")
+                            .foregroundStyle(.secondary)
+                        Button("Open Workspace...") { store.pickWorkspace() }
+                            .keyboardShortcut("o")
+                    }
+                    .frame(maxHeight: .infinity)
+                } else {
+                    List {
+                        FileTreeView(nodes: store.fileTree, store: store)
+                    }
+                    .listStyle(.sidebar)
+                    .contentTransition(.identity)
+                    .transaction { $0.animation = nil }
+                }
             }
-            .listStyle(.sidebar)
-            .contentTransition(.identity)
-            .transaction { $0.animation = nil }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
+            .toolbar(id: "sidebar") {
+                openWorkspaceButton
+            }
         } detail: {
             VStack(spacing: 0) {
                 if !store.openFiles.isEmpty, store.currentIndex >= 0 {
@@ -37,7 +82,10 @@ struct ContentView: View {
                 if showChat {
                     ChatPanel()
                         .frame(height: 200)
-                } else {
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                if !showChat {
                     HStack {
                         Spacer()
                         Button {
@@ -52,20 +100,8 @@ struct ContentView: View {
                     .padding(8)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 4) {
-                        ForEach(store.openFiles.indices, id: \.self) { index in
-                            TabButton(
-                                title: store.openFiles[index].url.lastPathComponent,
-                                isSelected: index == store.currentIndex,
-                                isDirty: store.openFiles[index].isDirty,
-                                onSelect: { store.switchTo(index) },
-                                onClose: { store.closeTab(at: index) }
-                            )
-                        }
-                    }
-                }
+            .toolbar(id: "tabs") {
+                tabBar
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
@@ -223,7 +259,8 @@ struct EditorViewSimple: View {
             MarkdownEditor(text: $text, scrollOffset: $scrollOffset, linePositions: $linePositions)
                 .background(Color(nsColor: .textBackgroundColor))
         }
-        .onChange(of: text) { saveText() }
+        .onChange(of: store.currentIndex) { _, _ in loadText() }
+        .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
     }
 
