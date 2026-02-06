@@ -23,24 +23,31 @@ class ACPClient: ObservableObject {
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
 
-    func start(cwd: String) {
-        self.cwd = cwd
-        let proc = Process()
-
-        // Resolve kiro-cli path: GUI apps don't inherit shell PATH
+    static func resolveKiroCliPath() -> String? {
+        // Check user setting first
+        let userPath = UserDefaults.standard.string(forKey: "kiroCliPath") ?? ""
+        if !userPath.isEmpty && FileManager.default.isExecutableFile(atPath: userPath) {
+            return userPath
+        }
+        // Auto-detect
         let candidates = [
             "\(NSHomeDirectory())/.toolbox/bin/kiro-cli",
             "/usr/local/bin/kiro-cli",
             "/opt/homebrew/bin/kiro-cli"
         ]
-        let resolvedPath = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
 
-        if let path = resolvedPath {
+    func start(cwd: String) {
+        self.cwd = cwd
+        let proc = Process()
+
+        if let path = ACPClient.resolveKiroCliPath() {
             print("[ACP] Using kiro-cli at: \(path)")
             proc.executableURL = URL(fileURLWithPath: path)
             proc.arguments = ["acp"]
         } else {
-            print("[ACP] No kiro-cli found in known paths, falling back to /usr/bin/env")
+            print("[ACP] No kiro-cli found, falling back to /usr/bin/env")
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             proc.arguments = ["kiro-cli", "acp"]
         }

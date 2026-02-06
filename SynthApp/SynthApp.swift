@@ -66,5 +66,10 @@ struct SynthApp: App {
                 .keyboardShortcut("p")
             }
         }
+
+        Settings {
+            SettingsView()
+                .environmentObject(store)
+        }
     }
 }
