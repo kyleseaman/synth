@@ -168,11 +168,20 @@ struct DocumentChatTray: View {
                     }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.escape, modifiers: [])
-                    Button("Allow") {
+                    Button {
                         allowPermission()
+                    } label: {
+                        Label("Allow", systemImage: "return")
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: [])
+                    Button {
+                        alwaysAllowPermission()
+                    } label: {
+                        Label("Always Allow", systemImage: "command")
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
             .padding(10)
@@ -186,9 +195,11 @@ struct DocumentChatTray: View {
     }
 
     private func allowPermission() {
-        guard let perm = chatState.pendingPermission else { return }
-        let allowOpt = perm.options.first { $0.kind.hasPrefix("allow") }?.id ?? "allow_once"
-        chatState.respondToPermission(optionId: allowOpt)
+        chatState.respondToPermission(optionId: "allow_once")
+    }
+
+    private func alwaysAllowPermission() {
+        chatState.respondToPermission(optionId: "allow_always")
     }
 
     private func denyPermission() {
