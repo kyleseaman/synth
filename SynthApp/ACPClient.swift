@@ -36,38 +36,57 @@ class ACPClient: ObservableObject {
         let resolvedPath = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
 
         if let path = resolvedPath {
+            print("[ACP] Using kiro-cli at: \(path)")
             proc.executableURL = URL(fileURLWithPath: path)
             proc.arguments = ["acp"]
         } else {
+            print("[ACP] No kiro-cli found in known paths, falling back to /usr/bin/env")
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             proc.arguments = ["kiro-cli", "acp"]
         }
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
         proc.standardInput = stdinPipe
         proc.standardOutput = stdoutPipe
-        proc.standardError = FileHandle.nullDevice
+        proc.standardError = stderrPipe
 
         self.stdin = stdinPipe.fileHandleForWriting
 
         stdoutPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
+            guard !data.isEmpty else {
+                print("[ACP] stdout EOF")
+                return
+            }
+            if let str = String(data: data, encoding: .utf8) {
+                print("[ACP] stdout: \(str.prefix(500))")
+            }
             self?.handleData(data)
+        }
+
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let str = String(data: data, encoding: .utf8), !str.isEmpty {
+                print("[ACP] stderr: \(str.prefix(500))")
+            }
         }
 
         do {
             try proc.run()
             self.process = proc
+            print("[ACP] Process launched, pid=\(proc.processIdentifier)")
             initialize()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
                 if self?.isConnected == false {
+                    print("[ACP] Connection timeout — not connected after 8s")
                     self?.connectionFailed = true
                 }
             }
         } catch {
+            print("[ACP] Failed to launch process: \(error)")
             DispatchQueue.main.async { self.connectionFailed = true }
         }
     }
@@ -283,6 +302,7 @@ class ACPClient: ObservableObject {
         guard let data = try? JSONEncoder().encode(message),
               var json = String(data: data, encoding: .utf8) else { return }
         json += "\n"
+        print("[ACP] >>> \(json.prefix(300))")
         if let writeData = json.data(using: .utf8) { stdin?.write(writeData) }
     }
 
@@ -319,12 +339,15 @@ class ACPClient: ObservableObject {
             ])
         ]
 
+        print("[ACP] Sending initialize...")
         sendRequest(method: "initialize", params: params) { [weak self] result in
             switch result {
-            case .success:
+            case .success(let response):
+                print("[ACP] Initialize succeeded: \(String(describing: response))")
                 DispatchQueue.main.async { self?.isConnected = true }
                 self?.createSession()
-            case .failure:
+            case .failure(let error):
+                print("[ACP] Initialize failed: \(error)")
                 DispatchQueue.main.async { self?.connectionFailed = true }
             }
         }
@@ -332,14 +355,19 @@ class ACPClient: ObservableObject {
 
     private func createSession() {
         let params: [String: AnyCodable] = [
-            "cwd": AnyCodable(cwd)
+            "cwd": AnyCodable(cwd),
+            "mcpServers": AnyCodable([AnyCodable]())
         ]
 
+        print("[ACP] Sending session/new with cwd=\(cwd)")
         sendRequest(method: "session/new", params: params) { [weak self] result in
             if case .success(let response) = result,
                let dict = response?.dictValue,
                let sid = dict["sessionId"]?.stringValue {
+                print("[ACP] Session created: \(sid)")
                 DispatchQueue.main.async { self?.sessionId = sid }
+            } else {
+                print("[ACP] session/new response: \(result)")
             }
         }
     }
