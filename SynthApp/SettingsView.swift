@@ -8,6 +8,7 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             generalTab.tabItem { Label("General", systemImage: "gear") }
+            contextTab.tabItem { Label("Context", systemImage: "doc.text.magnifyingglass") }
             agentsTab.tabItem { Label("Agents", systemImage: "cpu") }
         }
         .frame(width: 480, height: 400)
@@ -48,21 +49,44 @@ struct SettingsView: View {
         .padding()
     }
 
-    // MARK: - Agents
+    // MARK: - Context
 
-    private var agentsTab: some View {
+    private var contextTab: some View {
         List {
+            Section {
+                if let workspace = store.workspace {
+                    Label(workspace.lastPathComponent, systemImage: "folder.fill")
+                        .font(.headline)
+                } else {
+                    Text("No workspace open")
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Workspace")
+            } footer: {
+                Text("Steering files in .kiro/steering/ provide context to the AI for this workspace.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Steering Files") {
                 if store.steeringFiles.isEmpty {
-                    Text("No steering files found").foregroundStyle(.secondary)
+                    Text("No steering files found")
+                        .foregroundStyle(.secondary)
                 } else {
                     ForEach(store.steeringFiles, id: \.self) { file in
                         Label(file, systemImage: "doc.text")
                     }
                 }
             }
+        }
+    }
 
-            Section("Custom Agents") {
+    // MARK: - Agents
+
+    private var agentsTab: some View {
+        List {
+            Section {
                 if store.customAgents.isEmpty {
                     Text("No custom agents found").foregroundStyle(.secondary)
                 } else {
@@ -75,6 +99,12 @@ struct SettingsView: View {
                         }
                     }
                 }
+            } header: {
+                Text("Custom Agents")
+            } footer: {
+                Text("Agents defined in .kiro/agents/ for this workspace.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
