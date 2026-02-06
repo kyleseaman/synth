@@ -8,7 +8,7 @@ struct ChatBubble: View {
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
-            Text(message.content)
+            MarkdownText(message.content)
                 .font(.system(size: 13))
                 .textSelection(.enabled)
                 .padding(10)
@@ -33,7 +33,7 @@ struct StreamingBubble: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
-                    Text(text)
+                    MarkdownText(text)
                         .font(.system(size: 13))
                         .textSelection(.enabled)
                 }
@@ -50,6 +50,27 @@ struct StreamingBubble: View {
             .background(Color.primary.opacity(0.05))
             .cornerRadius(8)
             Spacer(minLength: 40)
+        }
+    }
+}
+
+// MARK: - Markdown Text
+
+struct MarkdownText: View {
+    let source: String
+
+    init(_ source: String) {
+        self.source = source
+    }
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: source,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+        } else {
+            Text(source)
         }
     }
 }
