@@ -19,7 +19,6 @@ struct DocumentChatTray: View {
     var body: some View {
         VStack(spacing: 0) {
             dragHandle
-            Divider()
             messageList
             toolCallList
             selectionIndicator
@@ -36,29 +35,27 @@ struct DocumentChatTray: View {
     // MARK: - Drag Handle
 
     private var dragHandle: some View {
-        HStack {
-            Rectangle()
-                .fill(Color.secondary.opacity(0.3))
-                .frame(width: 40, height: 4)
-                .cornerRadius(2)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 14)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture()
-                .onChanged { gesture in
-                    let newHeight = trayHeight - gesture.translation.height
-                    trayHeight = min(max(newHeight, minHeight), maxHeight)
+        Rectangle()
+            .fill(Color.secondary.opacity(0.3))
+            .frame(width: 36, height: 3)
+            .cornerRadius(1.5)
+            .frame(maxWidth: .infinity)
+            .frame(height: 10)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { gesture in
+                        let newHeight = trayHeight - gesture.translation.height
+                        trayHeight = min(max(newHeight, minHeight), maxHeight)
+                    }
+            )
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
                 }
-        )
-        .onHover { hovering in
-            if hovering {
-                NSCursor.resizeUpDown.push()
-            } else {
-                NSCursor.pop()
             }
-        }
     }
 
     // MARK: - Messages
@@ -76,7 +73,7 @@ struct DocumentChatTray: View {
                             isLoading: chatState.isLoading
                         ).id("streaming")
                     }
-                }.padding(12)
+                }.padding(.horizontal, 10).padding(.vertical, 6)
             }
             .onChange(of: chatState.messages.count) {
                 if let last = chatState.messages.last {
