@@ -130,14 +130,30 @@ struct DocumentChatTray: View {
 
     private var inputBar: some View {
         VStack(spacing: 0) {
-            TextField("Reply...", text: $input, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($isInputFocused)
-                .onSubmit { sendMessage() }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
+            ZStack(alignment: .topLeading) {
+                if input.isEmpty {
+                    Text("Reply...")
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 8)
+                }
+                TextEditor(text: $input)
+                    .font(.system(size: 13))
+                    .scrollContentBackground(.hidden)
+                    .focused($isInputFocused)
+                    .frame(minHeight: 20, maxHeight: 80)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onKeyPress(.return, phases: .down) { press in
+                        if press.modifiers.contains(.shift) {
+                            return .ignored
+                        }
+                        sendMessage()
+                        return .handled
+                    }
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
 
             HStack(spacing: 8) {
                 agentPicker
