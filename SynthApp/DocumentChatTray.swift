@@ -1,5 +1,6 @@
 import SwiftUI
 
+// swiftlint:disable:next type_body_length
 struct DocumentChatTray: View {
     @ObservedObject var chatState: DocumentChatState
     @EnvironmentObject var store: DocumentStore
@@ -91,9 +92,11 @@ struct DocumentChatTray: View {
                         ToolCallBubble(toolCall: call).id(call.id)
                     }
                     if !chatState.currentResponse.isEmpty || chatState.isLoading {
+                        let showSpinner = chatState.isLoading &&
+                            chatState.toolCalls.allSatisfy { $0.status == "completed" }
                         StreamingBubble(
                             text: chatState.currentResponse,
-                            isLoading: chatState.isLoading && chatState.toolCalls.allSatisfy { $0.status == "completed" }
+                            isLoading: showSpinner
                         ).id("streaming")
                     }
                 }

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Foundation
 
 // swiftlint:disable:next type_body_length
@@ -10,7 +11,7 @@ class ACPClient: ObservableObject {
     private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
     private var cwd: String = ""
     private var agent: String?
-    private var lastToolCallDiff: [String: (oldText: String, newText: String, path: String)] = [:]
+    private var lastToolCallDiff: [String: DiffContent] = [:]
 
     @Published var isConnected = false
     @Published var sessionId: String?
@@ -173,13 +174,13 @@ class ACPClient: ObservableObject {
             let toolCall = params?["toolCall"] as? [String: Any]
             let toolCallId = toolCall?["toolCallId"] as? String ?? ""
             let title = toolCall?["title"] as? String ?? "Permission requested"
-            var opts: [(id: String, label: String, kind: String)] = []
+            var opts: [PermissionOption] = []
             if let options = params?["options"] as? [[String: Any]] {
                 for opt in options {
                     if let oid = opt["optionId"] as? String,
                        let name = opt["name"] as? String {
                         let kind = opt["kind"] as? String ?? "other"
-                        opts.append((id: oid, label: name, kind: kind))
+                        opts.append(PermissionOption(id: oid, label: name, kind: kind))
                     }
                 }
             }
@@ -235,7 +236,7 @@ class ACPClient: ObservableObject {
                    let path = first["path"]?.stringValue,
                    let oldText = first["oldText"]?.stringValue,
                    let newText = first["newText"]?.stringValue {
-                    self.lastToolCallDiff[toolCallId] = (oldText: oldText, newText: newText, path: path)
+                    self.lastToolCallDiff[toolCallId] = DiffContent(oldText: oldText, newText: newText, path: path)
                 }
                 DispatchQueue.main.async {
                     self.toolCalls.append(call)
