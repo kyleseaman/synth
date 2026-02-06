@@ -9,30 +9,33 @@ struct ChatBubble: View {
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
-                MarkdownText(message.content)
-                    .font(.system(size: 13))
-                    .padding(10)
-                    .background(
-                        message.role == .user
-                            ? Color.accentColor.opacity(0.15)
-                            : Color.primary.opacity(0.05)
-                    )
-                    .cornerRadius(8)
-
-                if message.role == .assistant && isHovered {
-                    Button {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(message.content, forType: .string)
-                    } label: {
-                        Label("Copy", systemImage: "doc.on.doc")
-                            .font(.system(size: 10))
+            MarkdownText(message.content)
+                .font(.system(size: 13))
+                .padding(10)
+                .background(
+                    message.role == .user
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.primary.opacity(0.05)
+                )
+                .cornerRadius(8)
+                .overlay(alignment: .bottomTrailing) {
+                    if message.role == .assistant && isHovered {
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(message.content, forType: .string)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10))
+                                .padding(4)
+                                .background(.regularMaterial)
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .padding(4)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
                 }
-            }
-            .onHover { isHovered = $0 }
+                .onHover { isHovered = $0 }
             if message.role == .assistant { Spacer(minLength: 40) }
         }
     }
