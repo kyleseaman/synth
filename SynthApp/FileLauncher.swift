@@ -98,8 +98,8 @@ struct FileLauncher: View {
                         }
                     }
                 }
-                .onChange(of: selectedIndex) { _, newValue in
-                    withAnimation { proxy.scrollTo(newValue, anchor: .center) }
+                .onChange(of: selectedIndex) {
+                    withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
                 }
             }
             .frame(maxHeight: 300)
