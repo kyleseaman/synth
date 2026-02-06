@@ -1,8 +1,7 @@
 import SwiftUI
 import Combine
 
-// swiftlint:disable type_body_length
-
+// swiftlint:disable:next type_body_length
 class DocumentStore: ObservableObject {
     @Published var workspace: URL?
     @Published var fileTree: [FileTreeNode] = []

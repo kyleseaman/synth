@@ -1,9 +1,6 @@
 import Foundation
 
-// swiftlint:disable type_body_length
-
-// MARK: - ACP Client
-
+// swiftlint:disable:next type_body_length
 class ACPClient: ObservableObject {
     private var process: Process?
     private var stdin: FileHandle?
