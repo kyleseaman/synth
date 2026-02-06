@@ -27,7 +27,7 @@ struct DocumentChatTray: View {
             inputBar
         }
         .frame(height: trayHeight)
-        .background(.regularMaterial)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             isInputFocused = true
             wireFileCallbacks()
