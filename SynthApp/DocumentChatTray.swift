@@ -166,7 +166,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("Deny")
-                            Text("esc").font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text("[esc]").font(.system(size: 10)).foregroundStyle(.secondary)
                         }
                     }
                     .buttonStyle(.bordered)
@@ -174,9 +174,9 @@ struct DocumentChatTray: View {
                     Button {
                         allowPermission()
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(alignment: .center, spacing: 4) {
                             Text("Allow")
-                            Text("↩").font(.system(size: 12))
+                            Text("[↩]").font(.system(size: 11))
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -184,9 +184,9 @@ struct DocumentChatTray: View {
                     Button {
                         alwaysAllowPermission()
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(alignment: .center, spacing: 4) {
                             Text("Always Allow")
-                            Text("⌘↩").font(.system(size: 11))
+                            Text("[⌘↩]").font(.system(size: 10))
                         }
                     }
                     .buttonStyle(.bordered)
