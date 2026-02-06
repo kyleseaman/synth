@@ -36,14 +36,14 @@ struct DocumentChatTray: View {
                 NotificationCenter.default.post(name: .toggleChat, object: nil)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .background(Color.primary.opacity(0.08))
+                    .frame(width: 16, height: 16)
+                    .background(Color.primary.opacity(0.1))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .padding(8)
+            .padding(6)
         }
         .shadow(color: .black.opacity(0.1), radius: 8, y: -2)
         .onAppear {
