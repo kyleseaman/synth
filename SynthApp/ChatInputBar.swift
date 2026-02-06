@@ -4,6 +4,7 @@ struct ChatInputBar: View {
     @Binding var input: String
     var onSend: () -> Void
     @FocusState.Binding var isInputFocused: Bool
+    var isDisabled: Bool = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -13,6 +14,7 @@ struct ChatInputBar: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .disabled(isDisabled)
 
             HStack(alignment: .center, spacing: 8) {
                 TextField("Message", text: $input, axis: .vertical)
@@ -20,15 +22,16 @@ struct ChatInputBar: View {
                     .textFieldStyle(.plain)
                     .lineLimit(1...5)
                     .focused($isInputFocused)
-                    .onSubmit { onSend() }
+                    .onSubmit { if !isDisabled { onSend() } }
+                    .disabled(isDisabled)
 
                 Button(action: onSend) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 22))
-                        .foregroundStyle(input.isEmpty ? Color.secondary.opacity(0.3) : Color.accentColor)
+                        .foregroundStyle(input.isEmpty || isDisabled ? Color.secondary.opacity(0.3) : Color.accentColor)
                 }
                 .buttonStyle(.plain)
-                .disabled(input.isEmpty)
+                .disabled(input.isEmpty || isDisabled)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

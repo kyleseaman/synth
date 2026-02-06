@@ -149,7 +149,12 @@ struct DocumentChatTray: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        ChatInputBar(input: $input, onSend: sendMessage, isInputFocused: $isInputFocused)
+        ChatInputBar(
+            input: $input,
+            onSend: sendMessage,
+            isInputFocused: $isInputFocused,
+            isDisabled: chatState.isLoading
+        )
     }
 
     // MARK: - Actions
