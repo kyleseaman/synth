@@ -26,6 +26,12 @@ struct DocumentChatTray: View {
         }
         .frame(height: trayHeight)
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.12))
+                .frame(height: 1)
+                .shadow(color: .black.opacity(0.08), radius: 2, y: 2)
+        }
         .onAppear {
             isInputFocused = true
             wireFileCallbacks()
@@ -131,8 +137,8 @@ struct DocumentChatTray: View {
                     Text("Reply...")
                         .font(.system(size: 13))
                         .foregroundStyle(.tertiary)
-                        .padding(.top, 8)
-                        .padding(.leading, 5)
+                        .padding(.top, 7)
+                        .padding(.leading, 6)
                 }
                 TextEditor(text: $input)
                     .font(.system(size: 13))
@@ -140,6 +146,7 @@ struct DocumentChatTray: View {
                     .focused($isInputFocused)
                     .frame(minHeight: 20, maxHeight: 80)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 1)
                     .onKeyPress(.return, phases: .down) { press in
                         if press.modifiers.contains(.shift) {
                             return .ignored
@@ -175,8 +182,8 @@ struct DocumentChatTray: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
     }
 
     @ViewBuilder
