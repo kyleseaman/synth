@@ -131,58 +131,62 @@ struct DocumentChatTray: View {
     // MARK: - Input Bar
 
     private var inputBar: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $input)
-                    .font(.system(size: 13))
-                    .scrollContentBackground(.hidden)
-                    .focused($isInputFocused)
-                    .frame(minHeight: 28, maxHeight: 80)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onKeyPress(.return, phases: .down) { press in
-                        if press.modifiers.contains(.shift) {
-                            return .ignored
-                        }
-                        sendMessage()
-                        return .handled
-                    }
-                if input.isEmpty {
-                    Text("Reply...")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 7)
-                        .padding(.leading, 5)
-                        .allowsHitTesting(false)
-                }
+        HStack(alignment: .bottom, spacing: 10) {
+            // Plus button outside pill
+            Button {} label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 4)
+            .buttonStyle(.plain)
 
-            HStack {
-                Spacer()
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 26, height: 26)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(input.isEmpty ? Color.secondary.opacity(0.3) : Color.accentColor)
-                        )
+            // Pill input field
+            HStack(alignment: .bottom, spacing: 8) {
+                ZStack(alignment: .leading) {
+                    if input.isEmpty {
+                        Text("Message")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.tertiary)
+                    }
+                    TextEditor(text: $input)
+                        .font(.system(size: 15))
+                        .scrollContentBackground(.hidden)
+                        .focused($isInputFocused)
+                        .frame(minHeight: 22, maxHeight: 100)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .offset(x: -5, y: 0)
+                        .onKeyPress(.return, phases: .down) { press in
+                            if press.modifiers.contains(.shift) {
+                                return .ignored
+                            }
+                            sendMessage()
+                            return .handled
+                        }
                 }
-                .buttonStyle(.plain)
-                .disabled(input.isEmpty)
+
+                if !input.isEmpty {
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            )
         }
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.primary.opacity(0.15), lineWidth: 1)
-        )
         .padding(.horizontal, 12)
-        .padding(.trailing, 50)
-        .padding(.bottom, 8)
+        .padding(.trailing, 44)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Actions
