@@ -13,6 +13,7 @@ class DocumentStore: ObservableObject {
     @Published var expandedFolders: Set<URL> = []
     @Published var chatVisibleTabs: Set<URL> = []
     @Published var needsKiroSetup = false
+    @Published var isLinksTabSelected = false
 
     private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
@@ -86,6 +87,7 @@ class DocumentStore: ObservableObject {
             fileTree = FileTreeNode.scan(url)
             openFiles.removeAll()
             currentIndex = -1
+            isLinksTabSelected = false
         }
         startWatching()
         loadKiroConfig()
@@ -189,6 +191,7 @@ class DocumentStore: ObservableObject {
     }
 
     func open(_ url: URL) {
+        isLinksTabSelected = false
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
             addToRecent(url)
@@ -227,6 +230,11 @@ class DocumentStore: ObservableObject {
     func switchTo(_ index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
         currentIndex = index
+        isLinksTabSelected = false
+    }
+
+    func selectLinksTab() {
+        isLinksTabSelected = true
     }
 
     func updateContent(_ content: NSAttributedString) {

@@ -5,6 +5,7 @@ extension Notification.Name {
     static let toggleSidebar = Notification.Name("toggleSidebar")
     static let toggleChat = Notification.Name("toggleChat")
     static let showFileLauncher = Notification.Name("showFileLauncher")
+    static let showLinkCapture = Notification.Name("showLinkCapture")
     static let reloadEditor = Notification.Name("reloadEditor")
 }
 
@@ -12,6 +13,7 @@ struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showFileLauncher = false
+    @State private var showLinkCapture = false
     @State private var dismissedSetup = false
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
@@ -37,6 +39,13 @@ struct ContentView: View {
                         onClose: { store.closeTab(at: index) }
                     )
                 }
+                TabButton(
+                    title: "Links",
+                    isSelected: store.isLinksTabSelected,
+                    isDirty: false,
+                    onSelect: { store.selectLinksTab() },
+                    onClose: nil
+                )
             }
         }
     }
@@ -80,7 +89,9 @@ struct ContentView: View {
                     }
                 }
 
-                if !store.openFiles.isEmpty, store.currentIndex >= 0 {
+                if store.isLinksTabSelected {
+                    LinksView()
+                } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
 
@@ -127,7 +138,7 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty {
+                if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty && !store.isLinksTabSelected {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {
@@ -147,16 +158,29 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if showFileLauncher {
+            if showFileLauncher || showLinkCapture {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
-                    .onTapGesture { showFileLauncher = false }
+                    .onTapGesture {
+                        showFileLauncher = false
+                        showLinkCapture = false
+                    }
 
-                FileLauncher(isPresented: $showFileLauncher)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                ZStack {
+                    if showFileLauncher {
+                        FileLauncher(isPresented: $showFileLauncher)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+
+                    if showLinkCapture {
+                        LinkCaptureView(isPresented: $showLinkCapture)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+                }
             }
         }
         .animation(.easeOut(duration: 0.15), value: showFileLauncher)
+        .animation(.easeOut(duration: 0.15), value: showLinkCapture)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
@@ -170,6 +194,10 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
             showFileLauncher = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
+            showFileLauncher = false
+            showLinkCapture = true
         }
     }
 }
@@ -260,7 +288,7 @@ struct TabButton: View {
     let isSelected: Bool
     let isDirty: Bool
     let onSelect: () -> Void
-    let onClose: () -> Void
+    let onClose: (() -> Void)?
     @State private var isHovering = false
 
     var body: some View {
@@ -270,13 +298,15 @@ struct TabButton: View {
                     .font(.system(size: 12))
                     .lineLimit(1)
 
-                Button(action: onClose) {
-                    Image(systemName: isDirty ? "circle.fill" : "xmark")
-                        .font(.system(size: isDirty ? 6 : 9, weight: .bold))
-                        .foregroundStyle(isDirty ? .orange : .secondary)
+                if let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: isDirty ? "circle.fill" : "xmark")
+                            .font(.system(size: isDirty ? 6 : 9, weight: .bold))
+                            .foregroundStyle(isDirty ? .orange : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(isHovering || isSelected || isDirty ? 1 : 0)
                 }
-                .buttonStyle(.plain)
-                .opacity(isHovering || isSelected || isDirty ? 1 : 0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
