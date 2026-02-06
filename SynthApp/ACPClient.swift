@@ -14,7 +14,8 @@ enum KiroCliResolver {
         let candidates = [
             "/usr/local/bin/kiro-cli",
             "/opt/homebrew/bin/kiro-cli",
-            "\(home)/.local/bin/kiro-cli"
+            "\(home)/.local/bin/kiro-cli",
+            "\(home)/.toolbox/bin/kiro-cli"
         ]
         if let found = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return found
