@@ -9,11 +9,11 @@ struct DocumentChatTray: View {
     var selectedLineRange: String?
 
     @State private var input = ""
-    @State private var trayHeight: CGFloat = 180
+    @State private var trayHeight: CGFloat = 140
     @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
-    private let minHeight: CGFloat = 120
+    private let minHeight: CGFloat = 100
     private let maxHeight: CGFloat = 500
 
     var body: some View {
@@ -159,13 +159,23 @@ struct DocumentChatTray: View {
             .padding(.vertical, 4)
 
             HStack(spacing: 8) {
-                agentPicker
+                Button {
+                    NotificationCenter.default.post(name: .toggleChat, object: nil)
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Minimize (⌘J)")
+
                 Spacer()
+
                 Button(action: sendMessage) {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 26, height: 26)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(input.isEmpty ? Color.secondary.opacity(0.3) : Color.accentColor)
@@ -175,55 +185,14 @@ struct DocumentChatTray: View {
                 .disabled(input.isEmpty)
             }
             .padding(.horizontal, 10)
-            .padding(.bottom, 8)
+            .padding(.bottom, 6)
         }
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(Color.primary.opacity(0.15), lineWidth: 1)
         )
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
-    }
-
-    @ViewBuilder
-    private var agentPicker: some View {
-        Menu {
-            Button {
-                selectedAgent = nil
-            } label: {
-                if selectedAgent == nil {
-                    Label("Default", systemImage: "checkmark")
-                } else {
-                    Text("Default")
-                }
-            }
-            if !store.customAgents.isEmpty {
-                Divider()
-                ForEach(store.customAgents, id: \.name) { agent in
-                    Button {
-                        selectedAgent = agent.name
-                    } label: {
-                        if selectedAgent == agent.name {
-                            Label(agent.name, systemImage: "checkmark")
-                        } else {
-                            Text(agent.name)
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 12))
-                Text(selectedAgent ?? "Auto")
-                    .font(.system(size: 12))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8))
-            }
-            .foregroundStyle(.secondary)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Actions
