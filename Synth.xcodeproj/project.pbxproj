@@ -15,8 +15,19 @@
 		1A0000000000000000000045 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000019 /* ContentView.swift */; };
 		1A0000000000000000000047 /* DocumentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001B /* DocumentStore.swift */; };
 		1A0000000000000000000048 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001C /* SettingsView.swift */; };
-		1A0000000000000000000049 /* ChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* ChatPanel.swift */; };
+		1A0000000000000000000049 /* DocumentChatTray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001D /* DocumentChatTray.swift */; };
 		1A000000000000000000004A /* ACPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001E /* ACPClient.swift */; };
+		1A000000000000000000004B /* DocumentChatState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001F /* DocumentChatState.swift */; };
+		1A000000000000000000004C /* ACPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000025 /* ACPTypes.swift */; };
+		1A000000000000000000004D /* ChatBubbles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000026 /* ChatBubbles.swift */; };
+		1A000000000000000000004E /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000027 /* ChatInputBar.swift */; };
+		1A000000000000000000004F /* FileTreeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000028 /* FileTreeNode.swift */; };
+		1A0000000000000000000201 /* LinkStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000101 /* LinkStore.swift */; };
+		1A0000000000000000000202 /* LinksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000102 /* LinksView.swift */; };
+		1A0000000000000000000203 /* LinkCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000103 /* LinkCaptureView.swift */; };
+		1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */; };
+		1A0000000000000000000205 /* LinkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* LinkStoreTests.swift */; };
+		1A0000000000000000000206 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,8 +43,21 @@
 		1A0000000000000000000019 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		1A000000000000000000001B /* DocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStore.swift; sourceTree = "<group>"; };
 		1A000000000000000000001C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		1A000000000000000000001D /* ChatPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanel.swift; sourceTree = "<group>"; };
+		1A000000000000000000001D /* DocumentChatTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatTray.swift; sourceTree = "<group>"; };
 		1A000000000000000000001E /* ACPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPClient.swift; sourceTree = "<group>"; };
+		1A000000000000000000001F /* DocumentChatState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatState.swift; sourceTree = "<group>"; };
+		1A0000000000000000000025 /* ACPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPTypes.swift; sourceTree = "<group>"; };
+		1A0000000000000000000026 /* ChatBubbles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbles.swift; sourceTree = "<group>"; };
+		1A0000000000000000000027 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
+		1A0000000000000000000028 /* FileTreeNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeNode.swift; sourceTree = "<group>"; };
+		1A0000000000000000000101 /* LinkStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkStore.swift; sourceTree = "<group>"; };
+		1A0000000000000000000102 /* LinksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinksView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000103 /* LinkCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkCaptureView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalHotkeyMonitor.swift; sourceTree = "<group>"; };
+		1A0000000000000000000105 /* LinkStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkStoreTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000106 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A0000000000000000000107 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000108 /* SynthTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SynthTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +68,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1A0000000000000000000502 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A0000000000000000000206 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -51,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000004 /* SynthApp */,
+				1A0000000000000000000301 /* SynthAppTests */,
 				1A0000000000000000000005 /* Frameworks */,
 				1A0000000000000000000006 /* Products */,
 			);
@@ -60,6 +93,10 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000011 /* SynthApp.swift */,
+				1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */,
+				1A0000000000000000000101 /* LinkStore.swift */,
+				1A0000000000000000000102 /* LinksView.swift */,
+				1A0000000000000000000103 /* LinkCaptureView.swift */,
 				1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */,
 
 				1CED1C0DF1D02542388054A9 /* FileLauncher.swift */,
@@ -68,8 +105,13 @@
 				1A0000000000000000000019 /* ContentView.swift */,
 				1A000000000000000000001B /* DocumentStore.swift */,
 				1A000000000000000000001C /* SettingsView.swift */,
-				1A000000000000000000001D /* ChatPanel.swift */,
+				1A000000000000000000001D /* DocumentChatTray.swift */,
 				1A000000000000000000001E /* ACPClient.swift */,
+				1A000000000000000000001F /* DocumentChatState.swift */,
+				1A0000000000000000000025 /* ACPTypes.swift */,
+				1A0000000000000000000026 /* ChatBubbles.swift */,
+				1A0000000000000000000027 /* ChatInputBar.swift */,
+				1A0000000000000000000028 /* FileTreeNode.swift */,
 				1A0000000000000000000015 /* Theme.swift */,
 				1A0000000000000000000016 /* Document.swift */,
 				1A0000000000000000000013 /* BridgingHeader.h */,
@@ -77,11 +119,21 @@
 			path = SynthApp;
 			sourceTree = "<group>";
 		};
+		1A0000000000000000000301 /* SynthAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000000000000000000105 /* LinkStoreTests.swift */,
+				1A0000000000000000000106 /* Info.plist */,
+			);
+			path = SynthAppTests;
+			sourceTree = "<group>";
+		};
 		1A0000000000000000000005 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000012 /* libsynth_core.a */,
 				1A0000000000000000000014 /* synth_core.h */,
+				1A0000000000000000000107 /* XCTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -90,6 +142,7 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000010 /* Synth.app */,
+				1A0000000000000000000108 /* SynthTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -113,6 +166,22 @@
 			productName = Synth;
 			productReference = 1A0000000000000000000010 /* Synth.app */;
 			productType = "com.apple.product-type.application";
+		};
+		1A0000000000000000000401 /* SynthTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A0000000000000000000601 /* Build configuration list for PBXNativeTarget "SynthTests" */;
+			buildPhases = (
+				1A0000000000000000000501 /* Sources */,
+				1A0000000000000000000502 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SynthTests;
+			productName = SynthTests;
+			productReference = 1A0000000000000000000108 /* SynthTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -138,6 +207,7 @@
 			projectRoot = "";
 			targets = (
 				1A000000000000000000000F /* Synth */,
+				1A0000000000000000000401 /* SynthTests */,
 			);
 		};
 /* End PBXProject section */
@@ -172,12 +242,29 @@
 
 
 				1A0000000000000000000045 /* ContentView.swift in Sources */,
+				1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */,
+				1A0000000000000000000201 /* LinkStore.swift in Sources */,
+				1A0000000000000000000202 /* LinksView.swift in Sources */,
+				1A0000000000000000000203 /* LinkCaptureView.swift in Sources */,
 				1A0000000000000000000047 /* DocumentStore.swift in Sources */,
 				1A0000000000000000000048 /* SettingsView.swift in Sources */,
-				1A0000000000000000000049 /* ChatPanel.swift in Sources */,
+				1A0000000000000000000049 /* DocumentChatTray.swift in Sources */,
 				1A000000000000000000004A /* ACPClient.swift in Sources */,
+				1A000000000000000000004B /* DocumentChatState.swift in Sources */,
+				1A000000000000000000004C /* ACPTypes.swift in Sources */,
+				1A000000000000000000004D /* ChatBubbles.swift in Sources */,
+				1A000000000000000000004E /* ChatInputBar.swift in Sources */,
+				1A000000000000000000004F /* FileTreeNode.swift in Sources */,
 				1A0000000000000000000041 /* Theme.swift in Sources */,
 				1A0000000000000000000042 /* Document.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1A0000000000000000000501 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1A0000000000000000000205 /* LinkStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -319,6 +406,34 @@
 			};
 			name = Release;
 		};
+		1A0000000000000000000602 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = SynthAppTests/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.synth.appTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Synth.app/Contents/MacOS/Synth";
+			};
+			name = Debug;
+		};
+		1A0000000000000000000603 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = SynthAppTests/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.synth.appTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Synth.app/Contents/MacOS/Synth";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -336,6 +451,15 @@
 			buildConfigurations = (
 				1A0000000000000000000021 /* Debug */,
 				1A0000000000000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1A0000000000000000000601 /* Build configuration list for PBXNativeTarget "SynthTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A0000000000000000000602 /* Debug */,
+				1A0000000000000000000603 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

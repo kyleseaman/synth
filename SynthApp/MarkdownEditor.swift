@@ -243,6 +243,8 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var scrollOffset: CGFloat
     @Binding var linePositions: [CGFloat]
+    @Binding var selectedText: String
+    @Binding var selectedLineRange: String
     var format: DocumentFormat = MarkdownFormat()
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -370,6 +372,27 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView else { return }
             parent.text = textView.string
             updateLinePositions()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = textView else { return }
+            let range = textView.selectedRange()
+            if range.length > 0 {
+                let text = (textView.string as NSString).substring(with: range)
+                let beforeSelection = (textView.string as NSString).substring(to: range.location)
+                let startLine = beforeSelection.components(separatedBy: "\n").count
+                let selectedLines = text.components(separatedBy: "\n").count
+                let endLine = startLine + selectedLines - 1
+                DispatchQueue.main.async {
+                    self.parent.selectedText = text
+                    self.parent.selectedLineRange = "lines \(startLine)-\(endLine)"
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.parent.selectedText = ""
+                    self.parent.selectedLineRange = ""
+                }
+            }
         }
     }
 }

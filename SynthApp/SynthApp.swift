@@ -3,9 +3,19 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var store: DocumentStore?
+    var hotkeyMonitor: GlobalHotkeyMonitor?
 
     func applicationWillResignActive(_ notification: Notification) {
         store?.saveAll()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        hotkeyMonitor = GlobalHotkeyMonitor(key: "l", modifiers: [.command, .shift]) {
+            DispatchQueue.main.async {
+                NSApp.activate(ignoringOtherApps: true)
+                NotificationCenter.default.post(name: .showLinkCapture, object: nil)
+            }
+        }
     }
 }
 
@@ -13,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 struct SynthApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var store = DocumentStore()
+    @StateObject private var linkStore = LinkStore()
 
     init() {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
@@ -23,6 +34,7 @@ struct SynthApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(linkStore)
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1200, height: 800)
@@ -52,6 +64,11 @@ struct SynthApp: App {
                     NotificationCenter.default.post(name: .toggleChat, object: nil)
                 }
                 .keyboardShortcut("j")
+
+                Button("Toggle Chat (Terminal)") {
+                    NotificationCenter.default.post(name: .toggleChat, object: nil)
+                }
+                .keyboardShortcut("`", modifiers: .control)
             }
             CommandGroup(after: .toolbar) {
                 ForEach(1...9, id: \.self) { tabNum in
@@ -65,6 +82,11 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("p")
             }
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(store)
         }
     }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 
+// swiftlint:disable:next type_body_length
 class DocumentStore: ObservableObject {
     @Published var workspace: URL?
     @Published var fileTree: [FileTreeNode] = []
@@ -10,7 +11,11 @@ class DocumentStore: ObservableObject {
     @Published var customAgents: [AgentInfo] = []
     @Published var recentFiles: [URL] = []
     @Published var expandedFolders: Set<URL> = []
+    @Published var chatVisibleTabs: Set<URL> = []
+    @Published var needsKiroSetup = false
+    @Published var isLinksTabSelected = false
 
+    private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var watcherFD: Int32 = -1
@@ -82,8 +87,11 @@ class DocumentStore: ObservableObject {
             fileTree = FileTreeNode.scan(url)
             openFiles.removeAll()
             currentIndex = -1
+            isLinksTabSelected = false
         }
         startWatching()
+        loadKiroConfig()
+        checkKiroSetup()
     }
 
     func loadFileTree() {
@@ -122,7 +130,68 @@ class DocumentStore: ObservableObject {
         }
     }
 
+    func checkKiroSetup() {
+        guard let workspace = workspace else { return }
+        let kiroDir = workspace.appendingPathComponent(".kiro")
+        needsKiroSetup = !FileManager.default.fileExists(atPath: kiroDir.path)
+    }
+
+    func bootstrapKiroConfig() {
+        guard let workspace = workspace else { return }
+        let kiroDir = workspace.appendingPathComponent(".kiro")
+        let steeringDir = kiroDir.appendingPathComponent("steering")
+        let agentsDir = kiroDir.appendingPathComponent("agents")
+        let fileManager = FileManager.default
+
+        try? fileManager.createDirectory(at: steeringDir, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: agentsDir, withIntermediateDirectories: true)
+
+        // Bootstrap product.md steering file
+        let productMd = """
+        # Product Overview
+
+        Describe your project here. This file provides context to the AI.
+
+        ## Purpose
+        What does this project do?
+
+        ## Target Users
+        Who is this for?
+        """
+        let productPath = steeringDir.appendingPathComponent("product.md")
+        if !fileManager.fileExists(atPath: productPath.path) {
+            try? productMd.write(to: productPath, atomically: true, encoding: .utf8)
+        }
+
+        // Bootstrap doc-writer agent
+        let writerAgent: [String: Any] = [
+            "name": "doc-writer",
+            "description": "Document writer — drafts and generates content",
+            "prompt": """
+                You are a document writer integrated into Synth. \
+                Draft new documents, expand outlines into prose, \
+                write in various styles (technical, creative, business). \
+                Start with structure, then fill in content. \
+                Use markdown formatting. Be concise and direct.
+                """,
+            "tools": ["fs_read", "fs_write"],
+            "allowedTools": ["fs_read", "fs_write"]
+        ]
+        let writerPath = agentsDir.appendingPathComponent("doc-writer.json")
+        if !fileManager.fileExists(atPath: writerPath.path),
+           let data = try? JSONSerialization.data(
+               withJSONObject: writerAgent, options: [.prettyPrinted, .sortedKeys]
+           ) {
+            try? data.write(to: writerPath)
+        }
+
+        needsKiroSetup = false
+        loadKiroConfig()
+        loadFileTree()
+    }
+
     func open(_ url: URL) {
+        isLinksTabSelected = false
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
             addToRecent(url)
@@ -134,9 +203,38 @@ class DocumentStore: ObservableObject {
         addToRecent(url)
     }
 
+    // MARK: - Per-Document Chat State
+
+    func chatState(for url: URL) -> DocumentChatState {
+        if let existing = chatStates[url] { return existing }
+        let state = DocumentChatState()
+        chatStates[url] = state
+        return state
+    }
+
+    func toggleChatForCurrentTab() {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
+        let url = openFiles[currentIndex].url
+        if chatVisibleTabs.contains(url) {
+            chatVisibleTabs.remove(url)
+        } else {
+            chatVisibleTabs.insert(url)
+        }
+    }
+
+    var isChatVisibleForCurrentTab: Bool {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return false }
+        return chatVisibleTabs.contains(openFiles[currentIndex].url)
+    }
+
     func switchTo(_ index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
         currentIndex = index
+        isLinksTabSelected = false
+    }
+
+    func selectLinksTab() {
+        isLinksTabSelected = true
     }
 
     func updateContent(_ content: NSAttributedString) {
@@ -190,11 +288,17 @@ class DocumentStore: ObservableObject {
 
     func closeTab(at index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
+        let url = openFiles[index].url
+
+        // Clean up chat state for this tab
+        chatStates[url]?.stop()
+        chatStates.removeValue(forKey: url)
+        chatVisibleTabs.remove(url)
+
         openFiles.remove(at: index)
         if openFiles.isEmpty {
             currentIndex = -1
         } else if currentIndex == index {
-            // Closed the active tab: switch to previous or first
             currentIndex = min(index, openFiles.count - 1)
         } else if currentIndex > index {
             currentIndex -= 1
@@ -263,46 +367,5 @@ class DocumentStore: ObservableObject {
                 self.setWorkspace(url)
             }
         }
-    }
-}
-
-struct FileTreeNode: Identifiable, Equatable {
-    let id: String
-    let url: URL
-    let isDirectory: Bool
-    var children: [FileTreeNode]?
-
-    var name: String { url.lastPathComponent }
-
-    init(url: URL, isDirectory: Bool, children: [FileTreeNode]?) {
-        self.id = url.path
-        self.url = url
-        self.isDirectory = isDirectory
-        self.children = children
-    }
-
-    static func == (lhs: FileTreeNode, rhs: FileTreeNode) -> Bool {
-        lhs.id == rhs.id
-    }
-
-    static func scan(_ url: URL) -> [FileTreeNode] {
-        let keys: [URLResourceKey] = [.isDirectoryKey]
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: keys
-        ) else { return [] }
-        return contents
-            .filter { !$0.lastPathComponent.hasPrefix(".") || $0.lastPathComponent == ".kiro" }
-            .sorted { first, second in
-                let firstDir = (try? first.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                let secondDir = (try? second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                if firstDir != secondDir { return firstDir }
-                let cmp = first.lastPathComponent.localizedCaseInsensitiveCompare(second.lastPathComponent)
-                return cmp == .orderedAscending
-            }
-            .map { item in
-                let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                return FileTreeNode(url: item, isDirectory: isDir, children: isDir ? scan(item) : nil)
-            }
     }
 }
