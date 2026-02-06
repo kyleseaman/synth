@@ -20,7 +20,6 @@ struct DocumentChatTray: View {
         VStack(spacing: 0) {
             dragHandle
             messageList
-            toolCallList
             selectionIndicator
             inputBar
         }
@@ -87,10 +86,13 @@ struct DocumentChatTray: View {
                     ForEach(chatState.messages) { msg in
                         ChatBubble(message: msg).id(msg.id)
                     }
+                    ForEach(chatState.toolCalls.filter { $0.status != "completed" }) { call in
+                        ToolCallBubble(toolCall: call).id(call.id)
+                    }
                     if !chatState.currentResponse.isEmpty || chatState.isLoading {
                         StreamingBubble(
                             text: chatState.currentResponse,
-                            isLoading: chatState.isLoading
+                            isLoading: chatState.isLoading && chatState.toolCalls.allSatisfy { $0.status == "completed" }
                         ).id("streaming")
                     }
                 }
@@ -109,22 +111,11 @@ struct DocumentChatTray: View {
             .onChange(of: chatState.currentResponse) {
                 proxy.scrollTo("streaming", anchor: .bottom)
             }
-        }
-    }
-
-    // MARK: - Tool Calls
-
-    @ViewBuilder
-    private var toolCallList: some View {
-        let activeCalls = chatState.toolCalls.filter { $0.status != "completed" }
-        if !activeCalls.isEmpty {
-            VStack(spacing: 4) {
-                ForEach(activeCalls) { call in
-                    ToolCallBubble(toolCall: call)
+            .onChange(of: chatState.toolCalls.count) {
+                if let last = chatState.toolCalls.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 4)
         }
     }
 
