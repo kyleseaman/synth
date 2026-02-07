@@ -7,7 +7,15 @@ protocol DocumentFormat {
 }
 
 struct MarkdownFormat: DocumentFormat {
+    struct PendingImageRender {
+        let imageURL: URL
+        let markupRange: NSRange
+        let markupText: String
+        let attachmentRange: NSRange
+    }
+
     var noteIndex: NoteIndex?
+    var baseURL: URL?
 
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
@@ -48,6 +56,68 @@ struct MarkdownFormat: DocumentFormat {
 
     func toPlainText(_ attributed: NSAttributedString) -> String {
         attributed.string
+    }
+
+    @discardableResult
+    static func applyImageRendering(
+        in attributedText: NSMutableAttributedString,
+        baseFont: NSFont,
+        baseDirectoryURL: URL?
+    ) -> [PendingImageRender] {
+        let maxSize = maxRenderedImageSize(for: baseFont)
+        var pendingRenders: [PendingImageRender] = []
+
+        // swiftlint:disable:next force_try
+        let imagePattern = try! NSRegularExpression(pattern: "!\\[[^\\]]*\\]\\(([^)]+)\\)")
+        let fullRange = NSRange(location: 0, length: attributedText.string.utf16.count)
+
+        for imageMatch in imagePattern.matches(in: attributedText.string, range: fullRange).reversed() {
+            let markupRange = imageMatch.range
+            let pathRange = imageMatch.range(at: 1)
+            guard pathRange.location != NSNotFound,
+                  let pathSwiftRange = Range(pathRange, in: attributedText.string) else { continue }
+
+            let pathValue = String(attributedText.string[pathSwiftRange])
+            guard let imageURL = MediaManager.resolvedImageURL(
+                from: pathValue,
+                baseDirectoryURL: baseDirectoryURL
+            ) else { continue }
+
+            let markupText = (attributedText.string as NSString).substring(with: markupRange)
+            let cachedImage = WorkspaceImageLoader.shared.cachedImage(
+                at: imageURL,
+                maxSize: maxSize
+            )
+            let attachment = NSTextAttachment()
+            attachment.image = cachedImage
+                ?? NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+
+            let hiddenAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 0.01),
+                .foregroundColor: NSColor.clear
+            ]
+            attributedText.addAttributes(hiddenAttributes, range: markupRange)
+            let attachmentRange = NSRange(location: markupRange.location, length: 1)
+            attributedText.addAttributes([.attachment: attachment], range: attachmentRange)
+
+            pendingRenders.append(
+                PendingImageRender(
+                    imageURL: imageURL,
+                    markupRange: markupRange,
+                    markupText: markupText,
+                    attachmentRange: attachmentRange
+                )
+            )
+        }
+
+        return pendingRenders
+    }
+
+    static func maxRenderedImageSize(for baseFont: NSFont) -> NSSize {
+        NSSize(
+            width: 560,
+            height: max(baseFont.pointSize * 18, 220)
+        )
     }
 
     // swiftlint:disable:next function_body_length
@@ -279,6 +349,7 @@ enum WikiLinkState {
 
 class FormattingTextView: NSTextView {
     var wikiLinkState: WikiLinkState = .idle
+    var imagePasteHandler: ((NSImage) -> String?)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
@@ -288,6 +359,22 @@ class FormattingTextView: NSTextView {
         case "u": toggleUnderline(); return true
         default: return super.performKeyEquivalent(with: event)
         }
+    }
+
+    override func paste(_ sender: Any?) {
+        let classes: [AnyClass] = [NSImage.self]
+        if let imageObject = NSPasteboard.general.readObjects(
+            forClasses: classes,
+            options: nil
+        )?.first as? NSImage {
+            guard let markdownImage = imagePasteHandler?(imageObject) else {
+                NSSound.beep()
+                return
+            }
+            insertText(markdownImage, replacementRange: selectedRange())
+            return
+        }
+        super.paste(sender)
     }
 
     override func insertNewline(_ sender: Any?) {
@@ -607,7 +694,8 @@ struct MarkdownEditor: NSViewRepresentable {
     weak var store: DocumentStore?
 
     var format: DocumentFormat {
-        MarkdownFormat(noteIndex: store?.noteIndex)
+        let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
+        return MarkdownFormat(noteIndex: store?.noteIndex, baseURL: baseDirectory)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -640,6 +728,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.bindImagePasteHandler(to: textView)
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -668,6 +757,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         if !context.coordinator.isEditing && textView.string != text {
             textView.textStorage?.setAttributedString(format.render(text))
+            context.coordinator.applyWikiLinkFormatting()
             DispatchQueue.main.async {
                 context.coordinator.updateLinePositions()
             }
@@ -743,6 +833,19 @@ struct MarkdownEditor: NSViewRepresentable {
             // Set up the selection callback on the popover
             wikiLinkPopover.onSelect = { [weak self] title in
                 self?.completeWikiLink(title: title)
+            }
+        }
+
+        func markdownForPastedImage(_ image: NSImage) -> String? {
+            guard let store,
+                  let noteURL = store.currentDocumentURL,
+                  let relativePath = store.savePastedImageToMedia(image, noteURL: noteURL) else { return nil }
+            return "![Screenshot](\(relativePath))"
+        }
+
+        func bindImagePasteHandler(to textView: FormattingTextView) {
+            textView.imagePasteHandler = { [weak self] image in
+                self?.markdownForPastedImage(image)
             }
         }
 
@@ -1117,15 +1220,18 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // MARK: - Live Wiki Link Formatting
 
-        private func applyWikiLinkFormatting() {
+        func applyWikiLinkFormatting() {
             guard let textView = textView, let storage = textView.textStorage else { return }
             isFormatting = true
             let cursor = textView.selectedRange()
             let baseFont = NSFont.systemFont(ofSize: 16)
             let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
             // swiftlint:disable:next force_try
             let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
             let fullRange = NSRange(location: 0, length: storage.string.utf16.count)
+            storage.removeAttribute(.attachment, range: fullRange)
+            storage.removeAttribute(.toolTip, range: fullRange)
 
             // First reset any previously hidden brackets back to normal
             storage.enumerateAttribute(.font, in: fullRange) { value, range, _ in
@@ -1243,8 +1349,56 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage.addAttributes(personAttrs, range: matchRange)
             }
 
+            let pendingRenders = MarkdownFormat.applyImageRendering(
+                in: storage,
+                baseFont: baseFont,
+                baseDirectoryURL: baseDirectory
+            )
+            loadInlineImages(
+                pendingRenders,
+                storage: storage,
+                baseFont: baseFont
+            )
+
             textView.setSelectedRange(cursor)
             isFormatting = false
+        }
+
+        private func loadInlineImages(
+            _ requests: [MarkdownFormat.PendingImageRender],
+            storage: NSTextStorage,
+            baseFont: NSFont
+        ) {
+            let maxSize = MarkdownFormat.maxRenderedImageSize(for: baseFont)
+
+            for request in requests {
+                WorkspaceImageLoader.shared.loadImage(
+                    at: request.imageURL,
+                    maxSize: maxSize
+                ) { [weak self] loadedImage in
+                    guard let self,
+                          let loadedImage,
+                          let textView = self.textView,
+                          let currentStorage = textView.textStorage,
+                          currentStorage === storage else { return }
+
+                    let storageString = currentStorage.string as NSString
+                    let storageLength = storageString.length
+                    let markupEnd = request.markupRange.location + request.markupRange.length
+                    guard markupEnd <= storageLength else { return }
+
+                    let currentMarkup = storageString.substring(with: request.markupRange)
+                    guard currentMarkup == request.markupText else { return }
+
+                    let attachment = NSTextAttachment()
+                    attachment.image = loadedImage
+                    currentStorage.addAttribute(
+                        .attachment,
+                        value: attachment,
+                        range: request.attachmentRange
+                    )
+                }
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
