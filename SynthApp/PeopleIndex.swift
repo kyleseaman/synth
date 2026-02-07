@@ -14,10 +14,11 @@ class PeopleIndex: ObservableObject {
 
     private let storageKey = "synth.globalPeople"
 
-    // Person regex: @ followed by letter, then 1-49 word chars/hyphens, not preceded by word char or @
+    // Person regex: @ followed by a word, optionally followed by space + Capitalized words
+    // Single-word: any case. Multi-word: subsequent words must start uppercase (Title Case).
     // swiftlint:disable:next force_try
     static let personPattern = try! NSRegularExpression(
-        pattern: "(?<![\\w@])@([A-Za-z][A-Za-z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
+        pattern: "(?<![\\w@])@([A-Za-z][A-Za-z0-9_-]*(?:\\s[A-Z][a-zA-Z0-9_-]*)*)(?=[^a-zA-Z0-9_-]|$)"
     )
 
     private static let dateTokens: Set<String> = ["today", "yesterday", "tomorrow"]

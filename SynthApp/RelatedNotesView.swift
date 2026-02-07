@@ -99,7 +99,6 @@ struct RelatedNotesSection: View {
         if !notes.isEmpty {
             VStack(spacing: 0) {
                 Divider()
-                    .padding(.top, 8)
 
                 DisclosureGroup(isExpanded: $isExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -124,12 +123,9 @@ struct RelatedNotesSection: View {
                     .contentShape(Rectangle())
                 }
                 .animation(.easeOut(duration: 0.15), value: isExpanded)
-
-                Spacer()
-                    .frame(height: 16)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
     }
 

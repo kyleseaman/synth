@@ -396,16 +396,8 @@ class FormattingTextView: NSTextView {
             NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
         } else if str == " " {
             if case .atActive = wikiLinkState {
-                let query = extractCurrentQuery()
-                let lowered = query.trimmingCharacters(in: .whitespaces).lowercased()
-                let dateTokens = ["today", "yesterday", "tomorrow"]
-                let hasPartialMatch = dateTokens.contains { $0.hasPrefix(lowered) }
-                if !hasPartialMatch {
-                    wikiLinkState = .idle
-                    NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
-                } else {
-                    postQueryUpdate()
-                }
+                // Keep popup open for multi-word person names
+                postQueryUpdate()
             } else {
                 postQueryUpdate()
             }
@@ -829,6 +821,7 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView,
                   let storage = textView.textStorage else { return }
             let cursor = textView.selectedRange().location
+            var didCompletePerson = false
 
             switch textView.wikiLinkState {
             case .wikiLinkActive(let start):
@@ -847,11 +840,14 @@ struct MarkdownEditor: NSViewRepresentable {
                 let range = NSRange(location: replaceStart, length: cursor - replaceStart)
                 let dateTokens = ["today", "yesterday", "tomorrow"]
                 let isPerson = !dateTokens.contains(title.lowercased())
-                let replacement = isPerson ? "@\(title) " : "@\(title)"
+                // Title Case person names so multi-word regex matches them
+                let displayTitle = isPerson ? title.titleCased : title
+                let replacement = isPerson ? "@\(displayTitle) " : "@\(title)"
                 storage.replaceCharacters(in: range, with: replacement)
                 textView.setSelectedRange(
                     NSRange(location: replaceStart + replacement.count, length: 0)
                 )
+                didCompletePerson = isPerson
 
             case .hashtagActive(let start):
                 // start points to after "#", so replace from start-1 to cursor
@@ -875,6 +871,13 @@ struct MarkdownEditor: NSViewRepresentable {
             // Trigger text update and apply formatting to hide brackets
             parent.text = textView.string
             applyWikiLinkFormatting()
+
+            // Auto-save after person mention so the people index updates immediately
+            if didCompletePerson {
+                DispatchQueue.main.async { [weak self] in
+                    self?.store?.save()
+                }
+            }
         }
 
         // MARK: - Date Autocomplete Results

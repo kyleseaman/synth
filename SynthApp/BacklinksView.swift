@@ -25,22 +25,16 @@ struct BacklinksSection: View {
     var body: some View {
         let links = backlinks
         if links.isEmpty {
-            // Empty state: subtle message
             VStack(spacing: 0) {
-                Divider()
-                    .padding(.top, 16)
                 Text("No backlinks yet")
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 12)
         } else {
             VStack(spacing: 0) {
-                Divider()
-                    .padding(.top, 16)
-
                 DisclosureGroup(isExpanded: $isExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(links.prefix(10), id: \.url) { link in
@@ -66,12 +60,9 @@ struct BacklinksSection: View {
                     .contentShape(Rectangle())
                 }
                 .animation(.easeOut(duration: 0.15), value: isExpanded)
-
-                Spacer()
-                    .frame(height: 8)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
     }
 }

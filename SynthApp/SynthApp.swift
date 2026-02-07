@@ -97,6 +97,11 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
 
+                Button("Toggle Backlinks") {
+                    NotificationCenter.default.post(name: .toggleBacklinks, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+
                 Button("Today's Note") {
                     store.openDailyNote()
                 }

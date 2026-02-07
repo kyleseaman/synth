@@ -21,6 +21,9 @@ extension Notification.Name {
 
     // MARK: - People Browser
     static let showPeopleBrowser = Notification.Name("showPeopleBrowser")
+
+    // MARK: - Backlinks Sidebar
+    static let toggleBacklinks = Notification.Name("toggleBacklinks")
 }
 
 enum ActiveModal: Equatable {
@@ -432,6 +435,7 @@ struct EditorViewSimple: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
+    @State private var showBacklinks = false
 
     private var currentNoteTitle: String {
         guard store.currentIndex >= 0,
@@ -448,11 +452,12 @@ struct EditorViewSimple: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
-                .frame(width: 44)
-                .background(Color(nsColor: .textBackgroundColor))
+            // Editor
+            HStack(spacing: 0) {
+                LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
+                    .frame(width: 44)
+                    .background(Color(nsColor: .textBackgroundColor))
 
-            VStack(spacing: 0) {
                 MarkdownEditor(
                     text: $text,
                     scrollOffset: $scrollOffset,
@@ -462,20 +467,52 @@ struct EditorViewSimple: View {
                     store: store
                 )
                 .background(Color(nsColor: .textBackgroundColor))
+            }
 
-                BacklinksSection(
-                    noteTitle: currentNoteTitle,
-                    backlinkIndex: store.backlinkIndex,
-                    onNavigate: { url in store.open(url) }
-                )
+            // Backlinks right sidebar
+            if showBacklinks {
+                Divider()
 
-                RelatedNotesSection(
-                    noteTitle: currentNoteTitle,
-                    noteURL: currentNoteURL,
-                    backlinkIndex: store.backlinkIndex,
-                    tagIndex: store.tagIndex,
-                    onNavigate: { url in store.open(url) }
-                )
+                ScrollView {
+                    VStack(spacing: 0) {
+                        BacklinksSection(
+                            noteTitle: currentNoteTitle,
+                            backlinkIndex: store.backlinkIndex,
+                            onNavigate: { url in store.open(url) }
+                        )
+
+                        RelatedNotesSection(
+                            noteTitle: currentNoteTitle,
+                            noteURL: currentNoteURL,
+                            backlinkIndex: store.backlinkIndex,
+                            tagIndex: store.tagIndex,
+                            onNavigate: { url in store.open(url) }
+                        )
+                    }
+                }
+                .frame(width: 260)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showBacklinks.toggle()
+                }
+            } label: {
+                Image(systemName: "link")
+                    .font(.system(size: 12))
+                    .foregroundStyle(showBacklinks ? .primary : .tertiary)
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Backlinks (⌘⇧B)")
+            .padding(.top, 4)
+            .padding(.trailing, 4)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleBacklinks)) { _ in
+            withAnimation(.easeOut(duration: 0.15)) {
+                showBacklinks.toggle()
             }
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }

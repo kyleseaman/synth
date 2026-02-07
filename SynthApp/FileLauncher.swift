@@ -1,12 +1,32 @@
 import SwiftUI
 
-struct SearchResult: Identifiable {
-    var id: URL { node.url }
-    let node: FileTreeNode
-    let score: Int
+enum LauncherResult: Identifiable {
+    case file(node: FileTreeNode, score: Int)
+    case person(name: String, count: Int, score: Int)
+
+    var id: String {
+        switch self {
+        case .file(let node, _): return "file:\(node.url.absoluteString)"
+        case .person(let name, _, _): return "person:\(name)"
+        }
+    }
+
+    var sortScore: Int {
+        switch self {
+        case .file(_, let score): return score
+        case .person(_, _, let score): return score
+        }
+    }
 }
 
 extension String {
+    /// Capitalize the first letter of each word.
+    var titleCased: String {
+        self.split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
     func fuzzyScore(_ query: String) -> Int? {
         if query.isEmpty { return 1000 }
         let lower = self.lowercased()
@@ -37,8 +57,12 @@ struct FileLauncher: View {
     @State private var cachedFiles: [FileTreeNode] = []
     @FocusState private var isSearchFocused: Bool
 
-    var results: [SearchResult] {
+    var results: [LauncherResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+
+        // Strip leading @ for people-specific search
+        let isPersonQuery = trimmed.hasPrefix("@")
+        let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
 
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
@@ -46,16 +70,26 @@ struct FileLauncher: View {
                 cachedFiles.first { $0.url == url }
             }
             let others = cachedFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
-            return (recentNodes + others).map { SearchResult(node: $0, score: 0) }
+            return (recentNodes + others).map { .file(node: $0, score: 0) }
         }
 
-        return cachedFiles
-            .compactMap { file -> SearchResult? in
+        // People results
+        let peopleResults: [LauncherResult] = store.peopleIndex.search(searchQuery)
+            .map { .person(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(searchQuery) ?? 0) }
+
+        if isPersonQuery {
+            return peopleResults
+        }
+
+        // File results
+        let fileResults: [LauncherResult] = cachedFiles
+            .compactMap { file -> LauncherResult? in
                 guard let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
                 let recentBonus = store.recentFiles.contains(file.url) ? 2000 : 0
-                return SearchResult(node: file, score: nameScore + recentBonus)
+                return .file(node: file, score: nameScore + recentBonus)
             }
-            .sorted { $0.score > $1.score }
+
+        return (fileResults + peopleResults).sorted { $0.sortScore > $1.sortScore }
     }
 
     var body: some View {
@@ -63,7 +97,7 @@ struct FileLauncher: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search files...", text: $query)
+                TextField("Search files & people...", text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 18))
                     .focused($isSearchFocused)
@@ -78,13 +112,26 @@ struct FileLauncher: View {
                     VStack(spacing: 0) {
                         ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                             HStack {
-                                Image(systemName: "doc.text")
-                                    .foregroundStyle(.secondary)
-                                Text(result.node.name)
-                                Spacer()
-                                Text(result.node.url.deletingLastPathComponent().lastPathComponent)
-                                    .foregroundStyle(.tertiary)
-                                    .font(.caption)
+                                switch result {
+                                case .file(let node, _):
+                                    Image(systemName: "doc.text")
+                                        .foregroundStyle(.secondary)
+                                    Text(node.name)
+                                    Spacer()
+                                    Text(node.url.deletingLastPathComponent().lastPathComponent)
+                                        .foregroundStyle(.tertiary)
+                                        .font(.caption)
+                                case .person(let name, let count, _):
+                                    Image(systemName: "person.fill")
+                                        .foregroundColor(Color(nsColor: .systemPurple))
+                                    Text("@\(name)")
+                                        .foregroundColor(Color(nsColor: .systemPurple))
+                                    Spacer()
+                                    let label = count == 1 ? "1 note" : "\(count) notes"
+                                    Text(label)
+                                        .foregroundStyle(.tertiary)
+                                        .font(.caption)
+                                }
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -138,7 +185,16 @@ struct FileLauncher: View {
 
     func openSelected() {
         guard selectedIndex >= 0 && selectedIndex < results.count else { return }
-        store.open(results[selectedIndex].node.url)
+        switch results[selectedIndex] {
+        case .file(let node, _):
+            store.open(node.url)
+        case .person(let name, _, _):
+            NotificationCenter.default.post(
+                name: .showPeopleBrowser,
+                object: nil,
+                userInfo: ["initialPerson": name]
+            )
+        }
         isPresented = false
     }
 }
