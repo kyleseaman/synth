@@ -308,7 +308,7 @@ struct DailyNoteEditor: NSViewRepresentable {
 
         // MARK: - Formatting
 
-        private func applyFormatting() {
+        func applyFormatting() {
             guard let textView = textView,
                   let storage = textView.textStorage
             else { return }
