@@ -362,7 +362,7 @@ class DocumentStore: ObservableObject {
             url = drafts.appendingPathComponent("Untitled \(num).md")
         }
 
-        try? "".write(to: url, atomically: true, encoding: .utf8)
+        try? "# \n\n".write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
     }

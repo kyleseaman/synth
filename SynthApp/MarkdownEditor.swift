@@ -20,16 +20,30 @@ struct MarkdownFormat: DocumentFormat {
         for (index, line) in lines.enumerated() {
             var attrs = defaultAttrs
 
-            // Style headings but keep the # prefix in the text
+            // Style headings — hide # prefix visually
+            var headingPrefixLen = 0
             if line.hasPrefix("# ") {
                 attrs[.font] = NSFont.systemFont(ofSize: 28, weight: .bold)
+                headingPrefixLen = 2
             } else if line.hasPrefix("## ") {
                 attrs[.font] = NSFont.systemFont(ofSize: 22, weight: .bold)
+                headingPrefixLen = 3
             } else if line.hasPrefix("### ") {
                 attrs[.font] = NSFont.systemFont(ofSize: 18, weight: .semibold)
+                headingPrefixLen = 4
             }
 
             let lineStr = NSMutableAttributedString(string: line, attributes: attrs)
+            if headingPrefixLen > 0 {
+                let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ]
+                lineStr.addAttributes(
+                    hiddenAttrs,
+                    range: NSRange(location: 0, length: headingPrefixLen)
+                )
+            }
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
             if index < lines.count - 1 {
                 lineStr.append(NSAttributedString(string: "\n", attributes: attrs))
@@ -213,6 +227,19 @@ struct MarkdownFormat: DocumentFormat {
                 baseFont, toHaveTrait: .italicFontMask
             )
             str.addAttribute(.font, value: italicFont, range: innerRange)
+        }
+
+        // MARK: Underline __text__ — style inner text, keep markers
+        // swiftlint:disable:next force_try
+        let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
+        let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in underlinePattern.matches(in: str.string, range: underlineRange) {
+            let innerRange = match.range(at: 1)
+            str.addAttribute(
+                .underlineStyle,
+                value: NSUnderlineStyle.single.rawValue,
+                range: innerRange
+            )
         }
 
         // MARK: Inline code `text` — style inner text, keep backticks
@@ -536,43 +563,49 @@ class FormattingTextView: NSTextView {
         super.insertBacktab(sender)
     }
 
-    func toggleBold() { toggleTrait(.boldFontMask) }
-    func toggleItalic() { toggleTrait(.italicFontMask) }
+    func toggleBold() { toggleMarkdownWrap("**") }
+    func toggleItalic() { toggleMarkdownWrap("*") }
 
-    private func toggleTrait(_ trait: NSFontTraitMask) {
+    private func toggleMarkdownWrap(_ marker: String) {
         let range = selectedRange()
         guard range.length > 0, let storage = textStorage else { return }
+        let text = storage.string as NSString
+        let selected = text.substring(with: range)
+        let markerLen = marker.count
 
-        var hasTrait = false
-        storage.enumerateAttribute(.font, in: range) { value, _, _ in
-            if let font = value as? NSFont {
-                let traits = font.fontDescriptor.symbolicTraits
-                let check = trait == .boldFontMask ? traits.contains(.bold) : traits.contains(.italic)
-                hasTrait = hasTrait || check
-            }
-        }
+        // Check if already wrapped with this marker
+        let hasBefore = range.location >= markerLen
+            && text.substring(
+                with: NSRange(location: range.location - markerLen, length: markerLen)
+            ) == marker
+        let hasAfter = range.location + range.length + markerLen <= text.length
+            && text.substring(
+                with: NSRange(location: range.location + range.length, length: markerLen)
+            ) == marker
 
-        storage.enumerateAttribute(.font, in: range) { value, attrRange, _ in
-            if let font = value as? NSFont {
-                let mgr = NSFontManager.shared
-                let newFont = hasTrait
-                    ? mgr.convert(font, toNotHaveTrait: trait)
-                    : mgr.convert(font, toHaveTrait: trait)
-                storage.addAttribute(.font, value: newFont, range: attrRange)
-            }
+        if hasBefore && hasAfter {
+            // Remove markers
+            let fullRange = NSRange(
+                location: range.location - markerLen,
+                length: range.length + markerLen * 2
+            )
+            storage.replaceCharacters(in: fullRange, with: selected)
+            setSelectedRange(NSRange(
+                location: range.location - markerLen,
+                length: range.length
+            ))
+        } else {
+            // Add markers
+            let wrapped = "\(marker)\(selected)\(marker)"
+            storage.replaceCharacters(in: range, with: wrapped)
+            setSelectedRange(NSRange(
+                location: range.location + markerLen,
+                length: range.length
+            ))
         }
     }
 
-    func toggleUnderline() {
-        let range = selectedRange()
-        guard range.length > 0, let storage = textStorage else { return }
-
-        var hasUnderline = false
-        storage.enumerateAttribute(.underlineStyle, in: range) { value, _, _ in
-            if let style = value as? Int, style != 0 { hasUnderline = true }
-        }
-        storage.addAttribute(.underlineStyle, value: hasUnderline ? 0 : NSUnderlineStyle.single.rawValue, range: range)
-    }
+    func toggleUnderline() { toggleMarkdownWrap("__") }
 
     // MARK: - Shared Autocomplete Completion
 
