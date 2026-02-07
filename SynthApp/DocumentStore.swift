@@ -15,6 +15,10 @@ class DocumentStore: ObservableObject {
     @Published var needsKiroSetup = false
     @Published var isLinksTabSelected = false
 
+    let noteIndex = NoteIndex()
+    let backlinkIndex = BacklinkIndex()
+    let tagIndex = TagIndex()
+
     private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
     private var fileWatcher: DispatchSourceFileSystemObject?
@@ -100,7 +104,12 @@ class DocumentStore: ObservableObject {
             let tree = FileTreeNode.scan(workspace)
             await MainActor.run {
                 self.fileTree = tree
+                self.noteIndex.rebuild(from: tree, workspace: workspace)
             }
+            // Rebuild backlink and tag indexes on background thread
+            let treeSnapshot = tree
+            self.backlinkIndex.rebuild(fileTree: treeSnapshot)
+            self.tagIndex.rebuild(fileTree: treeSnapshot)
         }
     }
 
@@ -272,6 +281,12 @@ class DocumentStore: ObservableObject {
             }
         }
         openFiles[currentIndex].isDirty = false
+
+        // Incremental index updates after save
+        let savedContent = openFiles[currentIndex].content.string
+        let savedURL = openFiles[currentIndex].url
+        backlinkIndex.updateFile(savedURL, content: savedContent)
+        tagIndex.updateFile(savedURL, content: savedContent)
     }
 
     func saveAll() {

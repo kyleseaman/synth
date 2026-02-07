@@ -7,6 +7,16 @@ extension Notification.Name {
     static let showFileLauncher = Notification.Name("showFileLauncher")
     static let showLinkCapture = Notification.Name("showLinkCapture")
     static let reloadEditor = Notification.Name("reloadEditor")
+
+    // MARK: - Wiki Link Notifications
+    static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
+    static let wikiLinkDismiss = Notification.Name("wikiLinkDismiss")
+    static let wikiLinkQueryUpdate = Notification.Name("wikiLinkQueryUpdate")
+    static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
+    static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
+
+    // MARK: - Tag Browser
+    static let showTagBrowser = Notification.Name("showTagBrowser")
 }
 
 struct ContentView: View {
@@ -14,6 +24,8 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showFileLauncher = false
     @State private var showLinkCapture = false
+    @State private var showTagBrowser = false
+    @State private var initialTagFilter: String?
     @State private var dismissedSetup = false
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
@@ -158,12 +170,13 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if showFileLauncher || showLinkCapture {
+            if showFileLauncher || showLinkCapture || showTagBrowser {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture {
                         showFileLauncher = false
                         showLinkCapture = false
+                        showTagBrowser = false
                     }
 
                 ZStack {
@@ -176,11 +189,20 @@ struct ContentView: View {
                         LinkCaptureView(isPresented: $showLinkCapture)
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
+
+                    if showTagBrowser {
+                        TagBrowserView(
+                            isPresented: $showTagBrowser,
+                            initialTag: initialTagFilter
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
                 }
             }
         }
         .animation(.easeOut(duration: 0.15), value: showFileLauncher)
         .animation(.easeOut(duration: 0.15), value: showLinkCapture)
+        .animation(.easeOut(duration: 0.15), value: showTagBrowser)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
@@ -198,6 +220,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
             showFileLauncher = false
             showLinkCapture = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showTagBrowser)) { notification in
+            initialTagFilter = notification.userInfo?["initialTag"] as? String
+            showFileLauncher = false
+            showLinkCapture = false
+            showTagBrowser = true
         }
     }
 }
@@ -366,20 +394,43 @@ struct EditorViewSimple: View {
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
 
+    private var currentNoteTitle: String {
+        guard store.currentIndex >= 0,
+              store.currentIndex < store.openFiles.count else { return "" }
+        return store.openFiles[store.currentIndex].url
+            .deletingPathExtension().lastPathComponent
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
                 .frame(width: 44)
                 .background(Color(nsColor: .textBackgroundColor))
 
-            MarkdownEditor(
-                text: $text,
-                scrollOffset: $scrollOffset,
-                linePositions: $linePositions,
-                selectedText: $selectedText,
-                selectedLineRange: $selectedLineRange
-            )
-            .background(Color(nsColor: .textBackgroundColor))
+            VStack(spacing: 0) {
+                MarkdownEditor(
+                    text: $text,
+                    scrollOffset: $scrollOffset,
+                    linePositions: $linePositions,
+                    selectedText: $selectedText,
+                    selectedLineRange: $selectedLineRange,
+                    store: store
+                )
+                .background(Color(nsColor: .textBackgroundColor))
+
+                BacklinksSection(
+                    noteTitle: currentNoteTitle,
+                    backlinkIndex: store.backlinkIndex,
+                    onNavigate: { url in store.open(url) }
+                )
+
+                RelatedNotesSection(
+                    noteTitle: currentNoteTitle,
+                    backlinkIndex: store.backlinkIndex,
+                    tagIndex: store.tagIndex,
+                    onNavigate: { url in store.open(url) }
+                )
+            }
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
         .onChange(of: text) { _, _ in saveText() }

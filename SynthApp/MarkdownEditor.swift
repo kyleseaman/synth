@@ -7,6 +7,8 @@ protocol DocumentFormat {
 }
 
 struct MarkdownFormat: DocumentFormat {
+    var noteIndex: NoteIndex?
+
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let bodyFont = NSFont.systemFont(ofSize: 16)
@@ -48,10 +50,114 @@ struct MarkdownFormat: DocumentFormat {
         attributed.string
     }
 
+    // swiftlint:disable:next function_body_length
     private func applyInlineFormatting(_ str: NSMutableAttributedString, baseFont: NSFont) {
-        let text = str.string
+        // MARK: Wiki links [[Note Title]]
+        // Must run BEFORE bold/italic so link content isn't further reformatted
+        // swiftlint:disable:next force_try
+        let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+        let wikiRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
+            let fullNSRange = match.range
+            let innerNSRange = match.range(at: 1)
+            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
+            let noteTitle = String(str.string[innerSwiftRange])
+            // Skip empty or whitespace-only links
+            if noteTitle.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+            let encodedTitle = noteTitle.addingPercentEncoding(
+                withAllowedCharacters: .urlPathAllowed
+            ) ?? noteTitle
+            // swiftlint:disable:next force_unwrapping
+            let linkURL = URL(string: "synth://wiki/\(encodedTitle)")!
+            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
 
-        // Bold **text**
+            // Broken link detection: check if target exists in noteIndex
+            // If noteIndex hasn't populated yet, assume note exists to avoid broken-link flash on load
+            let noteExists: Bool
+            if let index = noteIndex, index.isPopulated {
+                noteExists = index.findExact(noteTitle) != nil
+            } else {
+                noteExists = true
+            }
+            var linkAttrs: [NSAttributedString.Key: Any] = [
+                .font: mediumFont,
+                .link: linkURL,
+                .cursor: NSCursor.pointingHand
+            ]
+
+            if noteExists {
+                linkAttrs[.foregroundColor] = NSColor.controlAccentColor
+            } else {
+                linkAttrs[.foregroundColor] = NSColor.systemOrange
+                linkAttrs[.underlineStyle] = NSUnderlineStyle.patternDash.rawValue
+                    | NSUnderlineStyle.single.rawValue
+                linkAttrs[.underlineColor] = NSColor.systemOrange.withAlphaComponent(0.6)
+                linkAttrs[.toolTip] = "Note not found -- click to create"
+            }
+
+            let replacement = NSAttributedString(string: noteTitle, attributes: linkAttrs)
+            str.replaceCharacters(in: fullNSRange, with: replacement)
+        }
+
+        // MARK: @Today, @Yesterday, @Tomorrow
+        // swiftlint:disable:next force_try
+        let atPattern = try! NSRegularExpression(
+            pattern: "@(Today|Yesterday|Tomorrow)",
+            options: .caseInsensitive
+        )
+        let atRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in atPattern.matches(in: str.string, range: atRange).reversed() {
+            let fullNSRange = match.range
+            let tokenNSRange = match.range(at: 1)
+            guard let tokenSwiftRange = Range(tokenNSRange, in: str.string) else { continue }
+            let token = String(str.string[tokenSwiftRange])
+            // swiftlint:disable:next force_unwrapping
+            let linkURL = URL(string: "synth://daily/\(token.lowercased())")!
+            guard let fullSwiftRange = Range(fullNSRange, in: str.string) else { continue }
+            let displayText = String(str.string[fullSwiftRange])
+            let replacement = NSAttributedString(
+                string: displayText,
+                attributes: [
+                    .font: baseFont,
+                    .foregroundColor: NSColor.controlAccentColor,
+                    .link: linkURL
+                ]
+            )
+            str.replaceCharacters(in: fullNSRange, with: replacement)
+        }
+
+        // MARK: #Tags
+        // Must run after wiki links and @dates, before bold/italic/code
+        // swiftlint:disable:next force_try
+        let tagPattern = try! NSRegularExpression(
+            pattern: "(?<![#\\w])#([a-zA-Z][a-zA-Z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
+        )
+        let tagRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in tagPattern.matches(in: str.string, range: tagRange).reversed() {
+            let fullNSRange = match.range
+            let innerNSRange = match.range(at: 1)
+            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
+            let tagName = String(str.string[innerSwiftRange])
+            guard tagName.count >= 2 else { continue }
+            let tagLower = tagName.lowercased()
+            // swiftlint:disable:next force_unwrapping
+            let tagURL = URL(string: "synth://tag/\(tagLower)")!
+            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let replacement = NSAttributedString(
+                string: "#\(tagName)",
+                attributes: [
+                    .font: mediumFont,
+                    .foregroundColor: NSColor.systemTeal,
+                    .backgroundColor: NSColor.systemTeal.withAlphaComponent(0.10),
+                    .link: tagURL,
+                    .cursor: NSCursor.pointingHand
+                ]
+            )
+            str.replaceCharacters(in: fullNSRange, with: replacement)
+        }
+
+        // MARK: Bold **text**
+        let text = str.string
         // swiftlint:disable:next force_try
         let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
         let fullNSRange = NSRange(location: 0, length: text.utf16.count)
@@ -67,7 +173,7 @@ struct MarkdownFormat: DocumentFormat {
             }
         }
 
-        // Italic *text*
+        // MARK: Italic *text*
         // swiftlint:disable:next force_try
         let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
         let strRange = NSRange(location: 0, length: str.string.utf16.count)
@@ -86,7 +192,7 @@ struct MarkdownFormat: DocumentFormat {
             }
         }
 
-        // Inline code `text`
+        // MARK: Inline code `text`
         // swiftlint:disable:next force_try
         let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
         let codeRange = NSRange(location: 0, length: str.string.utf16.count)
@@ -121,7 +227,19 @@ struct RichTextFormat: DocumentFormat {
     }
 }
 
+// MARK: - Wiki Link State Machine
+
+enum WikiLinkState {
+    case idle
+    case singleBracket
+    case wikiLinkActive(start: Int)
+    case atActive(start: Int)
+    case hashtagActive(start: Int)
+}
+
 class FormattingTextView: NSTextView {
+    var wikiLinkState: WikiLinkState = .idle
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
         switch event.charactersIgnoringModifiers {
@@ -133,6 +251,15 @@ class FormattingTextView: NSTextView {
     }
 
     override func insertNewline(_ sender: Any?) {
+        // Dismiss wiki link popup on newline
+        switch wikiLinkState {
+        case .wikiLinkActive, .atActive, .hashtagActive:
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        default:
+            break
+        }
+
         guard let storage = textStorage else { super.insertNewline(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange).trimmingCharacters(in: .newlines)
@@ -157,10 +284,131 @@ class FormattingTextView: NSTextView {
         super.insertNewline(sender)
     }
 
+    // swiftlint:disable:next function_body_length cyclomatic_complexity
     override func insertText(_ string: Any, replacementRange: NSRange) {
         super.insertText(string, replacementRange: replacementRange)
 
-        guard let str = string as? String, str == " ", let storage = textStorage else { return }
+        guard let str = string as? String else { return }
+
+        // MARK: Wiki link state machine
+        switch wikiLinkState {
+        case .idle:
+            if str == "[" {
+                wikiLinkState = .singleBracket
+            } else if str == "@" {
+                let start = selectedRange().location
+                wikiLinkState = .atActive(start: start)
+                NotificationCenter.default.post(
+                    name: .wikiLinkTrigger,
+                    object: self,
+                    userInfo: ["mode": "at", "query": ""]
+                )
+            } else if str == "#" {
+                // Check if preceded by whitespace or at start of line
+                let cursor = selectedRange().location
+                let isAtStart = cursor <= 1
+                var precededBySpace = isAtStart
+                if !isAtStart, let storage = textStorage {
+                    let charBefore = (storage.string as NSString).substring(
+                        with: NSRange(location: cursor - 2, length: 1)
+                    )
+                    precededBySpace = charBefore.rangeOfCharacter(
+                        from: .whitespacesAndNewlines
+                    ) != nil
+                }
+                if precededBySpace {
+                    // Don't open popup yet; wait for a letter after #
+                    wikiLinkState = .hashtagActive(start: cursor)
+                }
+            }
+
+        case .singleBracket:
+            if str == "[" {
+                let start = selectedRange().location
+                wikiLinkState = .wikiLinkActive(start: start)
+                NotificationCenter.default.post(
+                    name: .wikiLinkTrigger,
+                    object: self,
+                    userInfo: ["mode": "wikilink", "query": ""]
+                )
+            } else {
+                wikiLinkState = .idle
+            }
+
+        case .wikiLinkActive, .atActive:
+            if str == "]" || str == "\n" || str == "\t" {
+                wikiLinkState = .idle
+                NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+            } else if str == " " {
+                // For @ mode, dismiss on space if no valid match is forming
+                if case .atActive = wikiLinkState {
+                    let query = extractCurrentQuery()
+                    let lowered = query.trimmingCharacters(in: .whitespaces).lowercased()
+                    let dateTokens = ["today", "yesterday", "tomorrow"]
+                    let hasPartialMatch = dateTokens.contains { $0.hasPrefix(lowered) }
+                    if !hasPartialMatch {
+                        wikiLinkState = .idle
+                        NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+                    } else {
+                        let fullQuery = extractCurrentQuery()
+                        NotificationCenter.default.post(
+                            name: .wikiLinkQueryUpdate,
+                            object: self,
+                            userInfo: ["query": fullQuery]
+                        )
+                    }
+                } else {
+                    let query = extractCurrentQuery()
+                    NotificationCenter.default.post(
+                        name: .wikiLinkQueryUpdate,
+                        object: self,
+                        userInfo: ["query": query]
+                    )
+                }
+            } else {
+                let query = extractCurrentQuery()
+                NotificationCenter.default.post(
+                    name: .wikiLinkQueryUpdate,
+                    object: self,
+                    userInfo: ["query": query]
+                )
+            }
+
+        case .hashtagActive(let start):
+            if str == " " || str == "\n" || str == "\t" {
+                // Space/newline/tab dismisses hashtag popup
+                wikiLinkState = .idle
+                NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+            } else {
+                let cursor = selectedRange().location
+                let queryLength = cursor - start
+                if queryLength == 1 {
+                    // First char after # -- check if it's a letter
+                    let firstChar = str.first ?? Character(" ")
+                    if firstChar.isLetter {
+                        // Now trigger the popup
+                        NotificationCenter.default.post(
+                            name: .wikiLinkTrigger,
+                            object: self,
+                            userInfo: ["mode": "hashtag", "query": str]
+                        )
+                    } else {
+                        // Not a valid tag start, reset
+                        wikiLinkState = .idle
+                    }
+                } else {
+                    let query = extractCurrentQuery()
+                    NotificationCenter.default.post(
+                        name: .wikiLinkQueryUpdate,
+                        object: self,
+                        userInfo: ["query": query]
+                    )
+                }
+            }
+        }
+
+        // MARK: Existing bullet conversion logic
+        guard str == " ", let storage = textStorage else { return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
@@ -173,6 +421,84 @@ class FormattingTextView: NSTextView {
         if rest == "- " || rest == "* " {
             let bulletRange = NSRange(location: lineRange.location + indent.count, length: 2)
             storage.replaceCharacters(in: bulletRange, with: "• ")
+        }
+    }
+
+    // MARK: - Delete Backward
+
+    override func deleteBackward(_ sender: Any?) {
+        super.deleteBackward(sender)
+        switch wikiLinkState {
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+            if selectedRange().location <= start {
+                wikiLinkState = .idle
+                NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+            } else {
+                let query = extractCurrentQuery()
+                NotificationCenter.default.post(
+                    name: .wikiLinkQueryUpdate,
+                    object: self,
+                    userInfo: ["query": query]
+                )
+            }
+        case .singleBracket:
+            wikiLinkState = .idle
+        default:
+            break
+        }
+    }
+
+    // MARK: - Key Down (Arrow/Return/Escape interception)
+
+    override func keyDown(with event: NSEvent) {
+        let isPopupActive: Bool
+        switch wikiLinkState {
+        case .wikiLinkActive, .atActive, .hashtagActive:
+            isPopupActive = true
+        default:
+            isPopupActive = false
+        }
+
+        guard isPopupActive else {
+            super.keyDown(with: event)
+            return
+        }
+
+        switch event.keyCode {
+        case 126: // Up arrow
+            NotificationCenter.default.post(
+                name: .wikiLinkNavigate,
+                object: self,
+                userInfo: ["direction": "up"]
+            )
+        case 125: // Down arrow
+            NotificationCenter.default.post(
+                name: .wikiLinkNavigate,
+                object: self,
+                userInfo: ["direction": "down"]
+            )
+        case 36: // Return -- select current result
+            NotificationCenter.default.post(name: .wikiLinkSelect, object: self)
+        case 53: // Escape -- dismiss
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    // MARK: - Extract Current Query
+
+    func extractCurrentQuery() -> String {
+        guard let storage = textStorage else { return "" }
+        let cursor = selectedRange().location
+        switch wikiLinkState {
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+            guard cursor > start else { return "" }
+            let range = NSRange(location: start, length: cursor - start)
+            return (storage.string as NSString).substring(with: range)
+        default:
+            return ""
         }
     }
 
@@ -245,17 +571,25 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var linePositions: [CGFloat]
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
-    var format: DocumentFormat = MarkdownFormat()
+    weak var store: DocumentStore?
+
+    var format: DocumentFormat {
+        MarkdownFormat(noteIndex: store?.noteIndex)
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let textView = FormattingTextView()
         textView.isEditable = true
         textView.isRichText = true
+        textView.isAutomaticLinkDetectionEnabled = false
         textView.textContainerInset = NSSize(width: 20, height: 20)
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
-        textView.typingAttributes = [.font: NSFont.systemFont(ofSize: 16), .foregroundColor: NSColor.textColor]
+        textView.typingAttributes = [
+            .font: NSFont.systemFont(ofSize: 16),
+            .foregroundColor: NSColor.textColor
+        ]
         textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -272,6 +606,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
+        context.coordinator.store = store
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -280,6 +615,9 @@ struct MarkdownEditor: NSViewRepresentable {
         ) { _ in
             context.coordinator.updateScrollOffset()
         }
+
+        // MARK: Wiki link notification observers
+        context.coordinator.setupWikiLinkObservers()
 
         // Initialize line positions for empty documents and set focus
         DispatchQueue.main.async {
@@ -293,6 +631,7 @@ struct MarkdownEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.parent = self
+        context.coordinator.store = store
 
         if !context.coordinator.isEditing && textView.string != text {
             textView.textStorage?.setAttributedString(format.render(text))
@@ -304,12 +643,17 @@ struct MarkdownEditor: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    // MARK: - Coordinator
+
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
         var boundsObserver: NSObjectProtocol?
+        weak var store: DocumentStore?
+        var wikiLinkPopover = WikiLinkPopover()
+        var wikiLinkObservers: [NSObjectProtocol] = []
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
@@ -317,7 +661,314 @@ struct MarkdownEditor: NSViewRepresentable {
             if let observer = boundsObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
+            for observer in wikiLinkObservers {
+                NotificationCenter.default.removeObserver(observer)
+            }
         }
+
+        // MARK: - Wiki Link Observer Setup
+
+        func setupWikiLinkObservers() {
+            let center = NotificationCenter.default
+
+            let triggerObs = center.addObserver(
+                forName: .wikiLinkTrigger, object: nil, queue: .main
+            ) { [weak self] notification in
+                self?.handleWikiLinkTrigger(notification)
+            }
+            wikiLinkObservers.append(triggerObs)
+
+            let dismissObs = center.addObserver(
+                forName: .wikiLinkDismiss, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.wikiLinkPopover.dismiss()
+            }
+            wikiLinkObservers.append(dismissObs)
+
+            let queryObs = center.addObserver(
+                forName: .wikiLinkQueryUpdate, object: nil, queue: .main
+            ) { [weak self] notification in
+                self?.handleWikiLinkQueryUpdate(notification)
+            }
+            wikiLinkObservers.append(queryObs)
+
+            let selectObs = center.addObserver(
+                forName: .wikiLinkSelect, object: nil, queue: .main
+            ) { [weak self] _ in
+                self?.handleWikiLinkSelect()
+            }
+            wikiLinkObservers.append(selectObs)
+
+            let navObs = center.addObserver(
+                forName: .wikiLinkNavigate, object: nil, queue: .main
+            ) { [weak self] notification in
+                self?.handleWikiLinkNavigate(notification)
+            }
+            wikiLinkObservers.append(navObs)
+
+            // Set up the selection callback on the popover
+            wikiLinkPopover.onSelect = { [weak self] title in
+                self?.completeWikiLink(title: title)
+            }
+        }
+
+        // MARK: - Wiki Link Trigger
+
+        private func handleWikiLinkTrigger(_ notification: Notification) {
+            guard let textView = textView else { return }
+            let mode = notification.userInfo?["mode"] as? String ?? "wikilink"
+            let initialQuery = notification.userInfo?["query"] as? String ?? ""
+            let cursorPos = textView.selectedRange().location
+
+            // Position the popover at the trigger location
+            let triggerStart: Int
+            if mode == "wikilink" {
+                triggerStart = max(cursorPos - 2, 0)
+            } else if mode == "hashtag" {
+                // Popup anchored at the # character
+                triggerStart = max(cursorPos - 2, 0) // # + first letter
+            } else {
+                triggerStart = max(cursorPos - 1, 0)
+            }
+
+            wikiLinkPopover.show(at: triggerStart, in: textView, mode: mode)
+
+            // Initial results
+            let results: [NoteSearchResult]
+            if mode == "at" {
+                results = dateAutocompleteResults(query: "")
+            } else if mode == "hashtag" {
+                results = tagAutocompleteResults(query: initialQuery)
+            } else {
+                results = store?.noteIndex.search("") ?? []
+            }
+            wikiLinkPopover.updateResults(query: initialQuery, results: results)
+        }
+
+        // MARK: - Wiki Link Query Update
+
+        private func handleWikiLinkQueryUpdate(_ notification: Notification) {
+            let query = notification.userInfo?["query"] as? String ?? ""
+            guard let textView = textView else { return }
+
+            let results: [NoteSearchResult]
+            switch textView.wikiLinkState {
+            case .atActive:
+                results = dateAutocompleteResults(query: query)
+            case .hashtagActive:
+                results = tagAutocompleteResults(query: query)
+            default:
+                results = store?.noteIndex.search(query) ?? []
+            }
+            wikiLinkPopover.updateResults(query: query, results: results)
+        }
+
+        // MARK: - Wiki Link Selection
+
+        private func handleWikiLinkSelect() {
+            guard let title = wikiLinkPopover.selectedTitle() else { return }
+            completeWikiLink(title: title)
+        }
+
+        // MARK: - Wiki Link Navigation
+
+        private func handleWikiLinkNavigate(_ notification: Notification) {
+            let direction = notification.userInfo?["direction"] as? String ?? ""
+            if direction == "up" {
+                wikiLinkPopover.moveSelectionUp()
+            } else {
+                wikiLinkPopover.moveSelectionDown()
+            }
+        }
+
+        // MARK: - Complete Wiki Link Insertion
+
+        func completeWikiLink(title: String) {
+            guard let textView = textView,
+                  let storage = textView.textStorage else { return }
+            let cursor = textView.selectedRange().location
+
+            switch textView.wikiLinkState {
+            case .wikiLinkActive(let start):
+                // start points to after "[[", so replace from start-2 to cursor
+                let replaceStart = max(start - 2, 0)
+                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
+                let replacement = "[[\(title)]]"
+                storage.replaceCharacters(in: range, with: replacement)
+                textView.setSelectedRange(
+                    NSRange(location: replaceStart + replacement.count, length: 0)
+                )
+
+            case .atActive(let start):
+                // start points to after "@", so replace from start-1 to cursor
+                let replaceStart = max(start - 1, 0)
+                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
+                let replacement = "@\(title)"
+                storage.replaceCharacters(in: range, with: replacement)
+                textView.setSelectedRange(
+                    NSRange(location: replaceStart + replacement.count, length: 0)
+                )
+
+            case .hashtagActive(let start):
+                // start points to after "#", so replace from start-1 to cursor
+                let replaceStart = max(start - 1, 0)
+                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
+                // title already includes "#" prefix from tagAutocompleteResults
+                let tagText = title.hasPrefix("#") ? title : "#\(title)"
+                let replacement = "\(tagText) "
+                storage.replaceCharacters(in: range, with: replacement)
+                textView.setSelectedRange(
+                    NSRange(location: replaceStart + replacement.count, length: 0)
+                )
+
+            default:
+                break
+            }
+
+            textView.wikiLinkState = .idle
+            wikiLinkPopover.dismiss()
+
+            // Trigger text update
+            parent.text = textView.string
+        }
+
+        // MARK: - Date Autocomplete Results
+
+        private func dateAutocompleteResults(query: String) -> [NoteSearchResult] {
+            let tokens = ["Today", "Yesterday", "Tomorrow"]
+            let filtered: [String]
+            if query.isEmpty {
+                filtered = tokens
+            } else {
+                filtered = tokens.filter {
+                    $0.lowercased().hasPrefix(query.lowercased())
+                }
+            }
+            return filtered.map { token in
+                let dateStr = resolveDateLabel(token)
+                return NoteSearchResult(
+                    // swiftlint:disable:next force_unwrapping
+                    id: URL(string: "synth://daily/\(token.lowercased())")!,
+                    title: token,
+                    relativePath: dateStr,
+                    // swiftlint:disable:next force_unwrapping
+                    url: URL(string: "synth://daily/\(token.lowercased())")!
+                )
+            }
+        }
+
+        // MARK: - Tag Autocomplete Results
+
+        private func tagAutocompleteResults(query: String) -> [NoteSearchResult] {
+            guard let tagIndex = store?.tagIndex else { return [] }
+            let tags = tagIndex.search(query)
+            return tags.map { tag in
+                NoteSearchResult(
+                    // swiftlint:disable:next force_unwrapping
+                    id: URL(string: "synth://tag/\(tag.name)")!,
+                    title: "#\(tag.name)",
+                    relativePath: "\(tag.count) notes",
+                    // swiftlint:disable:next force_unwrapping
+                    url: URL(string: "synth://tag/\(tag.name)")!
+                )
+            }
+        }
+
+        private func resolveDateLabel(_ token: String) -> String {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            let date: Date?
+            switch token.lowercased() {
+            case "today":
+                date = Date()
+            case "yesterday":
+                date = Calendar.current.date(byAdding: .day, value: -1, to: Date())
+            case "tomorrow":
+                date = Calendar.current.date(byAdding: .day, value: 1, to: Date())
+            default:
+                date = nil
+            }
+            guard let resolved = date else { return "" }
+            return formatter.string(from: resolved)
+        }
+
+        // MARK: - Link Click Handling
+
+        func textView(
+            _ textView: NSTextView,
+            clickedOnLink link: Any,
+            at charIndex: Int
+        ) -> Bool {
+            guard let url = link as? URL, url.scheme == "synth" else { return false }
+
+            if url.host == "wiki" {
+                let noteTitle = url.pathComponents.dropFirst().joined(separator: "/")
+                    .removingPercentEncoding ?? ""
+                handleWikiLinkClick(noteTitle: noteTitle)
+                return true
+            }
+
+            if url.host == "daily" {
+                let token = url.pathComponents.dropFirst().joined(separator: "/")
+                handleDailyNoteClick(token: token)
+                return true
+            }
+
+            if url.host == "tag" {
+                let tagName = url.pathComponents.dropFirst().joined(separator: "/")
+                handleTagClick(tagName: tagName)
+                return true
+            }
+
+            return false
+        }
+
+        private func handleWikiLinkClick(noteTitle: String) {
+            guard let store = store else { return }
+
+            // Search for matching file in the workspace
+            if let exact = store.noteIndex.findExact(noteTitle) {
+                store.open(exact.url)
+            } else {
+                // Create new note
+                createAndOpenNote(title: noteTitle, store: store)
+            }
+        }
+
+        private func handleDailyNoteClick(token: String) {
+            guard let store = store, let workspace = store.workspace else { return }
+            guard let url = DailyNoteResolver.resolve(token, workspace: workspace) else { return }
+            DailyNoteResolver.ensureExists(at: url)
+            store.loadFileTree()
+            store.open(url)
+        }
+
+        private func createAndOpenNote(title: String, store: DocumentStore) {
+            guard let workspace = store.workspace else { return }
+            // Sanitize title: strip path traversal and invalid filename characters
+            let sanitized = title
+                .replacingOccurrences(of: "[/:\\x00-\\x1F\\x7F]", with: "-", options: .regularExpression)
+                .replacingOccurrences(of: "..", with: "-")
+                .trimmingCharacters(in: .whitespaces)
+            guard !sanitized.isEmpty else { return }
+            let url = workspace.appendingPathComponent("\(sanitized).md")
+            // Validate the resolved path stays within the workspace
+            guard url.standardizedFileURL.path.hasPrefix(workspace.standardizedFileURL.path) else { return }
+            let content = "# \(sanitized)\n\n"
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+            store.loadFileTree()
+            store.open(url)
+        }
+
+        private func handleTagClick(tagName: String) {
+            NotificationCenter.default.post(
+                name: .showTagBrowser,
+                object: nil,
+                userInfo: ["initialTag": tagName]
+            )
+        }
+
+        // MARK: - Scroll Offset
 
         func updateScrollOffset() {
             guard let scrollView = scrollView else { return }
@@ -325,6 +976,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.parent.scrollOffset = scrollView.contentView.bounds.origin.y
             }
         }
+
+        // MARK: - Line Positions
 
         func updateLinePositions() {
             guard let textView = textView,
@@ -356,7 +1009,8 @@ struct MarkdownEditor: NSViewRepresentable {
             // Count actual lines by newlines
             let lines = string.components(separatedBy: "\n")
             for lineIndex in 0..<lines.count {
-                let yPos = textInset + CGFloat(lineIndex) * defaultLineHeight + defaultLineHeight / 2
+                let yPos = textInset + CGFloat(lineIndex) * defaultLineHeight
+                    + defaultLineHeight / 2
                 positions.append(yPos)
             }
 
@@ -364,6 +1018,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.parent.linePositions = positions
             }
         }
+
+        // MARK: - Text Delegate Methods
 
         func textDidBeginEditing(_ notification: Notification) { isEditing = true }
         func textDidEndEditing(_ notification: Notification) { isEditing = false }
@@ -379,7 +1035,8 @@ struct MarkdownEditor: NSViewRepresentable {
             let range = textView.selectedRange()
             if range.length > 0 {
                 let text = (textView.string as NSString).substring(with: range)
-                let beforeSelection = (textView.string as NSString).substring(to: range.location)
+                let beforeSelection = (textView.string as NSString)
+                    .substring(to: range.location)
                 let startLine = beforeSelection.components(separatedBy: "\n").count
                 let selectedLines = text.components(separatedBy: "\n").count
                 let endLine = startLine + selectedLines - 1
