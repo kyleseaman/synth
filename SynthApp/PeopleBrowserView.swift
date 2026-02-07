@@ -85,16 +85,16 @@ struct PeopleBrowserView: View {
             HStack(spacing: 0) {
                 // Left: People list
                 personListPanel
-                    .frame(width: 200)
+                    .frame(width: 240)
 
                 Divider()
 
                 // Right: Note list
                 noteListPanel
             }
-            .frame(maxHeight: 340)
+            .frame(maxHeight: 440)
         }
-        .frame(width: 600)
+        .frame(width: 700)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 8)

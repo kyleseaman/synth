@@ -111,26 +111,31 @@ struct FileLauncher: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                            HStack {
-                                switch result {
-                                case .file(let node, _):
-                                    Image(systemName: "doc.text")
-                                        .foregroundStyle(.secondary)
-                                    Text(node.name)
-                                    Spacer()
-                                    Text(node.url.deletingLastPathComponent().lastPathComponent)
-                                        .foregroundStyle(.tertiary)
-                                        .font(.caption)
-                                case .person(let name, let count, _):
-                                    Image(systemName: "person.fill")
-                                        .foregroundColor(Color(nsColor: .systemPurple))
-                                    Text("@\(name)")
-                                        .foregroundColor(Color(nsColor: .systemPurple))
-                                    Spacer()
-                                    let label = count == 1 ? "1 note" : "\(count) notes"
-                                    Text(label)
-                                        .foregroundStyle(.tertiary)
-                                        .font(.caption)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    switch result {
+                                    case .file(let node, _):
+                                        Image(systemName: "doc.text")
+                                            .foregroundStyle(.secondary)
+                                        Text(node.name)
+                                        Spacer()
+                                        Text(node.url.deletingLastPathComponent().lastPathComponent)
+                                            .foregroundStyle(.tertiary)
+                                            .font(.caption)
+                                    case .person(let name, let count, _):
+                                        Image(systemName: "person.fill")
+                                            .foregroundColor(Color(nsColor: .systemPurple))
+                                        Text("@\(name)")
+                                            .foregroundColor(Color(nsColor: .systemPurple))
+                                        Spacer()
+                                        let label = count == 1 ? "1 note" : "\(count) notes"
+                                        Text(label)
+                                            .foregroundStyle(.tertiary)
+                                            .font(.caption)
+                                    }
+                                }
+                                if case .file(let node, _) = result {
+                                    FileDatesLabel(url: node.url)
                                 }
                             }
                             .padding(.horizontal, 12)
@@ -196,6 +201,40 @@ struct FileLauncher: View {
             )
         }
         isPresented = false
+    }
+}
+
+// MARK: - File Dates Label
+
+struct FileDatesLabel: View {
+    let url: URL
+
+    private static let formatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateStyle = .short
+        fmt.timeStyle = .short
+        return fmt
+    }()
+
+    private var dates: (created: String, modified: String)? {
+        guard let values = try? url.resourceValues(
+            forKeys: [.creationDateKey, .contentModificationDateKey]
+        ) else { return nil }
+        let created = values.creationDate.map { Self.formatter.string(from: $0) } ?? "—"
+        let modified = values.contentModificationDate.map { Self.formatter.string(from: $0) } ?? "—"
+        return (created: created, modified: modified)
+    }
+
+    var body: some View {
+        if let dates = dates {
+            HStack(spacing: 8) {
+                Text("Created \(dates.created)")
+                Text("Modified \(dates.modified)")
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(.quaternary)
+            .padding(.leading, 20)
+        }
     }
 }
 
