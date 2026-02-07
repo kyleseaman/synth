@@ -25,7 +25,12 @@ struct FileTreeNode: Identifiable, Equatable {
             at: url, includingPropertiesForKeys: keys
         ) else { return [] }
         return contents
-            .filter { !$0.lastPathComponent.hasPrefix(".") || $0.lastPathComponent == ".kiro" }
+            .filter {
+                let name = $0.lastPathComponent
+                if name.hasPrefix(".") && name != ".kiro" { return false }
+                if name == "daily" || name == "media" { return false }
+                return true
+            }
             .sorted { first, second in
                 let firstDir = (try? first.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 let secondDir = (try? second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false

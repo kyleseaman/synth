@@ -78,27 +78,6 @@ struct ContentView: View {
                         onClose: { store.closeTab(at: index) }
                     )
                 }
-                TabButton(
-                    title: "Daily Notes",
-                    isSelected: store.isDailyNotesViewActive,
-                    isDirty: false,
-                    onSelect: { store.selectDailyNotesTab() },
-                    onClose: nil
-                )
-                TabButton(
-                    title: "Links",
-                    isSelected: store.isLinksTabSelected,
-                    isDirty: false,
-                    onSelect: { store.selectLinksTab() },
-                    onClose: nil
-                )
-                TabButton(
-                    title: "Media",
-                    isSelected: store.isMediaTabSelected,
-                    isDirty: false,
-                    onSelect: { store.selectMediaTab() },
-                    onClose: nil
-                )
             }
         }
     }
@@ -133,6 +112,44 @@ struct ContentView: View {
                         .padding(.horizontal, 6)
                         .background(
                             store.isDailyNotesViewActive
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
+                        // MARK: - Links sidebar button
+                        Button {
+                            store.selectLinksTab()
+                        } label: {
+                            Label("Links", systemImage: "link")
+                                .fontWeight(
+                                    store.isLinksTabSelected ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.isLinksTabSelected
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
+                        // MARK: - Media sidebar button
+                        Button {
+                            store.selectMediaTab()
+                        } label: {
+                            Label("Media", systemImage: "photo.on.rectangle")
+                                .fontWeight(
+                                    store.isMediaTabSelected ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.isMediaTabSelected
                                 ? Color.accentColor.opacity(0.15)
                                 : Color.clear,
                             in: RoundedRectangle(cornerRadius: 6)
@@ -217,7 +234,8 @@ struct ContentView: View {
                 if !store.isChatVisibleForCurrentTab
                     && !store.openFiles.isEmpty
                     && !store.isLinksTabSelected
-                    && !store.isMediaTabSelected {
+                    && !store.isMediaTabSelected
+                    && !store.isDailyNotesViewActive {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {

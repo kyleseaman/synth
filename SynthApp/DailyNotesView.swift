@@ -122,6 +122,7 @@ struct DailyNoteSection: View {
             // Content area
             DailyNoteEditor(
                 text: entry.content,
+                noteURL: entry.url,
                 onTextChange: onContentChange,
                 noteIndex: store?.noteIndex,
                 store: store
@@ -184,6 +185,7 @@ struct DailyNoteSection: View {
 
 struct DailyNoteEditor: NSViewRepresentable {
     let text: String
+    let noteURL: URL?
     let onTextChange: (String) -> Void
     var noteIndex: NoteIndex?
     weak var store: DocumentStore?
@@ -217,7 +219,9 @@ struct DailyNoteEditor: NSViewRepresentable {
 
         context.coordinator.textView = textView
         context.coordinator.store = store
+        context.coordinator.bindImagePasteHandler(to: textView)
         context.coordinator.setupAutocomplete()
+        context.coordinator.applyFormatting()
         return textView
     }
 
@@ -226,14 +230,27 @@ struct DailyNoteEditor: NSViewRepresentable {
     ) {
         context.coordinator.store = store
         context.coordinator.autocomplete.store = store
+        let restoredString = MarkdownFormat.restoreImageMarkup(
+            in: textView.string
+        )
         if !context.coordinator.isEditing
             && !context.coordinator.isFormatting
-            && textView.string != text {
+            && restoredString != text {
             context.coordinator.isFormatting = true
             let format = MarkdownFormat(noteIndex: noteIndex)
             textView.textStorage?.setAttributedString(
                 format.render(text)
             )
+            if let storage = textView.textStorage {
+                let baseFont = NSFont.systemFont(ofSize: 16)
+                let baseDirectory = noteURL?
+                    .deletingLastPathComponent()
+                MarkdownFormat.applyImageRendering(
+                    in: storage,
+                    baseFont: baseFont,
+                    baseDirectoryURL: baseDirectory
+                )
+            }
             context.coordinator.isFormatting = false
         }
     }
@@ -259,7 +276,11 @@ struct DailyNoteEditor: NSViewRepresentable {
                 guard let self = self,
                       let textView = self.textView
                 else { return }
-                self.parent.onTextChange(textView.string)
+                self.parent.onTextChange(
+                    MarkdownFormat.restoreImageMarkup(
+                        in: textView.string
+                    )
+                )
                 self.applyFormatting()
             }
             autocomplete.setupObservers()
@@ -279,7 +300,9 @@ struct DailyNoteEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = textView,
                   !isFormatting else { return }
-            parent.onTextChange(textView.string)
+            parent.onTextChange(
+                MarkdownFormat.restoreImageMarkup(in: textView.string)
+            )
             applyFormatting()
         }
 
@@ -291,14 +314,89 @@ struct DailyNoteEditor: NSViewRepresentable {
             else { return }
             isFormatting = true
             let cursor = textView.selectedRange()
+            let cleanText = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
             let format = MarkdownFormat(
                 noteIndex: parent.noteIndex
             )
             storage.setAttributedString(
-                format.render(textView.string)
+                format.render(cleanText)
+            )
+
+            let baseFont = NSFont.systemFont(ofSize: 16)
+            let baseDirectory = parent.noteURL?
+                .deletingLastPathComponent()
+            let pendingRenders = MarkdownFormat.applyImageRendering(
+                in: storage,
+                baseFont: baseFont,
+                baseDirectoryURL: baseDirectory
+            )
+            loadInlineImages(
+                pendingRenders,
+                storage: storage,
+                baseFont: baseFont
             )
             textView.setSelectedRange(cursor)
             isFormatting = false
+        }
+
+        private func loadInlineImages(
+            _ requests: [MarkdownFormat.PendingImageRender],
+            storage: NSTextStorage,
+            baseFont: NSFont
+        ) {
+            let maxSize = MarkdownFormat.maxRenderedImageSize(
+                for: baseFont
+            )
+            for request in requests {
+                WorkspaceImageLoader.shared.loadImage(
+                    at: request.imageURL,
+                    maxSize: maxSize
+                ) { [weak self] loadedImage in
+                    guard let self,
+                          let loadedImage,
+                          let textView = self.textView,
+                          let currentStorage = textView.textStorage,
+                          currentStorage === storage
+                    else { return }
+
+                    let storageString = currentStorage.string as NSString
+                    let markupEnd = request.markupRange.location
+                        + request.markupRange.length
+                    guard markupEnd <= storageString.length
+                    else { return }
+
+                    let currentMarkup = storageString.substring(
+                        with: request.markupRange
+                    )
+                    let expectedMarkup = MarkdownFormat.attachmentCharacter
+                        + request.markupText.dropFirst()
+                    guard currentMarkup == expectedMarkup
+                    else { return }
+
+                    let attachment = NSTextAttachment()
+                    attachment.image = loadedImage
+                    currentStorage.replaceCharacters(
+                        in: request.attachmentRange,
+                        with: NSAttributedString(attachment: attachment)
+                    )
+                }
+            }
+        }
+
+        func bindImagePasteHandler(
+            to textView: FormattingTextView
+        ) {
+            textView.imagePasteHandler = { [weak self] image in
+                guard let self,
+                      let store = self.store,
+                      let noteURL = self.parent.noteURL,
+                      let relativePath = store.savePastedImageToMedia(
+                          image, noteURL: noteURL
+                      ) else { return nil }
+                return "![Screenshot](\(relativePath))"
+            }
         }
 
         // MARK: - Link Click Handling
@@ -344,12 +442,9 @@ struct DailyNoteBacklinks: View {
         return allURLs.compactMap { url in
             let title = url.deletingPathExtension().lastPathComponent
             guard title.lowercased() != lowerFilename else { return nil }
-            let snippet = store.backlinkIndex.snippet(
-                from: url, to: filename
-            ) ?? store.backlinkIndex.snippet(
-                from: url, to: dateTitle
-            ) ?? ""
-            let parent = url.deletingLastPathComponent().lastPathComponent
+            let snippet = Self.contentPreview(for: url)
+            let parent = url.deletingLastPathComponent()
+                .lastPathComponent
             return (
                 url: url, title: title,
                 snippet: snippet, relativePath: parent
@@ -359,6 +454,23 @@ struct DailyNoteBacklinks: View {
             $0.title.localizedCaseInsensitiveCompare($1.title)
                 == .orderedAscending
         }
+    }
+
+    /// First meaningful content line from a file (skips headings and blanks).
+    private static func contentPreview(for url: URL) -> String {
+        guard let content = try? String(
+            contentsOf: url, encoding: .utf8
+        ) else { return "" }
+        let lines = content.components(separatedBy: "\n")
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            if trimmed.count > 120 {
+                return String(trimmed.prefix(120)) + "..."
+            }
+            return trimmed
+        }
+        return ""
     }
 
     var body: some View {

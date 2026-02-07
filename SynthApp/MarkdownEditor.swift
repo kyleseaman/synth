@@ -65,6 +65,9 @@ struct MarkdownFormat: DocumentFormat {
         attributed.string
     }
 
+    /// Character used by NSTextView to render inline attachments.
+    static let attachmentCharacter = "\u{FFFC}"
+
     @discardableResult
     static func applyImageRendering(
         in attributedText: NSMutableAttributedString,
@@ -99,25 +102,42 @@ struct MarkdownFormat: DocumentFormat {
             attachment.image = cachedImage
                 ?? NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
 
+            // Hide the markdown syntax after the first character
+            let tailRange = NSRange(
+                location: markupRange.location + 1,
+                length: markupRange.length - 1
+            )
             let hiddenAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 0.01),
                 .foregroundColor: NSColor.clear
             ]
-            attributedText.addAttributes(hiddenAttributes, range: markupRange)
-            let attachmentRange = NSRange(location: markupRange.location, length: 1)
-            attributedText.addAttributes([.attachment: attachment], range: attachmentRange)
+            attributedText.addAttributes(hiddenAttributes, range: tailRange)
+
+            // Replace leading "!" with the object replacement character
+            // so NSTextView actually renders the attachment inline
+            let bangRange = NSRange(location: markupRange.location, length: 1)
+            attributedText.replaceCharacters(
+                in: bangRange,
+                with: NSAttributedString(attachment: attachment)
+            )
 
             pendingRenders.append(
                 PendingImageRender(
                     imageURL: imageURL,
                     markupRange: markupRange,
                     markupText: markupText,
-                    attachmentRange: attachmentRange
+                    attachmentRange: bangRange
                 )
             )
         }
 
         return pendingRenders
+    }
+
+    /// Restore object replacement characters back to `!` so the
+    /// underlying plain text stays valid markdown.
+    static func restoreImageMarkup(in text: String) -> String {
+        text.replacingOccurrences(of: attachmentCharacter, with: "!")
     }
 
     static func maxRenderedImageSize(for baseFont: NSFont) -> NSSize {
@@ -882,7 +902,10 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.store = store
         context.coordinator.autocomplete.store = store
 
-        if !context.coordinator.isEditing && textView.string != text {
+        let restoredString = MarkdownFormat.restoreImageMarkup(
+            in: textView.string
+        )
+        if !context.coordinator.isEditing && restoredString != text {
             textView.textStorage?.setAttributedString(format.render(text))
             context.coordinator.applyFormatting()
             DispatchQueue.main.async {
@@ -924,7 +947,9 @@ struct MarkdownEditor: NSViewRepresentable {
                 guard let self = self,
                       let textView = self.textView
                 else { return }
-                self.parent.text = textView.string
+                self.parent.text = MarkdownFormat.restoreImageMarkup(
+                    in: textView.string
+                )
                 self.applyFormatting()
             }
             autocomplete.setupObservers()
@@ -1023,12 +1048,14 @@ struct MarkdownEditor: NSViewRepresentable {
         func textDidEndEditing(_ notification: Notification) {
             isEditing = false
             saveTimer?.invalidate()
-            store?.save()
+            store?.saveAll()
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = textView, !isFormatting else { return }
-            parent.text = textView.string
+            parent.text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
             applyFormatting()
             updateLinePositions()
             scheduleSave()
@@ -1039,7 +1066,7 @@ struct MarkdownEditor: NSViewRepresentable {
             saveTimer = Timer.scheduledTimer(
                 withTimeInterval: 1.0, repeats: false
             ) { [weak self] _ in
-                self?.store?.save()
+                self?.store?.saveAll()
             }
         }
 
@@ -1051,9 +1078,12 @@ struct MarkdownEditor: NSViewRepresentable {
             else { return }
             isFormatting = true
             let cursor = textView.selectedRange()
+            let cleanText = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
             let format = MarkdownFormat(noteIndex: store?.noteIndex)
             storage.setAttributedString(
-                format.render(textView.string)
+                format.render(cleanText)
             )
 
             let baseFont = NSFont.systemFont(ofSize: 16)
@@ -1097,14 +1127,15 @@ struct MarkdownEditor: NSViewRepresentable {
                     guard markupEnd <= storageLength else { return }
 
                     let currentMarkup = storageString.substring(with: request.markupRange)
-                    guard currentMarkup == request.markupText else { return }
+                    let expectedMarkup = MarkdownFormat.attachmentCharacter
+                        + request.markupText.dropFirst()
+                    guard currentMarkup == expectedMarkup else { return }
 
                     let attachment = NSTextAttachment()
                     attachment.image = loadedImage
-                    currentStorage.addAttribute(
-                        .attachment,
-                        value: attachment,
-                        range: request.attachmentRange
+                    currentStorage.replaceCharacters(
+                        in: request.attachmentRange,
+                        with: NSAttributedString(attachment: attachment)
                     )
                 }
             }

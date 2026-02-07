@@ -8,12 +8,14 @@ struct DailyNoteResolver {
     private static let fileDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }()
 
     private static let headingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMMM d, yyyy"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }()
 

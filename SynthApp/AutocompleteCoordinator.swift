@@ -160,6 +160,7 @@ class AutocompleteCoordinator {
     private static let dateFileFormatter: DateFormatter = {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
         return fmt
     }()
 
