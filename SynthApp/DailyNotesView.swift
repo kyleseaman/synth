@@ -377,9 +377,19 @@ struct DailyNoteEditor: NSViewRepresentable {
 
                     let attachment = NSTextAttachment()
                     attachment.image = loadedImage
+                    let attachStr = NSMutableAttributedString(
+                        attributedString: NSAttributedString(
+                            attachment: attachment
+                        )
+                    )
+                    attachStr.addAttribute(
+                        MarkdownFormat.imageURLKey,
+                        value: request.imageURL,
+                        range: NSRange(location: 0, length: 1)
+                    )
                     currentStorage.replaceCharacters(
                         in: request.attachmentRange,
-                        with: NSAttributedString(attachment: attachment)
+                        with: attachStr
                     )
                 }
             }

@@ -54,7 +54,7 @@ struct MarkdownFormat: DocumentFormat {
             }
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
             if index < lines.count - 1 {
-                lineStr.append(NSAttributedString(string: "\n", attributes: attrs))
+                lineStr.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
             }
             result.append(lineStr)
         }
@@ -67,6 +67,9 @@ struct MarkdownFormat: DocumentFormat {
 
     /// Character used by NSTextView to render inline attachments.
     static let attachmentCharacter = "\u{FFFC}"
+
+    /// Custom attribute key storing the resolved image file URL.
+    static let imageURLKey = NSAttributedString.Key("synth.imageURL")
 
     @discardableResult
     static func applyImageRendering(
@@ -116,9 +119,15 @@ struct MarkdownFormat: DocumentFormat {
             // Replace leading "!" with the object replacement character
             // so NSTextView actually renders the attachment inline
             let bangRange = NSRange(location: markupRange.location, length: 1)
+            let attachmentStr = NSMutableAttributedString(
+                attributedString: NSAttributedString(attachment: attachment)
+            )
+            attachmentStr.addAttribute(
+                imageURLKey, value: imageURL, range: NSRange(location: 0, length: 1)
+            )
             attributedText.replaceCharacters(
                 in: bangRange,
-                with: NSAttributedString(attachment: attachment)
+                with: attachmentStr
             )
 
             pendingRenders.append(
@@ -377,6 +386,71 @@ struct RichTextFormat: DocumentFormat {
     }
 }
 
+// MARK: - Image Attachment Overlay
+
+class ImageAttachmentOverlay: NSView {
+    var onCopy: (() -> Void)?
+    var onDelete: (() -> Void)?
+
+    private let copyButton = NSButton()
+    private let deleteButton = NSButton()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.backgroundColor = NSColor.windowBackgroundColor
+            .withAlphaComponent(0.85).cgColor
+
+        copyButton.image = NSImage(
+            systemSymbolName: "doc.on.doc",
+            accessibilityDescription: "Copy"
+        )
+        copyButton.bezelStyle = .inline
+        copyButton.isBordered = false
+        copyButton.target = self
+        copyButton.action = #selector(copyTapped)
+        copyButton.toolTip = "Copy image"
+        addSubview(copyButton)
+
+        deleteButton.image = NSImage(
+            systemSymbolName: "trash",
+            accessibilityDescription: "Delete"
+        )
+        deleteButton.bezelStyle = .inline
+        deleteButton.isBordered = false
+        deleteButton.contentTintColor = .systemRed
+        deleteButton.target = self
+        deleteButton.action = #selector(deleteTapped)
+        deleteButton.toolTip = "Delete image"
+        addSubview(deleteButton)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let buttonSize: CGFloat = 24
+        let padding: CGFloat = 4
+        copyButton.frame = CGRect(
+            x: padding, y: (bounds.height - buttonSize) / 2,
+            width: buttonSize, height: buttonSize
+        )
+        deleteButton.frame = CGRect(
+            x: padding + buttonSize + 4,
+            y: (bounds.height - buttonSize) / 2,
+            width: buttonSize, height: buttonSize
+        )
+    }
+
+    // Prevent clicks from passing through to the text view
+    override func mouseDown(with event: NSEvent) {}
+
+    @objc private func copyTapped() { onCopy?() }
+    @objc private func deleteTapped() { onDelete?() }
+}
+
 // MARK: - Wiki Link State Machine
 
 enum WikiLinkState {
@@ -390,6 +464,129 @@ enum WikiLinkState {
 class FormattingTextView: NSTextView {
     var wikiLinkState: WikiLinkState = .idle
     var imagePasteHandler: ((NSImage) -> String?)?
+    var onImageAction: ((ImageOverlayAction, URL) -> Void)?
+
+    enum ImageOverlayAction { case copy, delete, open }
+
+    private lazy var imageOverlay: ImageAttachmentOverlay = {
+        let overlay = ImageAttachmentOverlay()
+        overlay.isHidden = true
+        overlay.onCopy = { [weak self] in
+            guard let url = self?.hoveredImageURL else { return }
+            self?.onImageAction?(.copy, url)
+        }
+        overlay.onDelete = { [weak self] in
+            guard let url = self?.hoveredImageURL else { return }
+            self?.onImageAction?(.delete, url)
+        }
+        addSubview(overlay)
+        return overlay
+    }()
+    private var hoveredImageURL: URL?
+    private var imageTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = imageTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        imageTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateImageOverlay(for: event)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if let imageURL = imageURL(at: point) {
+            onImageAction?(.open, imageURL)
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    private func updateImageOverlay(for event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        guard let imageURL = imageURL(at: point),
+              let attachmentRect = attachmentRect(at: point)
+        else {
+            if !imageOverlay.isHidden {
+                imageOverlay.isHidden = true
+                hoveredImageURL = nil
+            }
+            return
+        }
+        hoveredImageURL = imageURL
+        let overlaySize = CGSize(width: 64, height: 28)
+        imageOverlay.frame = CGRect(
+            x: attachmentRect.maxX - overlaySize.width - 6,
+            y: attachmentRect.maxY - overlaySize.height - 6,
+            width: overlaySize.width,
+            height: overlaySize.height
+        )
+        imageOverlay.isHidden = false
+    }
+
+    private func imageURL(at point: CGPoint) -> URL? {
+        guard let textStorage = textStorage,
+              let layoutManager = layoutManager,
+              let textContainer = textContainer
+        else { return nil }
+        let textPoint = CGPoint(
+            x: point.x - textContainerInset.width,
+            y: point.y - textContainerInset.height
+        )
+        let charIndex = layoutManager.characterIndex(
+            for: textPoint,
+            in: textContainer,
+            fractionOfDistanceBetweenInsertionPoints: nil
+        )
+        guard charIndex < textStorage.length else { return nil }
+        return textStorage.attribute(
+            MarkdownFormat.imageURLKey,
+            at: charIndex,
+            effectiveRange: nil
+        ) as? URL
+    }
+
+    private func attachmentRect(at point: CGPoint) -> CGRect? {
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer
+        else { return nil }
+        let textPoint = CGPoint(
+            x: point.x - textContainerInset.width,
+            y: point.y - textContainerInset.height
+        )
+        let glyphIndex = layoutManager.glyphIndex(
+            for: textPoint, in: textContainer
+        )
+        var lineRange = NSRange()
+        let lineRect = layoutManager.lineFragmentRect(
+            forGlyphAt: glyphIndex, effectiveRange: &lineRange
+        )
+        let glyphRect = layoutManager.boundingRect(
+            forGlyphRange: NSRange(location: glyphIndex, length: 1),
+            in: textContainer
+        )
+        let rect = CGRect(
+            x: glyphRect.origin.x + textContainerInset.width,
+            y: lineRect.origin.y + textContainerInset.height,
+            width: glyphRect.width,
+            height: lineRect.height
+        )
+        // Only return if the point is actually inside the image area
+        guard rect.contains(point), rect.height > 20 else { return nil }
+        return rect
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
@@ -871,6 +1068,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.store = store
         context.coordinator.bindImagePasteHandler(to: textView)
+        textView.layoutManager?.delegate = context.coordinator
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -918,7 +1116,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+    class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
@@ -1002,19 +1200,18 @@ struct MarkdownEditor: NSViewRepresentable {
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
-            let font = textView.typingAttributes[.font]
-                as? NSFont ?? NSFont.systemFont(ofSize: 16)
+            let baseFont = NSFont.systemFont(ofSize: 16)
             var positions: [CGFloat] = []
             let nsString = textView.string as NSString
             let length = nsString.length
 
             if length == 0 {
-                positions.append(textInset + font.pointSize / 2)
+                positions.append(textInset + baseFont.pointSize / 2)
                 parent.linePositions = positions
                 return
             }
 
-            // Walk actual line fragments for accurate positions
+            // Walk logical lines, use layout rect for accurate Y
             var charIndex = 0
             while charIndex < length {
                 let glyphIndex = layoutManager.glyphIndexForCharacter(
@@ -1025,8 +1222,7 @@ struct MarkdownEditor: NSViewRepresentable {
                     forGlyphAt: glyphIndex,
                     effectiveRange: &lineRange
                 )
-                let lineHeight = max(rect.height, font.pointSize * 1.2)
-                positions.append(textInset + rect.origin.y + lineHeight / 2)
+                positions.append(textInset + rect.midY)
 
                 // Advance to next line
                 let lineEnd = NSMaxRange(
@@ -1039,6 +1235,18 @@ struct MarkdownEditor: NSViewRepresentable {
 
             DispatchQueue.main.async {
                 self.parent.linePositions = positions
+            }
+        }
+
+        // MARK: - Layout Delegate
+
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            didCompleteLayoutFor textContainer: NSTextContainer?,
+            atEnd layoutFinishedFlag: Bool
+        ) {
+            if layoutFinishedFlag && !isFormatting {
+                updateLinePositions()
             }
         }
 
@@ -1133,9 +1341,19 @@ struct MarkdownEditor: NSViewRepresentable {
 
                     let attachment = NSTextAttachment()
                     attachment.image = loadedImage
+                    let attachStr = NSMutableAttributedString(
+                        attributedString: NSAttributedString(
+                            attachment: attachment
+                        )
+                    )
+                    attachStr.addAttribute(
+                        MarkdownFormat.imageURLKey,
+                        value: request.imageURL,
+                        range: NSRange(location: 0, length: 1)
+                    )
                     currentStorage.replaceCharacters(
                         in: request.attachmentRange,
-                        with: NSAttributedString(attachment: attachment)
+                        with: attachStr
                     )
                 }
             }
