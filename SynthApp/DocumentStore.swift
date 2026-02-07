@@ -199,6 +199,14 @@ class DocumentStore: ObservableObject {
         loadFileTree()
     }
 
+    func openDailyNote() {
+        guard let workspace = workspace else { return }
+        guard let url = DailyNoteResolver.resolve("today", workspace: workspace) else { return }
+        DailyNoteResolver.ensureExists(at: url)
+        loadFileTree()
+        open(url)
+    }
+
     func open(_ url: URL) {
         isLinksTabSelected = false
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
