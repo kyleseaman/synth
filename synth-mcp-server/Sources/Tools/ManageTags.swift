@@ -4,7 +4,9 @@ enum ManageTags {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "manage_tags",
-            description: "List, add, or remove tags in a file. Tags can be in YAML frontmatter (tags: array) or inline (#tag).",
+            description: "List, add, or remove tags in a file."
+                + " Tags can be in YAML frontmatter"
+                + " (tags: array) or inline (#tag).",
             inputSchema: jsonSchema(
                 properties: [
                     "path": propertySchema(type: "string", description: "Relative path from workspace root"),

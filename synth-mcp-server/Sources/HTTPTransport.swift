@@ -1,6 +1,10 @@
 import Foundation
 import Network
 
+enum HTTPTransportError: Error {
+    case invalidPort(UInt16)
+}
+
 class HTTPTransport {
     let handler: MCPProtocolHandler
     let port: UInt16
@@ -16,7 +20,10 @@ class HTTPTransport {
     func start() throws {
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
-        listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            throw HTTPTransportError.invalidPort(port)
+        }
+        listener = try NWListener(using: params, on: nwPort)
         listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
@@ -49,43 +56,66 @@ class HTTPTransport {
     }
 
     private func receiveHTTPRequest(_ connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] content, _, isComplete, error in
+        connection.receive(
+            minimumIncompleteLength: 1,
+            maximumLength: 65536
+        ) { [weak self] content, _, isComplete, error in
             guard let self = self, let data = content else {
                 connection.cancel()
                 return
             }
 
             guard let request = HTTPRequest.parse(data) else {
-                self.sendHTTPResponse(connection, status: 400, body: "Bad Request")
+                self.sendHTTPResponse(
+                    connection, status: 400, body: "Bad Request"
+                )
                 return
             }
 
-            self.routeRequest(connection, request: request)
+            let keepReceiving = self.routeRequest(
+                connection, request: request
+            )
 
-            if !isComplete {
+            if keepReceiving && !isComplete {
                 self.receiveHTTPRequest(connection)
             }
         }
     }
 
-    private func routeRequest(_ connection: NWConnection, request: HTTPRequest) {
+    /// Routes the request and returns whether the connection
+    /// should continue receiving (false for SSE long-lived
+    /// connections).
+    @discardableResult
+    private func routeRequest(
+        _ connection: NWConnection,
+        request: HTTPRequest
+    ) -> Bool {
         // CORS preflight
         if request.method == "OPTIONS" {
             sendCORSPreflight(connection)
-            return
+            return true
         }
 
         switch (request.method, request.path) {
         case ("POST", "/mcp"):
             handlePost(connection, request: request)
+            return true
         case ("GET", "/mcp"):
             handleSSE(connection, request: request)
+            return false // SSE keeps the connection alive
         case ("DELETE", "/mcp"):
             handleDelete(connection, request: request)
+            return true
         case ("GET", "/health"):
-            sendHTTPResponse(connection, status: 200, body: "{\"status\":\"ok\"}")
+            sendHTTPResponse(
+                connection, status: 200, body: "{\"status\":\"ok\"}"
+            )
+            return true
         default:
-            sendHTTPResponse(connection, status: 404, body: "Not Found")
+            sendHTTPResponse(
+                connection, status: 404, body: "Not Found"
+            )
+            return true
         }
     }
 
@@ -105,7 +135,11 @@ class HTTPTransport {
             headers += corsHeaders()
 
             // Detect initialize request to generate a session ID
-            let isInitialize = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any])?["method"] as? String == "initialize"
+            let parsed = try? JSONSerialization.jsonObject(
+                with: bodyData
+            ) as? [String: Any]
+            let isInitialize = parsed?["method"] as? String
+                == "initialize"
             if isInitialize {
                 let newSessionId = UUID().uuidString
                 headers += "Mcp-Session-Id: \(newSessionId)\r\n"

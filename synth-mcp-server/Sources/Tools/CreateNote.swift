@@ -4,7 +4,9 @@ enum CreateNote {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "create_note",
-            description: "Create a new file in the workspace from a template. Supports blank, ADR, spec, and bug report templates.",
+            description: "Create a new file in the workspace"
+                + " from a template. Supports blank, ADR,"
+                + " spec, and bug report templates.",
             inputSchema: jsonSchema(
                 properties: [
                     "path": propertySchema(
@@ -42,7 +44,10 @@ enum CreateNote {
             return toolError("File already exists: \(path)")
         }
 
-        let title = args["title"]?.stringValue ?? (path as NSString).deletingPathExtension.components(separatedBy: "/").last ?? "Untitled"
+        let title = args["title"]?.stringValue
+            ?? (path as NSString).deletingPathExtension
+                .components(separatedBy: "/").last
+            ?? "Untitled"
 
         let content: String
         switch template {

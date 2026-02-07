@@ -4,7 +4,9 @@ enum GlobalSearch {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "global_search",
-            description: "Search across all files in the workspace using regex. Returns matching lines with surrounding context.",
+            description: "Search across all files in the"
+                + " workspace using regex. Returns matching"
+                + " lines with surrounding context.",
             inputSchema: jsonSchema(
                 properties: [
                     "query": propertySchema(type: "string", description: "Regex pattern to search for"),
@@ -54,7 +56,15 @@ enum GlobalSearch {
 
         // Reject overly complex regex patterns to prevent ReDoS
         guard query.count <= 500 else {
-            return toolError("Regex pattern too long (max 500 characters)")
+            return toolError(
+                "Regex pattern too long (max 500 characters)"
+            )
+        }
+        if hasNestedQuantifiers(query) {
+            return toolError(
+                "Regex pattern rejected: nested quantifiers"
+                + " like (a+)+ can cause excessive backtracking"
+            )
         }
 
         let regexOptions: NSRegularExpression.Options = caseSensitive ? [] : [.caseInsensitive]
@@ -137,5 +147,58 @@ enum GlobalSearch {
         }
 
         return toolResult(result)
+    }
+
+    /// Detects nested quantifiers that can cause catastrophic
+    /// backtracking (e.g. `(a+)+`, `(a*)*`, `(a+)*`).
+    /// Walks the pattern tracking group nesting depth and
+    /// whether a quantifier appears inside a quantified group.
+    static func hasNestedQuantifiers(
+        _ pattern: String
+    ) -> Bool {
+        let quantifiers: Set<Character> = ["+", "*", "?"]
+        var depth = 0
+        var hasQuantifierAtDepth: [Int: Bool] = [:]
+        var escaped = false
+        var inCharClass = false
+
+        for char in pattern {
+            if escaped {
+                escaped = false
+                continue
+            }
+            if char == "\\" {
+                escaped = true
+                continue
+            }
+            if char == "[" { inCharClass = true; continue }
+            if char == "]" { inCharClass = false; continue }
+            if inCharClass { continue }
+
+            if char == "(" {
+                depth += 1
+                hasQuantifierAtDepth[depth] = false
+            } else if char == ")" {
+                let hadQuantifier = hasQuantifierAtDepth[depth]
+                    ?? false
+                hasQuantifierAtDepth[depth] = nil
+                depth = max(0, depth - 1)
+                // If next char is a quantifier and the group
+                // contained a quantifier, that's nested.
+                if hadQuantifier {
+                    hasQuantifierAtDepth[-1] = true
+                }
+            } else if quantifiers.contains(char) {
+                if hasQuantifierAtDepth[-1] == true {
+                    return true
+                }
+                if depth > 0 {
+                    hasQuantifierAtDepth[depth] = true
+                }
+            } else {
+                hasQuantifierAtDepth[-1] = nil
+            }
+        }
+        return false
     }
 }

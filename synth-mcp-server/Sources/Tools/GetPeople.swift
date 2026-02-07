@@ -4,7 +4,9 @@ enum GetPeople {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "get_people",
-            description: "Find @mentioned people across the workspace. List all people or find files mentioning a specific person.",
+            description: "Find @mentioned people across the"
+                + " workspace. List all people or find"
+                + " files mentioning a specific person.",
             inputSchema: jsonSchema(
                 properties: [
                     "person": propertySchema(

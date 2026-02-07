@@ -78,7 +78,9 @@ guard cliArgs.useStdio || cliArgs.httpPort != nil else {
 
 // Resolve workspace to absolute path
 let resolvedWorkspace: String = {
-    let url = URL(fileURLWithPath: workspace, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+    let cwd = FileManager.default.currentDirectoryPath
+    let base = URL(fileURLWithPath: cwd)
+    let url = URL(fileURLWithPath: workspace, relativeTo: base)
     return url.standardizedFileURL.path
 }()
 guard FileManager.default.fileExists(atPath: resolvedWorkspace) else {

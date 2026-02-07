@@ -4,7 +4,9 @@ enum ReadNote {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "read_note",
-            description: "Read the contents of a file in the workspace. Optionally include file statistics like word count, line count, and modification date.",
+            description: "Read the contents of a file in the workspace."
+                + " Optionally include file statistics like"
+                + " word count, line count, and modification date.",
             inputSchema: jsonSchema(
                 properties: [
                     "path": propertySchema(type: "string", description: "Relative path from workspace root"),

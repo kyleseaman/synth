@@ -4,7 +4,9 @@ enum ListNotes {
     static func definition(workspace: String) -> ToolDefinition {
         ToolDefinition(
             name: "list_notes",
-            description: "List files and directories in the workspace. Filter by extension, name pattern, and recursion depth.",
+            description: "List files and directories in the"
+                + " workspace. Filter by extension, name"
+                + " pattern, and recursion depth.",
             inputSchema: jsonSchema(
                 properties: [
                     "directory": propertySchemaWithDefault(
@@ -59,11 +61,15 @@ enum ListNotes {
             return exts.isEmpty ? nil : Set(exts)
         }()
 
-        // Parse regex pattern (limit length to prevent ReDoS)
+        // Parse regex pattern (reject dangerous patterns)
         let regex: NSRegularExpression? = {
             guard let pattern = args["pattern"]?.stringValue,
-                  pattern.count <= 500 else { return nil }
-            return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+                  pattern.count <= 500,
+                  !GlobalSearch.hasNestedQuantifiers(pattern)
+            else { return nil }
+            return try? NSRegularExpression(
+                pattern: pattern, options: [.caseInsensitive]
+            )
         }()
 
         var entries: [(String, Bool)] = [] // (relativePath, isDirectory)
