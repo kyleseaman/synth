@@ -20,6 +20,8 @@ class MCPServerManager: ObservableObject {
         }
         serverPath = path
 
+        writeMcpConfig(workspace: workspace, serverPath: path)
+
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: path)
         proc.arguments = [
@@ -45,6 +47,51 @@ class MCPServerManager: ObservableObject {
             print("[MCP] Server started on localhost:\(httpPort) for \(workspace.path)")
         } catch {
             print("[MCP] Failed to start server: \(error)")
+        }
+    }
+
+    // MARK: - Kiro CLI MCP Config
+
+    /// Writes .kiro/settings/mcp.json so kiro-cli discovers the MCP server.
+    private func writeMcpConfig(workspace: URL, serverPath: String) {
+        let settingsDir = workspace
+            .appendingPathComponent(".kiro")
+            .appendingPathComponent("settings")
+        let mcpJson = settingsDir.appendingPathComponent("mcp.json")
+
+        let fileManager = FileManager.default
+        try? fileManager.createDirectory(
+            at: settingsDir,
+            withIntermediateDirectories: true
+        )
+
+        // Merge with existing config to preserve user-added servers
+        var existing: [String: Any] = [:]
+        if let data = try? Data(contentsOf: mcpJson),
+           let parsed = try? JSONSerialization.jsonObject(
+               with: data
+           ) as? [String: Any] {
+            existing = parsed
+        }
+
+        var servers = (existing["mcpServers"] as? [String: Any]) ?? [:]
+        servers["synth-mcp"] = [
+            "command": serverPath,
+            "args": [
+                "--workspace", workspace.path,
+                "--stdio"
+            ],
+            "disabled": false
+        ] as [String: Any]
+
+        existing["mcpServers"] = servers
+
+        if let data = try? JSONSerialization.data(
+            withJSONObject: existing,
+            options: [.prettyPrinted, .sortedKeys]
+        ) {
+            try? data.write(to: mcpJson)
+            print("[MCP] Wrote config to \(mcpJson.path)")
         }
     }
 
