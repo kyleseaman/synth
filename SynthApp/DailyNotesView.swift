@@ -378,15 +378,33 @@ struct DailyNoteEditor: NSViewRepresentable {
 
                     let attachment = NSTextAttachment()
                     attachment.image = loadedImage
+
+                    if let width = MarkdownFormat.parseImageWidth(
+                        from: request.markupText
+                    ), loadedImage.size.width > 0 {
+                        let scale = width / loadedImage.size.width
+                        attachment.bounds = CGRect(
+                            x: 0, y: 0,
+                            width: width,
+                            height: loadedImage.size.height * scale
+                        )
+                    }
+
                     let attachStr = NSMutableAttributedString(
                         attributedString: NSAttributedString(
                             attachment: attachment
                         )
                     )
+                    let attrRange = NSRange(location: 0, length: 1)
                     attachStr.addAttribute(
                         MarkdownFormat.imageURLKey,
                         value: request.imageURL,
-                        range: NSRange(location: 0, length: 1)
+                        range: attrRange
+                    )
+                    attachStr.addAttribute(
+                        MarkdownFormat.imageMarkupKey,
+                        value: request.markupText,
+                        range: attrRange
                     )
                     currentStorage.replaceCharacters(
                         in: request.attachmentRange,
@@ -434,6 +452,28 @@ struct DailyNoteEditor: NSViewRepresentable {
                     )
                 }
             }
+            textView.onImageResize = { [weak self] markup, width in
+                self?.handleImageResize(
+                    originalMarkup: markup, newWidth: width
+                )
+            }
+        }
+
+        private func handleImageResize(
+            originalMarkup: String, newWidth: Int
+        ) {
+            guard let textView = textView else { return }
+            let text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            let updated = MarkdownFormat.markupWithWidth(
+                originalMarkup, width: newWidth
+            )
+            let newText = text.replacingOccurrences(
+                of: originalMarkup, with: updated
+            )
+            parent.onTextChange(newText)
+            applyFormatting()
         }
 
         private func removeImageMarkup(for imageURL: URL) {

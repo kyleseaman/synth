@@ -570,21 +570,10 @@ class DocumentStore: ObservableObject {
 
         // Rename Untitled files based on first line
         if doc.url.lastPathComponent.hasPrefix("Untitled") {
-            let firstLine = doc.content.string.components(separatedBy: "\n").first ?? ""
-            let cleaned = firstLine
-                .trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "#", with: "")
-                .trimmingCharacters(in: .whitespaces)
-                .prefix(50)
-            if !cleaned.isEmpty {
-                let safeName = String(cleaned).replacingOccurrences(of: "/", with: "-")
-                let ext = doc.url.pathExtension
-                let newURL = doc.url.deletingLastPathComponent().appendingPathComponent("\(safeName).\(ext)")
-                if !FileManager.default.fileExists(atPath: newURL.path) {
-                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
-                    openFiles[currentIndex] = Document(url: newURL, content: doc.content)
-                    loadFileTree()
-                }
+            if let newURL = renamedURL(for: doc) {
+                try? FileManager.default.moveItem(at: doc.url, to: newURL)
+                openFiles[currentIndex] = Document(url: newURL, content: doc.content)
+                loadFileTree()
             }
         }
         openFiles[currentIndex].isDirty = false
@@ -598,11 +587,39 @@ class DocumentStore: ObservableObject {
     }
 
     func saveAll() {
+        var didRename = false
         for index in openFiles.indices where openFiles[index].isDirty {
-            try? openFiles[index].save(openFiles[index].content)
+            let doc = openFiles[index]
+            try? doc.save(doc.content)
+
+            // Rename Untitled files based on first line
+            if doc.url.lastPathComponent.hasPrefix("Untitled") {
+                if let newURL = renamedURL(for: doc) {
+                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
+                    openFiles[index] = Document(url: newURL, content: doc.content)
+                    didRename = true
+                }
+            }
             openFiles[index].isDirty = false
         }
+        if didRename { loadFileTree() }
         dailyNoteManager.saveAll()
+    }
+
+    private func renamedURL(for doc: Document) -> URL? {
+        let firstLine = doc.content.string.components(separatedBy: "\n").first ?? ""
+        let cleaned = firstLine
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "#", with: "")
+            .trimmingCharacters(in: .whitespaces)
+            .prefix(50)
+        guard !cleaned.isEmpty else { return nil }
+        let safeName = String(cleaned).replacingOccurrences(of: "/", with: "-")
+        let ext = doc.url.pathExtension
+        let newURL = doc.url.deletingLastPathComponent()
+            .appendingPathComponent("\(safeName).\(ext)")
+        guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
+        return newURL
     }
 
     func closeCurrentTab() {
