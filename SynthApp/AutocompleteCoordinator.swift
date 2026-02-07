@@ -157,9 +157,31 @@ class AutocompleteCoordinator {
 
     // MARK: - Completion
 
+    private static let dateFileFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        return fmt
+    }()
+
     func completeWikiLink(title: String) {
         guard let textView = textView else { return }
-        let result = textView.completeAutocomplete(title: title)
+
+        // Unfurl ALL date tokens to concrete yyyy-MM-dd filenames
+        // e.g. "Today" → "2026-02-07", "Next Monday" → "2026-02-10"
+        // The rendering layer displays them relatively (@Today, etc.)
+        var completionTitle = title
+        if let resolved = DailyNoteResolver.resolveDate(title),
+           title.range(
+               of: "^\\d{4}-\\d{2}-\\d{2}$",
+               options: .regularExpression
+           ) == nil {
+            completionTitle = Self.dateFileFormatter
+                .string(from: resolved)
+        }
+
+        let result = textView.completeAutocomplete(
+            title: completionTitle
+        )
         wikiLinkPopover.dismiss()
 
         // Auto-create the note file so the link renders immediately
@@ -172,6 +194,20 @@ class AutocompleteCoordinator {
                     title: noteTitle, openAfter: false
                 )
             }
+        }
+
+        // Ensure daily note file exists for date mentions
+        if result.completedDate,
+           let store = store,
+           let workspace = store.workspace {
+            let folder = workspace.appendingPathComponent(
+                DailyNoteResolver.dailyFolder
+            )
+            let fileURL = folder.appendingPathComponent(
+                "\(completionTitle).md"
+            )
+            DailyNoteResolver.ensureExists(at: fileURL)
+            store.loadFileTree()
         }
 
         onTextChange?()
@@ -208,24 +244,41 @@ class AutocompleteCoordinator {
         return results
     }
 
+    // swiftlint:disable:next function_body_length
     func dateResults(query: String) -> [NoteSearchResult] {
-        let tokens = ["Today", "Yesterday", "Tomorrow"]
-        let filtered: [String]
+        let basicTokens = ["Today", "Yesterday", "Tomorrow"]
+        let extendedTokens = [
+            "Next Sunday", "Next Monday", "Next Tuesday",
+            "Next Wednesday", "Next Thursday", "Next Friday",
+            "Next Saturday", "Next Week", "Next Month",
+            "In 2 Days", "In 3 Days", "In 4 Days", "In 5 Days"
+        ]
+
+        let candidates: [String]
         if query.isEmpty {
-            filtered = tokens
+            candidates = basicTokens
         } else {
-            filtered = tokens.filter {
-                $0.lowercased().hasPrefix(query.lowercased())
+            let lowerQuery = query.lowercased()
+            candidates = (basicTokens + extendedTokens).filter {
+                $0.lowercased().hasPrefix(lowerQuery)
             }
         }
-        return filtered.map { token in
-            NoteSearchResult(
-                // swiftlint:disable:next force_unwrapping
-                id: URL(string: "synth://daily/\(token.lowercased())")!,
+
+        return candidates.compactMap { token in
+            guard let date = DailyNoteResolver.resolveDate(token)
+            else { return nil }
+            let label = Self.ordinalDateString(from: date)
+            let slug = token.lowercased()
+                .addingPercentEncoding(
+                    withAllowedCharacters: .urlPathAllowed
+                ) ?? token.lowercased()
+            // swiftlint:disable:next force_unwrapping
+            let tokenURL = URL(string: "synth://daily/\(slug)")!
+            return NoteSearchResult(
+                id: tokenURL,
                 title: token,
-                relativePath: resolveDateLabel(token),
-                // swiftlint:disable:next force_unwrapping
-                url: URL(string: "synth://daily/\(token.lowercased())")!
+                relativePath: label,
+                url: tokenURL
             )
         }
     }
@@ -245,26 +298,35 @@ class AutocompleteCoordinator {
         }
     }
 
-    private func resolveDateLabel(_ token: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        let date: Date?
-        switch token.lowercased() {
-        case "today":
-            date = Date()
-        case "yesterday":
-            date = Calendar.current.date(
-                byAdding: .day, value: -1, to: Date()
-            )
-        case "tomorrow":
-            date = Calendar.current.date(
-                byAdding: .day, value: 1, to: Date()
-            )
-        default:
-            date = nil
+    // MARK: - Ordinal Date Formatting
+
+    private static let ordinalFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM d, yyyy"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt
+    }()
+
+    /// Formats a date as "February 9th, 2026" with ordinal suffix.
+    static func ordinalDateString(from date: Date) -> String {
+        let day = Calendar.current.component(.day, from: date)
+        let base = ordinalFormatter.string(from: date)
+        let suffix = ordinalSuffix(for: day)
+        // Insert suffix after the day number, before the comma
+        return base.replacingOccurrences(
+            of: "\(day),",
+            with: "\(day)\(suffix),"
+        )
+    }
+
+    private static func ordinalSuffix(for day: Int) -> String {
+        if (11...13).contains(day) { return "th" }
+        switch day % 10 {
+        case 1: return "st"
+        case 2: return "nd"
+        case 3: return "rd"
+        default: return "th"
         }
-        guard let resolved = date else { return "" }
-        return formatter.string(from: resolved)
     }
 
     // MARK: - Link Click Handling
@@ -288,6 +350,7 @@ class AutocompleteCoordinator {
         if url.host == "daily" {
             let token = url.pathComponents.dropFirst()
                 .joined(separator: "/")
+                .removingPercentEncoding ?? ""
             guard let store = store,
                   let workspace = store.workspace,
                   let resolved = DailyNoteResolver.resolve(
@@ -295,7 +358,11 @@ class AutocompleteCoordinator {
                   ) else { return true }
             DailyNoteResolver.ensureExists(at: resolved)
             store.loadFileTree()
-            store.open(resolved)
+            store.activateDailyNotes()
+            NotificationCenter.default.post(
+                name: .showDailyDate, object: nil,
+                userInfo: ["date": token]
+            )
             return true
         }
 

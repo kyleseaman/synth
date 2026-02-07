@@ -33,6 +33,15 @@ struct DailyNotesView: View {
             loadAllEntries()
             scrollToToday()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: .showDailyDate
+            )
+        ) { notification in
+            guard let dateStr = notification.userInfo?["date"]
+                as? String else { return }
+            scrollTarget = dateStr
+        }
     }
 
     // MARK: - Daily Notes Scroll
@@ -63,9 +72,7 @@ struct DailyNotesView: View {
             }
             .onChange(of: scrollTarget) { _, target in
                 guard let target = target else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    proxy.scrollTo(target, anchor: .top)
-                }
+                proxy.scrollTo(target, anchor: .top)
                 scrollTarget = nil
             }
         }
@@ -80,7 +87,7 @@ struct DailyNotesView: View {
 
     private func scrollToToday() {
         let todayId = DailyNoteManager.dateIdentifier(Date())
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        DispatchQueue.main.async {
             scrollTarget = todayId
         }
     }
@@ -122,6 +129,10 @@ struct DailyNoteSection: View {
             .frame(minHeight: isToday ? 240 : 120)
             .padding(.leading, 20)
             .padding(.trailing, 16)
+
+            if let store = store {
+                DailyNoteBacklinks(entry: entry, store: store)
+            }
 
             Divider()
                 .padding(.top, 12)
@@ -262,6 +273,7 @@ struct DailyNoteEditor: NSViewRepresentable {
 
         func textDidEndEditing(_ notification: Notification) {
             isEditing = false
+            store?.dailyNoteManager.saveAll()
         }
 
         func textDidChange(_ notification: Notification) {
@@ -298,6 +310,93 @@ struct DailyNoteEditor: NSViewRepresentable {
         ) -> Bool {
             guard let url = link as? URL else { return false }
             return autocomplete.handleLinkClick(url: url)
+        }
+    }
+}
+
+// MARK: - Daily Note Backlinks
+
+struct DailyNoteBacklinks: View {
+    let entry: DailyNoteEntry
+    @ObservedObject var store: DocumentStore
+    @State private var isExpanded = true
+
+    private static let titleFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "MMMM d, yyyy"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        return fmt
+    }()
+
+    private var filename: String {
+        entry.url.deletingPathExtension().lastPathComponent
+    }
+
+    private var dateTitle: String {
+        Self.titleFormatter.string(from: entry.date)
+    }
+
+    private var backlinks: [(url: URL, title: String, snippet: String, relativePath: String)] {
+        let byFilename = store.backlinkIndex.links(to: filename)
+        let byTitle = store.backlinkIndex.links(to: dateTitle)
+        let allURLs = byFilename.union(byTitle)
+        let lowerFilename = filename.lowercased()
+        return allURLs.compactMap { url in
+            let title = url.deletingPathExtension().lastPathComponent
+            guard title.lowercased() != lowerFilename else { return nil }
+            let snippet = store.backlinkIndex.snippet(
+                from: url, to: filename
+            ) ?? store.backlinkIndex.snippet(
+                from: url, to: dateTitle
+            ) ?? ""
+            let parent = url.deletingLastPathComponent().lastPathComponent
+            return (
+                url: url, title: title,
+                snippet: snippet, relativePath: parent
+            )
+        }
+        .sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title)
+                == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        let links = backlinks
+        if !links.isEmpty {
+            VStack(spacing: 0) {
+                DisclosureGroup(isExpanded: $isExpanded) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(links.prefix(10), id: \.url) { link in
+                            BacklinkRow(
+                                title: link.title,
+                                snippet: link.snippet,
+                                relativePath: link.relativePath
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                store.open(link.url)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(
+                            "Incoming backlinks (\(links.count))"
+                        )
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .animation(
+                    .easeOut(duration: 0.15), value: isExpanded
+                )
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
     }
 }

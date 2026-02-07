@@ -23,6 +23,10 @@ struct DailyNoteEntry: Identifiable, Equatable {
 class DailyNoteManager: ObservableObject {
     @Published var entries: [DailyNoteEntry] = []
 
+    /// Called after a daily note is saved with (url, content)
+    /// so indexes (backlinks, tags, people) can update.
+    var onSave: ((URL, String) -> Void)?
+
     private let pastDays = 30
     private let futureDays = 7
     private var saveTimer: Timer?
@@ -188,6 +192,7 @@ class DailyNoteManager: ObservableObject {
             to: entries[index].url, atomically: true, encoding: .utf8
         )
         entries[index].isDirty = false
+        onSave?(entries[index].url, entries[index].content)
     }
 
     func saveAll() {
@@ -197,6 +202,7 @@ class DailyNoteManager: ObservableObject {
                 atomically: true, encoding: .utf8
             )
             entries[index].isDirty = false
+            onSave?(entries[index].url, entries[index].content)
         }
     }
 

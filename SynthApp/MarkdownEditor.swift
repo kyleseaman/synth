@@ -190,44 +190,60 @@ struct MarkdownFormat: DocumentFormat {
             str.addAttributes(hiddenAttrs, range: closeRange)
         }
 
-        // MARK: @Today, @Yesterday, @Tomorrow
+        // MARK: @Date mentions (@2026-02-07) — styled as daily note links
         // swiftlint:disable:next force_try
-        let atPattern = try! NSRegularExpression(
-            pattern: "@(Today|Yesterday|Tomorrow)",
-            options: .caseInsensitive
+        let datePattern = try! NSRegularExpression(
+            pattern: "@(\\d{4}-\\d{2}-\\d{2})"
         )
-        let atRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in atPattern.matches(in: str.string, range: atRange).reversed() {
+        let dateRange = NSRange(
+            location: 0, length: str.string.utf16.count
+        )
+        for match in datePattern.matches(
+            in: str.string, range: dateRange
+        ).reversed() {
             let fullNSRange = match.range
-            let tokenNSRange = match.range(at: 1)
-            guard let tokenSwiftRange = Range(tokenNSRange, in: str.string) else { continue }
-            let token = String(str.string[tokenSwiftRange])
+            let innerNSRange = match.range(at: 1)
+            guard let innerSwiftRange = Range(
+                innerNSRange, in: str.string
+            ) else { continue }
+            let dateStr = String(str.string[innerSwiftRange])
             // swiftlint:disable:next force_unwrapping
-            let linkURL = URL(string: "synth://daily/\(token.lowercased())")!
-            guard let fullSwiftRange = Range(fullNSRange, in: str.string) else { continue }
-            let displayText = String(str.string[fullSwiftRange])
-            let replacement = NSAttributedString(
-                string: displayText,
-                attributes: [
-                    .font: baseFont,
-                    .foregroundColor: NSColor.controlAccentColor,
-                    .link: linkURL
-                ]
+            let linkURL = URL(string: "synth://daily/\(dateStr)")!
+            // Style the date part as a link
+            let linkAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(
+                    ofSize: baseFont.pointSize, weight: .medium
+                ),
+                .foregroundColor: NSColor.controlAccentColor,
+                .link: linkURL,
+                .cursor: NSCursor.pointingHand
+            ]
+            str.addAttributes(linkAttrs, range: innerNSRange)
+
+            // Hide the @ prefix
+            let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 0.01),
+                .foregroundColor: NSColor.clear,
+                .link: linkURL
+            ]
+            str.addAttributes(
+                hiddenAttrs,
+                range: NSRange(
+                    location: fullNSRange.location, length: 1
+                )
             )
-            str.replaceCharacters(in: fullNSRange, with: replacement)
         }
+
+
 
         // MARK: @People mentions
         let personPattern = PeopleIndex.personPattern
         let personRange = NSRange(location: 0, length: str.string.utf16.count)
-        let personDateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
         for match in personPattern.matches(in: str.string, range: personRange).reversed() {
             let fullNSRange = match.range
             let innerNSRange = match.range(at: 1)
             guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
             let personName = String(str.string[innerSwiftRange])
-            // Skip date tokens — they're handled by the @Today block above
-            guard !personDateTokens.contains(personName.lowercased()) else { continue }
             guard personName.count >= 2 else { continue }
             let personLower = personName.lowercased()
             // swiftlint:disable:next force_unwrapping
@@ -699,17 +715,21 @@ class FormattingTextView: NSTextView {
     struct AutocompleteResult {
         let completedWikiLink: Bool
         let completedPerson: Bool
+        let completedDate: Bool
     }
 
     func completeAutocomplete(title: String) -> AutocompleteResult {
         guard let storage = textStorage else {
             return AutocompleteResult(
-                completedWikiLink: false, completedPerson: false
+                completedWikiLink: false,
+                completedPerson: false,
+                completedDate: false
             )
         }
         let cursor = selectedRange().location
         let previousState = wikiLinkState
         var didCompletePerson = false
+        var didCompleteDate = false
 
         switch wikiLinkState {
         case .wikiLinkActive(let start):
@@ -731,14 +751,14 @@ class FormattingTextView: NSTextView {
                 location: replaceStart,
                 length: cursor - replaceStart
             )
-            let dateTokens = ["today", "yesterday", "tomorrow"]
-            let isPerson = !dateTokens.contains(
-                title.lowercased()
-            )
+            let isDateToken = DailyNoteResolver.resolveDate(
+                title
+            ) != nil
+            let isPerson = !isDateToken
             let displayTitle = isPerson
                 ? title.titleCased : title
             let replacement = isPerson
-                ? "@\(displayTitle) " : "@\(title)"
+                ? "@\(displayTitle) " : "@\(title) "
             storage.replaceCharacters(
                 in: range, with: replacement
             )
@@ -747,6 +767,7 @@ class FormattingTextView: NSTextView {
                 length: 0
             ))
             didCompletePerson = isPerson
+            didCompleteDate = isDateToken
 
         case .hashtagActive(let start):
             let replaceStart = max(start - 1, 0)
@@ -780,7 +801,8 @@ class FormattingTextView: NSTextView {
 
         return AutocompleteResult(
             completedWikiLink: wasWikiLink,
-            completedPerson: didCompletePerson
+            completedPerson: didCompletePerson,
+            completedDate: didCompleteDate
         )
     }
 }
@@ -841,10 +863,14 @@ struct MarkdownEditor: NSViewRepresentable {
         // MARK: Autocomplete (wiki links, @mentions, #tags)
         context.coordinator.setupAutocomplete()
 
-        // Initialize line positions for empty documents and set focus
+        // Initialize line positions and set focus
         DispatchQueue.main.async {
             context.coordinator.updateLinePositions()
             textView.window?.makeFirstResponder(textView)
+            // Place cursor after heading prefix for new notes
+            if textView.string.hasPrefix("# \n") {
+                textView.setSelectedRange(NSRange(location: 2, length: 0))
+            }
         }
 
         return scrollView
@@ -878,10 +904,12 @@ struct MarkdownEditor: NSViewRepresentable {
         var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
         let autocomplete = AutocompleteCoordinator()
+        private var saveTimer: Timer?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
         deinit {
+            saveTimer?.invalidate()
             if let observer = boundsObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -946,34 +974,42 @@ struct MarkdownEditor: NSViewRepresentable {
                   let layoutManager = textView.layoutManager,
                   let textContainer = textView.textContainer else { return }
 
-            // Force layout to complete
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
-            let font = textView.typingAttributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 16)
+            let font = textView.typingAttributes[.font]
+                as? NSFont ?? NSFont.systemFont(ofSize: 16)
             var positions: [CGFloat] = []
-            let string = textView.string
+            let nsString = textView.string as NSString
+            let length = nsString.length
 
-            // Empty document
-            if string.isEmpty {
+            if length == 0 {
                 positions.append(textInset + font.pointSize / 2)
                 parent.linePositions = positions
                 return
             }
 
-            // Get default line height from first line fragment
-            var defaultLineHeight: CGFloat = font.pointSize * 1.4
-            if layoutManager.numberOfGlyphs > 0 {
-                let rect = layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
-                defaultLineHeight = rect.height
-            }
+            // Walk actual line fragments for accurate positions
+            var charIndex = 0
+            while charIndex < length {
+                let glyphIndex = layoutManager.glyphIndexForCharacter(
+                    at: charIndex
+                )
+                var lineRange = NSRange()
+                let rect = layoutManager.lineFragmentRect(
+                    forGlyphAt: glyphIndex,
+                    effectiveRange: &lineRange
+                )
+                let lineHeight = max(rect.height, font.pointSize * 1.2)
+                positions.append(textInset + rect.origin.y + lineHeight / 2)
 
-            // Count actual lines by newlines
-            let lines = string.components(separatedBy: "\n")
-            for lineIndex in 0..<lines.count {
-                let yPos = textInset + CGFloat(lineIndex) * defaultLineHeight
-                    + defaultLineHeight / 2
-                positions.append(yPos)
+                // Advance to next line
+                let lineEnd = NSMaxRange(
+                    nsString.lineRange(for: NSRange(
+                        location: charIndex, length: 0
+                    ))
+                )
+                charIndex = lineEnd == charIndex ? charIndex + 1 : lineEnd
             }
 
             DispatchQueue.main.async {
@@ -984,13 +1020,27 @@ struct MarkdownEditor: NSViewRepresentable {
         // MARK: - Text Delegate Methods
 
         func textDidBeginEditing(_ notification: Notification) { isEditing = true }
-        func textDidEndEditing(_ notification: Notification) { isEditing = false }
+        func textDidEndEditing(_ notification: Notification) {
+            isEditing = false
+            saveTimer?.invalidate()
+            store?.save()
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = textView, !isFormatting else { return }
             parent.text = textView.string
             applyFormatting()
             updateLinePositions()
+            scheduleSave()
+        }
+
+        private func scheduleSave() {
+            saveTimer?.invalidate()
+            saveTimer = Timer.scheduledTimer(
+                withTimeInterval: 1.0, repeats: false
+            ) { [weak self] _ in
+                self?.store?.save()
+            }
         }
 
         // MARK: - Live Formatting

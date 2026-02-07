@@ -256,6 +256,11 @@ class DocumentStore: ObservableObject {
 
     init() {
         loadRecentFiles()
+        dailyNoteManager.onSave = { [weak self] url, content in
+            self?.backlinkIndex.updateFile(url, content: content)
+            self?.tagIndex.updateFile(url, content: content)
+            self?.peopleIndex.updateFile(url, content: content)
+        }
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
             workspace = URL(fileURLWithPath: path)

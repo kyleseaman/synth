@@ -27,6 +27,7 @@ extension Notification.Name {
 
     // MARK: - Daily Notes
     static let showDailyNotes = Notification.Name("showDailyNotes")
+    static let showDailyDate = Notification.Name("showDailyDate")
 }
 
 enum ActiveModal: Equatable {

@@ -15,6 +15,12 @@ class BacklinkIndex: ObservableObject {
     // swiftlint:disable:next force_try
     private let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
 
+    /// Matches unfurled date mentions like @2026-02-07
+    // swiftlint:disable:next force_try
+    private let atDatePattern = try! NSRegularExpression(
+        pattern: "@(\\d{4}-\\d{2}-\\d{2})"
+    )
+
     // MARK: - Full Rebuild
 
     /// Full rebuild from workspace file tree. Run on background thread.
@@ -92,8 +98,10 @@ class BacklinkIndex: ObservableObject {
 
         for line in lines {
             let range = NSRange(location: 0, length: line.utf16.count)
-            let matches = wikiPattern.matches(in: line, range: range)
-            for match in matches {
+
+            // Scan [[wiki links]]
+            let wikiMatches = wikiPattern.matches(in: line, range: range)
+            for match in wikiMatches {
                 guard let innerRange = Range(match.range(at: 1), in: line) else { continue }
                 var target = String(line[innerRange]).lowercased()
                 // Strip alias if present: [[Actual|Display]] -> actual
@@ -102,7 +110,6 @@ class BacklinkIndex: ObservableObject {
                         .trimmingCharacters(in: .whitespaces)
                 }
                 targets.insert(target)
-                // Store context: trimmed line, truncated to ~120 chars
                 let trimmedLine = line.trimmingCharacters(in: .whitespaces)
                 if trimmedLine.count > 120 {
                     snippets[target] = String(trimmedLine.prefix(120)) + "..."
@@ -110,6 +117,32 @@ class BacklinkIndex: ObservableObject {
                     snippets[target] = trimmedLine
                 }
             }
+
+            // Scan unfurled @date mentions (@2026-02-07)
+            let dateMatches = atDatePattern.matches(
+                in: line, range: range
+            )
+            for match in dateMatches {
+                guard let innerRange = Range(
+                    match.range(at: 1), in: line
+                ) else { continue }
+                let target = String(line[innerRange])
+                    .lowercased()
+                targets.insert(target)
+                let trimmedLine = line.trimmingCharacters(
+                    in: .whitespaces
+                )
+                if snippets[target] == nil {
+                    if trimmedLine.count > 120 {
+                        snippets[target] = String(
+                            trimmedLine.prefix(120)
+                        ) + "..."
+                    } else {
+                        snippets[target] = trimmedLine
+                    }
+                }
+            }
+
         }
 
         return (targets, snippets)
