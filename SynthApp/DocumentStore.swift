@@ -18,6 +18,7 @@ class DocumentStore: ObservableObject {
     let noteIndex = NoteIndex()
     let backlinkIndex = BacklinkIndex()
     let tagIndex = TagIndex()
+    let peopleIndex = PeopleIndex()
 
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -117,6 +118,7 @@ class DocumentStore: ObservableObject {
             let treeSnapshot = tree
             self.backlinkIndex.rebuild(fileTree: treeSnapshot)
             self.tagIndex.rebuild(fileTree: treeSnapshot)
+            self.peopleIndex.rebuild(fileTree: treeSnapshot)
         }
     }
 
@@ -302,6 +304,7 @@ class DocumentStore: ObservableObject {
         let savedURL = openFiles[currentIndex].url
         backlinkIndex.updateFile(savedURL, content: savedContent)
         tagIndex.updateFile(savedURL, content: savedContent)
+        peopleIndex.updateFile(savedURL, content: savedContent)
     }
 
     func saveAll() {

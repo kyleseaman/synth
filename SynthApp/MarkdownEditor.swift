@@ -95,8 +95,22 @@ struct MarkdownFormat: DocumentFormat {
                 linkAttrs[.toolTip] = "Note not found -- click to create"
             }
 
-            let replacement = NSAttributedString(string: noteTitle, attributes: linkAttrs)
-            str.replaceCharacters(in: fullNSRange, with: replacement)
+            // Apply link styling to inner text (visible)
+            str.addAttributes(linkAttrs, range: innerNSRange)
+
+            // Hide [[ and ]] brackets visually (keep in source for save)
+            let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 0.01),
+                .foregroundColor: NSColor.clear,
+                .link: linkURL
+            ]
+            let openRange = NSRange(location: fullNSRange.location, length: 2)
+            let closeRange = NSRange(
+                location: fullNSRange.location + fullNSRange.length - 2,
+                length: 2
+            )
+            str.addAttributes(hiddenAttrs, range: openRange)
+            str.addAttributes(hiddenAttrs, range: closeRange)
         }
 
         // MARK: @Today, @Yesterday, @Tomorrow
@@ -121,6 +135,35 @@ struct MarkdownFormat: DocumentFormat {
                     .font: baseFont,
                     .foregroundColor: NSColor.controlAccentColor,
                     .link: linkURL
+                ]
+            )
+            str.replaceCharacters(in: fullNSRange, with: replacement)
+        }
+
+        // MARK: @People mentions
+        let personPattern = PeopleIndex.personPattern
+        let personRange = NSRange(location: 0, length: str.string.utf16.count)
+        let personDateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
+        for match in personPattern.matches(in: str.string, range: personRange).reversed() {
+            let fullNSRange = match.range
+            let innerNSRange = match.range(at: 1)
+            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
+            let personName = String(str.string[innerSwiftRange])
+            // Skip date tokens — they're handled by the @Today block above
+            guard !personDateTokens.contains(personName.lowercased()) else { continue }
+            guard personName.count >= 2 else { continue }
+            let personLower = personName.lowercased()
+            // swiftlint:disable:next force_unwrapping
+            let personURL = URL(string: "synth://person/\(personLower)")!
+            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let replacement = NSAttributedString(
+                string: "@\(personName)",
+                attributes: [
+                    .font: mediumFont,
+                    .foregroundColor: NSColor.systemPurple,
+                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10),
+                    .link: personURL,
+                    .cursor: NSCursor.pointingHand
                 ]
             )
             str.replaceCharacters(in: fullNSRange, with: replacement)
@@ -648,6 +691,7 @@ struct MarkdownEditor: NSViewRepresentable {
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
+        var isFormatting = false
         var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
         var wikiLinkPopover = WikiLinkPopover()
@@ -734,7 +778,7 @@ struct MarkdownEditor: NSViewRepresentable {
             // Initial results
             let results: [NoteSearchResult]
             if mode == "at" {
-                results = dateAutocompleteResults(query: "")
+                results = atAutocompleteResults(query: "")
             } else if mode == "hashtag" {
                 results = tagAutocompleteResults(query: initialQuery)
             } else {
@@ -752,7 +796,7 @@ struct MarkdownEditor: NSViewRepresentable {
             let results: [NoteSearchResult]
             switch textView.wikiLinkState {
             case .atActive:
-                results = dateAutocompleteResults(query: query)
+                results = atAutocompleteResults(query: query)
             case .hashtagActive:
                 results = tagAutocompleteResults(query: query)
             default:
@@ -801,7 +845,9 @@ struct MarkdownEditor: NSViewRepresentable {
                 // start points to after "@", so replace from start-1 to cursor
                 let replaceStart = max(start - 1, 0)
                 let range = NSRange(location: replaceStart, length: cursor - replaceStart)
-                let replacement = "@\(title)"
+                let dateTokens = ["today", "yesterday", "tomorrow"]
+                let isPerson = !dateTokens.contains(title.lowercased())
+                let replacement = isPerson ? "@\(title) " : "@\(title)"
                 storage.replaceCharacters(in: range, with: replacement)
                 textView.setSelectedRange(
                     NSRange(location: replaceStart + replacement.count, length: 0)
@@ -826,8 +872,9 @@ struct MarkdownEditor: NSViewRepresentable {
             textView.wikiLinkState = .idle
             wikiLinkPopover.dismiss()
 
-            // Trigger text update
+            // Trigger text update and apply formatting to hide brackets
             parent.text = textView.string
+            applyWikiLinkFormatting()
         }
 
         // MARK: - Date Autocomplete Results
@@ -853,6 +900,28 @@ struct MarkdownEditor: NSViewRepresentable {
                     url: URL(string: "synth://daily/\(token.lowercased())")!
                 )
             }
+        }
+
+        // MARK: - @ Autocomplete Results (Dates + People)
+
+        private func atAutocompleteResults(query: String) -> [NoteSearchResult] {
+            var results = dateAutocompleteResults(query: query)
+            if let peopleIndex = store?.peopleIndex {
+                let people = peopleIndex.search(query)
+                let peopleResults = people.map { person in
+                    let countLabel = person.count == 1 ? "1 note" : "\(person.count) notes"
+                    return NoteSearchResult(
+                        // swiftlint:disable:next force_unwrapping
+                        id: URL(string: "synth://person/\(person.name)")!,
+                        title: person.name,
+                        relativePath: countLabel,
+                        // swiftlint:disable:next force_unwrapping
+                        url: URL(string: "synth://person/\(person.name)")!
+                    )
+                }
+                results.append(contentsOf: peopleResults)
+            }
+            return results
         }
 
         // MARK: - Tag Autocomplete Results
@@ -918,6 +987,12 @@ struct MarkdownEditor: NSViewRepresentable {
                 return true
             }
 
+            if url.host == "person" {
+                let personName = url.pathComponents.dropFirst().joined(separator: "/")
+                handlePersonClick(personName: personName)
+                return true
+            }
+
             return false
         }
 
@@ -963,6 +1038,14 @@ struct MarkdownEditor: NSViewRepresentable {
                 name: .showTagBrowser,
                 object: nil,
                 userInfo: ["initialTag": tagName]
+            )
+        }
+
+        private func handlePersonClick(personName: String) {
+            NotificationCenter.default.post(
+                name: .showPeopleBrowser,
+                object: nil,
+                userInfo: ["initialPerson": personName]
             )
         }
 
@@ -1023,9 +1106,142 @@ struct MarkdownEditor: NSViewRepresentable {
         func textDidEndEditing(_ notification: Notification) { isEditing = false }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView else { return }
+            guard let textView = textView, !isFormatting else { return }
             parent.text = textView.string
+            applyWikiLinkFormatting()
             updateLinePositions()
+        }
+
+        // MARK: - Live Wiki Link Formatting
+
+        private func applyWikiLinkFormatting() {
+            guard let textView = textView, let storage = textView.textStorage else { return }
+            isFormatting = true
+            let cursor = textView.selectedRange()
+            let baseFont = NSFont.systemFont(ofSize: 16)
+            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            // swiftlint:disable:next force_try
+            let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+            let fullRange = NSRange(location: 0, length: storage.string.utf16.count)
+
+            // First reset any previously hidden brackets back to normal
+            storage.enumerateAttribute(.font, in: fullRange) { value, range, _ in
+                if let font = value as? NSFont, font.pointSize < 1 {
+                    storage.addAttributes([
+                        .font: baseFont,
+                        .foregroundColor: NSColor.textColor
+                    ], range: range)
+                    storage.removeAttribute(.link, range: range)
+                }
+            }
+
+            // Also reset any previously styled wiki link text
+            storage.enumerateAttribute(.link, in: fullRange) { value, range, _ in
+                if let url = value as? URL, url.scheme == "synth", url.host == "wiki" {
+                    storage.addAttributes([
+                        .font: baseFont,
+                        .foregroundColor: NSColor.textColor
+                    ], range: range)
+                    storage.removeAttribute(.link, range: range)
+                    storage.removeAttribute(.cursor, range: range)
+                    storage.removeAttribute(.toolTip, range: range)
+                    storage.removeAttribute(.underlineStyle, range: range)
+                    storage.removeAttribute(.underlineColor, range: range)
+                }
+            }
+
+            // Reset previously styled @person links
+            storage.enumerateAttribute(.link, in: fullRange) { value, range, _ in
+                if let url = value as? URL, url.scheme == "synth", url.host == "person" {
+                    storage.addAttributes([
+                        .font: baseFont,
+                        .foregroundColor: NSColor.textColor
+                    ], range: range)
+                    storage.removeAttribute(.link, range: range)
+                    storage.removeAttribute(.cursor, range: range)
+                    storage.removeAttribute(.backgroundColor, range: range)
+                }
+            }
+
+            for match in wikiPattern.matches(in: storage.string, range: fullRange).reversed() {
+                let matchRange = match.range
+                let innerRange = match.range(at: 1)
+                guard let innerSwift = Range(innerRange, in: storage.string) else { continue }
+                let noteTitle = String(storage.string[innerSwift])
+                if noteTitle.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+
+                let encoded = noteTitle.addingPercentEncoding(
+                    withAllowedCharacters: .urlPathAllowed
+                ) ?? noteTitle
+                // swiftlint:disable:next force_unwrapping
+                let linkURL = URL(string: "synth://wiki/\(encoded)")!
+
+                let noteExists: Bool
+                if let index = store?.noteIndex, index.isPopulated {
+                    noteExists = index.findExact(noteTitle) != nil
+                } else {
+                    noteExists = true
+                }
+
+                var linkAttrs: [NSAttributedString.Key: Any] = [
+                    .font: mediumFont,
+                    .link: linkURL,
+                    .cursor: NSCursor.pointingHand
+                ]
+                if noteExists {
+                    linkAttrs[.foregroundColor] = NSColor.controlAccentColor
+                } else {
+                    linkAttrs[.foregroundColor] = NSColor.systemOrange
+                    linkAttrs[.underlineStyle] = NSUnderlineStyle.patternDash.rawValue
+                        | NSUnderlineStyle.single.rawValue
+                    linkAttrs[.underlineColor] = NSColor.systemOrange.withAlphaComponent(0.6)
+                    linkAttrs[.toolTip] = "Note not found -- click to create"
+                }
+
+                // Style inner text as clickable link
+                storage.addAttributes(linkAttrs, range: innerRange)
+
+                // Hide [[ and ]] brackets
+                let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear,
+                    .link: linkURL
+                ]
+                let openRange = NSRange(location: matchRange.location, length: 2)
+                let closeRange = NSRange(
+                    location: matchRange.location + matchRange.length - 2,
+                    length: 2
+                )
+                storage.addAttributes(hiddenAttrs, range: openRange)
+                storage.addAttributes(hiddenAttrs, range: closeRange)
+            }
+
+            // Re-apply @person mention styling
+            let personDateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
+            for match in PeopleIndex.personPattern.matches(
+                in: storage.string, range: fullRange
+            ).reversed() {
+                let matchRange = match.range
+                let innerRange = match.range(at: 1)
+                guard let innerSwift = Range(innerRange, in: storage.string) else { continue }
+                let personName = String(storage.string[innerSwift])
+                guard !personDateTokens.contains(personName.lowercased()) else { continue }
+                guard personName.count >= 2 else { continue }
+                let personLower = personName.lowercased()
+                // swiftlint:disable:next force_unwrapping
+                let personURL = URL(string: "synth://person/\(personLower)")!
+                let personAttrs: [NSAttributedString.Key: Any] = [
+                    .font: mediumFont,
+                    .foregroundColor: NSColor.systemPurple,
+                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10),
+                    .link: personURL,
+                    .cursor: NSCursor.pointingHand
+                ]
+                storage.addAttributes(personAttrs, range: matchRange)
+            }
+
+            textView.setSelectedRange(cursor)
+            isFormatting = false
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

@@ -92,6 +92,11 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
+                Button("People Browser") {
+                    NotificationCenter.default.post(name: .showPeopleBrowser, object: nil)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+
                 Button("Today's Note") {
                     store.openDailyNote()
                 }

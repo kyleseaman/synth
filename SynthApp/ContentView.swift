@@ -18,6 +18,9 @@ extension Notification.Name {
 
     // MARK: - Tag Browser
     static let showTagBrowser = Notification.Name("showTagBrowser")
+
+    // MARK: - People Browser
+    static let showPeopleBrowser = Notification.Name("showPeopleBrowser")
 }
 
 enum ActiveModal: Equatable {
@@ -32,6 +35,8 @@ struct ContentView: View {
     @State private var activeModal: ActiveModal?
     @State private var showTagBrowser = false
     @State private var initialTagFilter: String?
+    @State private var showPeopleBrowser = false
+    @State private var initialPersonFilter: String?
     @State private var dismissedSetup = false
 
     private func modalBinding(_ modal: ActiveModal) -> Binding<Bool> {
@@ -185,12 +190,13 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if activeModal != nil || showTagBrowser {
+            if activeModal != nil || showTagBrowser || showPeopleBrowser {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture {
                         activeModal = nil
                         showTagBrowser = false
+                        showPeopleBrowser = false
                     }
 
                 ZStack {
@@ -216,11 +222,20 @@ struct ContentView: View {
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
+
+                    if showPeopleBrowser {
+                        PeopleBrowserView(
+                            isPresented: $showPeopleBrowser,
+                            initialPerson: initialPersonFilter
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
                 }
             }
         }
         .animation(.easeOut(duration: 0.15), value: activeModal)
         .animation(.easeOut(duration: 0.15), value: showTagBrowser)
+        .animation(.easeOut(duration: 0.15), value: showPeopleBrowser)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
@@ -245,6 +260,11 @@ struct ContentView: View {
             initialTagFilter = notification.userInfo?["initialTag"] as? String
             activeModal = nil
             showTagBrowser = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showPeopleBrowser)) { notification in
+            initialPersonFilter = notification.userInfo?["initialPerson"] as? String
+            activeModal = nil
+            showPeopleBrowser = true
         }
     }
 }

@@ -128,13 +128,10 @@ struct WikiLinkPopupView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                         HStack {
-                            Image(systemName: rowIcon)
+                            Image(systemName: iconForResult(result))
                                 .foregroundStyle(.secondary)
                             Text(result.title)
-                                .foregroundColor(
-                                    mode == "hashtag"
-                                        ? Color(nsColor: .systemTeal) : .primary
-                                )
+                                .foregroundColor(colorForResult(result))
                             Spacer()
                             Text(result.relativePath)
                                 .foregroundStyle(.tertiary)
@@ -193,26 +190,32 @@ struct WikiLinkPopupView: View {
 
     private var headerIcon: String {
         switch mode {
-        case "at": return "calendar"
+        case "at": return "at"
         case "hashtag": return "number"
         default: return "magnifyingglass"
         }
     }
 
-    private var rowIcon: String {
-        switch mode {
-        case "at": return "calendar"
-        case "hashtag": return "number"
-        default: return "doc.text"
-        }
-    }
-
     private var searchPlaceholder: String {
         switch mode {
-        case "at": return "Search dates..."
+        case "at": return "Search dates & people..."
         case "hashtag": return "Search tags..."
         default: return "Search notes..."
         }
+    }
+
+    private func iconForResult(_ result: NoteSearchResult) -> String {
+        if mode == "at" {
+            return result.url.host == "person" ? "person.fill" : "calendar"
+        }
+        if mode == "hashtag" { return "number" }
+        return "doc.text"
+    }
+
+    private func colorForResult(_ result: NoteSearchResult) -> Color {
+        if result.url.host == "person" { return Color(nsColor: .systemPurple) }
+        if mode == "hashtag" { return Color(nsColor: .systemTeal) }
+        return .primary
     }
 
     private var displayQuery: String {
@@ -222,6 +225,7 @@ struct WikiLinkPopupView: View {
 
     private var createLabel: String {
         if mode == "hashtag" { return "Create #\(query)" }
+        if mode == "at" { return "Add @\(query)" }
         return "Create \"\(query)\""
     }
 
