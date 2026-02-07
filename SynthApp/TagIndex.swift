@@ -11,7 +11,7 @@ class TagIndex: ObservableObject {
 
     // Tag regex: must start with letter after #, min 2 chars after #, not preceded by # or word char
     // swiftlint:disable:next force_try
-    private let tagPattern = try! NSRegularExpression(
+    static let tagPattern = try! NSRegularExpression(
         pattern: "(?<![#\\w])#([a-zA-Z][a-zA-Z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
     )
 
@@ -122,7 +122,7 @@ class TagIndex: ObservableObject {
             if inCodeBlock { continue }
 
             let range = NSRange(location: 0, length: line.utf16.count)
-            let matches = tagPattern.matches(in: line, range: range)
+            let matches = Self.tagPattern.matches(in: line, range: range)
             for match in matches {
                 guard let tagRange = Range(match.range(at: 1), in: line) else { continue }
                 let tagName = String(line[tagRange]).lowercased()

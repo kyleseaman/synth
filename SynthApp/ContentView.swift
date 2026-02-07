@@ -420,6 +420,12 @@ struct EditorViewSimple: View {
             .deletingPathExtension().lastPathComponent
     }
 
+    private var currentNoteURL: URL? {
+        guard store.currentIndex >= 0,
+              store.currentIndex < store.openFiles.count else { return nil }
+        return store.openFiles[store.currentIndex].url
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
@@ -445,6 +451,7 @@ struct EditorViewSimple: View {
 
                 RelatedNotesSection(
                     noteTitle: currentNoteTitle,
+                    noteURL: currentNoteURL,
                     backlinkIndex: store.backlinkIndex,
                     tagIndex: store.tagIndex,
                     onNavigate: { url in store.open(url) }

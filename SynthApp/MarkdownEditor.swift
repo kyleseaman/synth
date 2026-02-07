@@ -128,10 +128,7 @@ struct MarkdownFormat: DocumentFormat {
 
         // MARK: #Tags
         // Must run after wiki links and @dates, before bold/italic/code
-        // swiftlint:disable:next force_try
-        let tagPattern = try! NSRegularExpression(
-            pattern: "(?<![#\\w])#([a-zA-Z][a-zA-Z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
-        )
+        let tagPattern = TagIndex.tagPattern
         let tagRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in tagPattern.matches(in: str.string, range: tagRange).reversed() {
             let fullNSRange = match.range
@@ -284,135 +281,136 @@ class FormattingTextView: NSTextView {
         super.insertNewline(sender)
     }
 
-    // swiftlint:disable:next function_body_length cyclomatic_complexity
     override func insertText(_ string: Any, replacementRange: NSRange) {
         super.insertText(string, replacementRange: replacementRange)
-
         guard let str = string as? String else { return }
 
-        // MARK: Wiki link state machine
+        handleAutocompleteState(for: str)
+        handleBulletConversion(for: str)
+    }
+
+    // MARK: - Autocomplete State Machine
+
+    private func handleAutocompleteState(for str: String) {
         switch wikiLinkState {
         case .idle:
-            if str == "[" {
-                wikiLinkState = .singleBracket
-            } else if str == "@" {
-                let start = selectedRange().location
-                wikiLinkState = .atActive(start: start)
-                NotificationCenter.default.post(
-                    name: .wikiLinkTrigger,
-                    object: self,
-                    userInfo: ["mode": "at", "query": ""]
-                )
-            } else if str == "#" {
-                // Check if preceded by whitespace or at start of line
-                let cursor = selectedRange().location
-                let isAtStart = cursor <= 1
-                var precededBySpace = isAtStart
-                if !isAtStart, let storage = textStorage {
-                    let charBefore = (storage.string as NSString).substring(
-                        with: NSRange(location: cursor - 2, length: 1)
-                    )
-                    precededBySpace = charBefore.rangeOfCharacter(
-                        from: .whitespacesAndNewlines
-                    ) != nil
-                }
-                if precededBySpace {
-                    // Don't open popup yet; wait for a letter after #
-                    wikiLinkState = .hashtagActive(start: cursor)
-                }
-            }
-
+            handleIdleState(for: str)
         case .singleBracket:
-            if str == "[" {
-                let start = selectedRange().location
-                wikiLinkState = .wikiLinkActive(start: start)
-                NotificationCenter.default.post(
-                    name: .wikiLinkTrigger,
-                    object: self,
-                    userInfo: ["mode": "wikilink", "query": ""]
-                )
-            } else {
-                wikiLinkState = .idle
-            }
-
+            handleSingleBracketState(for: str)
         case .wikiLinkActive, .atActive:
-            if str == "]" || str == "\n" || str == "\t" {
-                wikiLinkState = .idle
-                NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
-            } else if str == " " {
-                // For @ mode, dismiss on space if no valid match is forming
-                if case .atActive = wikiLinkState {
-                    let query = extractCurrentQuery()
-                    let lowered = query.trimmingCharacters(in: .whitespaces).lowercased()
-                    let dateTokens = ["today", "yesterday", "tomorrow"]
-                    let hasPartialMatch = dateTokens.contains { $0.hasPrefix(lowered) }
-                    if !hasPartialMatch {
-                        wikiLinkState = .idle
-                        NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
-                    } else {
-                        let fullQuery = extractCurrentQuery()
-                        NotificationCenter.default.post(
-                            name: .wikiLinkQueryUpdate,
-                            object: self,
-                            userInfo: ["query": fullQuery]
-                        )
-                    }
-                } else {
-                    let query = extractCurrentQuery()
-                    NotificationCenter.default.post(
-                        name: .wikiLinkQueryUpdate,
-                        object: self,
-                        userInfo: ["query": query]
-                    )
-                }
-            } else {
-                let query = extractCurrentQuery()
-                NotificationCenter.default.post(
-                    name: .wikiLinkQueryUpdate,
-                    object: self,
-                    userInfo: ["query": query]
-                )
-            }
-
+            handleLinkActiveState(for: str)
         case .hashtagActive(let start):
-            if str == " " || str == "\n" || str == "\t" {
-                // Space/newline/tab dismisses hashtag popup
-                wikiLinkState = .idle
-                NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
-            } else {
-                let cursor = selectedRange().location
-                let queryLength = cursor - start
-                if queryLength == 1 {
-                    // First char after # -- check if it's a letter
-                    let firstChar = str.first ?? Character(" ")
-                    if firstChar.isLetter {
-                        // Now trigger the popup
-                        NotificationCenter.default.post(
-                            name: .wikiLinkTrigger,
-                            object: self,
-                            userInfo: ["mode": "hashtag", "query": str]
-                        )
-                    } else {
-                        // Not a valid tag start, reset
-                        wikiLinkState = .idle
-                    }
-                } else {
-                    let query = extractCurrentQuery()
-                    NotificationCenter.default.post(
-                        name: .wikiLinkQueryUpdate,
-                        object: self,
-                        userInfo: ["query": query]
-                    )
-                }
+            handleHashtagActiveState(for: str, start: start)
+        }
+    }
+
+    private func handleIdleState(for str: String) {
+        if str == "[" {
+            wikiLinkState = .singleBracket
+        } else if str == "@" {
+            let start = selectedRange().location
+            wikiLinkState = .atActive(start: start)
+            NotificationCenter.default.post(
+                name: .wikiLinkTrigger,
+                object: self,
+                userInfo: ["mode": "at", "query": ""]
+            )
+        } else if str == "#" {
+            let cursor = selectedRange().location
+            let isAtStart = cursor <= 1
+            var precededBySpace = isAtStart
+            if !isAtStart, let storage = textStorage {
+                let charBefore = (storage.string as NSString).substring(
+                    with: NSRange(location: cursor - 2, length: 1)
+                )
+                precededBySpace = charBefore.rangeOfCharacter(
+                    from: .whitespacesAndNewlines
+                ) != nil
+            }
+            if precededBySpace {
+                wikiLinkState = .hashtagActive(start: cursor)
             }
         }
+    }
 
-        // MARK: Existing bullet conversion logic
+    private func handleSingleBracketState(for str: String) {
+        if str == "[" {
+            let start = selectedRange().location
+            wikiLinkState = .wikiLinkActive(start: start)
+            NotificationCenter.default.post(
+                name: .wikiLinkTrigger,
+                object: self,
+                userInfo: ["mode": "wikilink", "query": ""]
+            )
+        } else {
+            wikiLinkState = .idle
+        }
+    }
+
+    private func handleLinkActiveState(for str: String) {
+        if str == "]" || str == "\n" || str == "\t" {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        } else if str == " " {
+            if case .atActive = wikiLinkState {
+                let query = extractCurrentQuery()
+                let lowered = query.trimmingCharacters(in: .whitespaces).lowercased()
+                let dateTokens = ["today", "yesterday", "tomorrow"]
+                let hasPartialMatch = dateTokens.contains { $0.hasPrefix(lowered) }
+                if !hasPartialMatch {
+                    wikiLinkState = .idle
+                    NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+                } else {
+                    postQueryUpdate()
+                }
+            } else {
+                postQueryUpdate()
+            }
+        } else {
+            postQueryUpdate()
+        }
+    }
+
+    private func handleHashtagActiveState(for str: String, start: Int) {
+        if str == " " || str == "\n" || str == "\t" {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        } else {
+            let cursor = selectedRange().location
+            let queryLength = cursor - start
+            if queryLength == 1 {
+                let firstChar = str.first ?? Character(" ")
+                if firstChar.isLetter {
+                    NotificationCenter.default.post(
+                        name: .wikiLinkTrigger,
+                        object: self,
+                        userInfo: ["mode": "hashtag", "query": str]
+                    )
+                } else {
+                    wikiLinkState = .idle
+                }
+            } else {
+                postQueryUpdate()
+            }
+        }
+    }
+
+    private func postQueryUpdate() {
+        let query = extractCurrentQuery()
+        NotificationCenter.default.post(
+            name: .wikiLinkQueryUpdate,
+            object: self,
+            userInfo: ["query": query]
+        )
+    }
+
+    // MARK: - Bullet Conversion
+
+    private func handleBulletConversion(for str: String) {
         guard str == " ", let storage = textStorage else { return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        // Check if line is "- " or "* " or indented versions
         let trimmed = line.trimmingCharacters(in: .newlines)
         var indent = ""
         for char in trimmed { if char == "\t" { indent += "\t" } else { break } }

@@ -4,16 +4,13 @@ import SwiftUI
 
 struct RelatedNotesSection: View {
     let noteTitle: String
+    let noteURL: URL?
     @ObservedObject var backlinkIndex: BacklinkIndex
     @ObservedObject var tagIndex: TagIndex
     let onNavigate: (URL) -> Void
     @AppStorage("relatedNotesExpanded") private var isExpanded = false
 
     // MARK: - Related Notes Computation
-
-    private var currentFileURL: URL? {
-        nil // URL is not needed for scoring; we match by title
-    }
 
     var relatedNotes: [(url: URL, title: String, score: Int, reason: String)] {
         guard !noteTitle.isEmpty else { return [] }
@@ -24,14 +21,12 @@ struct RelatedNotesSection: View {
         var reasons: [URL: [String]] = [:]
 
         // 1. Shared tags (weight: 2 per shared tag)
-        // Find current note's tags by scanning all files for a matching title
-        let currentNoteTags = findCurrentNoteTags(title: currentTitle)
+        let currentNoteTags: Set<String> = noteURL.map { tagIndex.tags(for: $0) } ?? []
         if !currentNoteTags.isEmpty {
             for tag in currentNoteTags {
                 let filesWithTag = tagIndex.notes(for: tag)
                 for fileURL in filesWithTag {
-                    let fileTitle = fileURL.deletingPathExtension().lastPathComponent.lowercased()
-                    guard fileTitle != currentTitle else { continue }
+                    guard fileURL != noteURL else { continue }
                     candidates[fileURL, default: 0] += 2
                     if reasons[fileURL] == nil { reasons[fileURL] = [] }
                     reasons[fileURL]?.append("#\(tag)")
@@ -41,15 +36,16 @@ struct RelatedNotesSection: View {
 
         // 2. Mutual backlinks (weight: 3)
         // Notes that link to current AND current links to them
-        let currentOutgoing = findCurrentOutgoing(title: currentTitle)
+        let currentOutgoing: Set<String> = noteURL.map {
+            backlinkIndex.outgoing(from: $0)
+        } ?? []
         let currentIncoming = backlinkIndex.links(to: noteTitle)
         let mutualLinks = currentIncoming.filter { url in
             let theirTitle = url.deletingPathExtension().lastPathComponent.lowercased()
             return currentOutgoing.contains(theirTitle)
         }
         for fileURL in mutualLinks {
-            let fileTitle = fileURL.deletingPathExtension().lastPathComponent.lowercased()
-            guard fileTitle != currentTitle else { continue }
+            guard fileURL != noteURL else { continue }
             candidates[fileURL, default: 0] += 3
             if reasons[fileURL] == nil { reasons[fileURL] = [] }
             reasons[fileURL]?.append("mutual link")
@@ -138,26 +134,6 @@ struct RelatedNotesSection: View {
     }
 
     // MARK: - Helpers
-
-    private func findCurrentNoteTags(title: String) -> Set<String> {
-        var result: Set<String> = []
-        for (tag, urls) in tagIndex.tagToFiles {
-            for url in urls where url.deletingPathExtension().lastPathComponent.lowercased() == title {
-                result.insert(tag)
-            }
-        }
-        return result
-    }
-
-    private func findCurrentOutgoing(title: String) -> Set<String> {
-        // Find current note's outgoing links by scanning all URLs
-        for (url, _) in backlinkIndex.contextSnippets {
-            if url.deletingPathExtension().lastPathComponent.lowercased() == title {
-                return backlinkIndex.outgoing(from: url)
-            }
-        }
-        return []
-    }
 
     private func allNoteURLs() -> Set<URL> {
         var urls: Set<URL> = []
