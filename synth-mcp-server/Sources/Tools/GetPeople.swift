@@ -43,10 +43,12 @@ enum GetPeople {
         }
 
         // Match @Name patterns (supports multi-word names like @John Smith via @{John Smith})
-        let mentionRegex = try! NSRegularExpression(
+        guard let mentionRegex = try? NSRegularExpression(
             pattern: "@\\{([^}]+)\\}|@([A-Z][a-zA-Z]+(?:\\s[A-Z][a-zA-Z]+)*)",
             options: []
-        )
+        ) else {
+            return toolError("Internal error: could not create mention regex")
+        }
 
         struct Mention {
             let person: String

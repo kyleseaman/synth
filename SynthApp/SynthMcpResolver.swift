@@ -48,7 +48,12 @@ enum SynthMcpResolver {
         let pipe = Pipe()
         proc.standardOutput = pipe
         proc.standardError = FileHandle.nullDevice
-        try? proc.run()
+        do {
+            try proc.run()
+        } catch {
+            print("[SynthMcpResolver] Failed to run 'which': \(error)")
+            return nil
+        }
         proc.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         if let path = String(data: data, encoding: .utf8)?

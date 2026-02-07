@@ -59,9 +59,10 @@ enum ListNotes {
             return exts.isEmpty ? nil : Set(exts)
         }()
 
-        // Parse regex pattern
+        // Parse regex pattern (limit length to prevent ReDoS)
         let regex: NSRegularExpression? = {
-            guard let pattern = args["pattern"]?.stringValue else { return nil }
+            guard let pattern = args["pattern"]?.stringValue,
+                  pattern.count <= 500 else { return nil }
             return try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         }()
 

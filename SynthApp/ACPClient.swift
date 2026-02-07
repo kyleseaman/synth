@@ -403,10 +403,7 @@ class ACPClient: ObservableObject {
     }
 
     private func buildMcpServerConfigs() -> [AnyCodable] {
-        if let configs = mcpServerManager?.mcpServerConfig(workspace: cwd) {
-            return configs.map { AnyCodable($0) }
-        }
-        return []
+        mcpServerManager?.mcpServerConfig(workspace: cwd)?.map { AnyCodable($0) } ?? []
     }
 
     func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {

@@ -54,12 +54,11 @@ enum ReadNote {
             result += "- Characters: \(characters)\n"
 
             if let attrs = try? fileManager.attributesOfItem(atPath: fullPath) {
+                let formatter = ISO8601DateFormatter()
                 if let modified = attrs[.modificationDate] as? Date {
-                    let formatter = ISO8601DateFormatter()
                     result += "- Modified: \(formatter.string(from: modified))\n"
                 }
                 if let created = attrs[.creationDate] as? Date {
-                    let formatter = ISO8601DateFormatter()
                     result += "- Created: \(formatter.string(from: created))\n"
                 }
                 if let size = attrs[.size] as? UInt64 {

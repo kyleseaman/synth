@@ -145,7 +145,6 @@ enum AnyCodableValue: Codable {
 
 class MCPProtocolHandler {
     let toolRouter: ToolRouter
-    private var initialized = false
 
     init(toolRouter: ToolRouter) {
         self.toolRouter = toolRouter
@@ -174,7 +173,7 @@ class MCPProtocolHandler {
         // Handle notifications like initialized, cancelled, etc.
         switch request.method {
         case "notifications/initialized":
-            initialized = true
+            log("Client initialized")
         default:
             break
         }

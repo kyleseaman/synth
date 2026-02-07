@@ -52,6 +52,11 @@ enum GlobalSearch {
             return Set(["md", "txt"])
         }()
 
+        // Reject overly complex regex patterns to prevent ReDoS
+        guard query.count <= 500 else {
+            return toolError("Regex pattern too long (max 500 characters)")
+        }
+
         let regexOptions: NSRegularExpression.Options = caseSensitive ? [] : [.caseInsensitive]
         guard let regex = try? NSRegularExpression(pattern: query, options: regexOptions) else {
             return toolError("Invalid regex pattern: \(query)")
@@ -91,6 +96,9 @@ enum GlobalSearch {
 
             for (index, line) in lines.enumerated() {
                 if matches.count >= maxResults { break }
+
+                // Skip excessively long lines to bound regex CPU time
+                guard line.count <= 10_000 else { continue }
 
                 let range = NSRange(line.startIndex..., in: line)
                 guard regex.firstMatch(in: line, range: range) != nil else { continue }

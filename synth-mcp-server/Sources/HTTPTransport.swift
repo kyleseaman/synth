@@ -163,10 +163,11 @@ class HTTPTransport {
 
         // Keep connection alive — will be cleaned up on disconnect
         connection.stateUpdateHandler = { [weak self] state in
+            guard let self = self else { return }
             if case .cancelled = state {
-                self?.sessionsLock.lock()
-                self?.sessions.removeValue(forKey: sessionId)
-                self?.sessionsLock.unlock()
+                self.sessionsLock.lock()
+                self.sessions.removeValue(forKey: sessionId)
+                self.sessionsLock.unlock()
             }
         }
     }
@@ -225,9 +226,10 @@ class HTTPTransport {
     }
 
     private func corsHeaders() -> String {
-        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Origin: http://localhost\r\n"
             + "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n"
             + "Access-Control-Allow-Headers: Content-Type, Mcp-Session-Id\r\n"
+            + "Vary: Origin\r\n"
     }
 
     private func extractHeader(_ raw: String, name: String) -> String? {

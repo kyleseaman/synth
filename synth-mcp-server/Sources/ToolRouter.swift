@@ -86,9 +86,10 @@ func resolvePath(_ relativePath: String, workspace: String) -> String? {
         fullPath = (workspace as NSString).appendingPathComponent(relativePath)
     }
 
-    // Prevent path traversal outside workspace
-    let resolved = (fullPath as NSString).standardizingPath
-    guard resolved.hasPrefix((workspace as NSString).standardizingPath) else {
+    // Resolve symlinks and standardize to prevent traversal via symlinks
+    let resolved = URL(fileURLWithPath: fullPath).resolvingSymlinksInPath().path
+    let resolvedWorkspace = URL(fileURLWithPath: workspace).resolvingSymlinksInPath().path
+    guard resolved.hasPrefix(resolvedWorkspace) else {
         return nil
     }
     return resolved

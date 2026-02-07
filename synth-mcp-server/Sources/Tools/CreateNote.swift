@@ -180,9 +180,13 @@ enum CreateNote {
         """
     }
 
-    private static func iso8601Now() -> String {
+    private static let dateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
-        return formatter.string(from: Date())
+        return formatter
+    }()
+
+    private static func iso8601Now() -> String {
+        dateFormatter.string(from: Date())
     }
 }

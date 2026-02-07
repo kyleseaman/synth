@@ -29,7 +29,6 @@ class MCPServerManager: ObservableObject {
             "--http-port", String(httpPort)
         ]
         proc.standardOutput = FileHandle.nullDevice
-        proc.standardError = FileHandle.nullDevice
 
         proc.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
