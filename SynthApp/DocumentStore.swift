@@ -15,6 +15,13 @@ class DocumentStore: ObservableObject {
     @Published var needsKiroSetup = false
     @Published var isLinksTabSelected = false
 
+    private static let meetingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
     private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
     private var fileWatcher: DispatchSourceFileSystemObject?
@@ -328,13 +335,13 @@ class DocumentStore: ObservableObject {
         let meetingDir = workspace.appendingPathComponent("meetings")
         try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
 
-        let sanitized = name
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
+        let sanitized = name.replacingOccurrences(
+            of: "[/:\\x00-\\x1F\\x7F]",
+            with: "-",
+            options: .regularExpression
+        )
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateString = formatter.string(from: Date())
+        let dateString = Self.meetingDateFormatter.string(from: Date())
 
         let baseName = "\(dateString) \(sanitized)"
         var fileName = "\(baseName).md"

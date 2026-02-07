@@ -10,13 +10,26 @@ extension Notification.Name {
     static let showMeetingNote = Notification.Name("showMeetingNote")
 }
 
+enum ActiveModal: Equatable {
+    case fileLauncher
+    case linkCapture
+    case meetingNote
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showFileLauncher = false
-    @State private var showLinkCapture = false
-    @State private var showMeetingNote = false
+    @State private var activeModal: ActiveModal?
     @State private var dismissedSetup = false
+
+    private func modalBinding(_ modal: ActiveModal) -> Binding<Bool> {
+        Binding(
+            get: { activeModal == modal },
+            set: { newValue in
+                activeModal = newValue ? modal : nil
+            }
+        )
+    }
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -160,36 +173,30 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if showFileLauncher || showLinkCapture || showMeetingNote {
+            if activeModal != nil {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
-                    .onTapGesture {
-                        showFileLauncher = false
-                        showLinkCapture = false
-                        showMeetingNote = false
-                    }
+                    .onTapGesture { activeModal = nil }
 
                 ZStack {
-                    if showFileLauncher {
-                        FileLauncher(isPresented: $showFileLauncher)
+                    if activeModal == .fileLauncher {
+                        FileLauncher(isPresented: modalBinding(.fileLauncher))
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if showLinkCapture {
-                        LinkCaptureView(isPresented: $showLinkCapture)
+                    if activeModal == .linkCapture {
+                        LinkCaptureView(isPresented: modalBinding(.linkCapture))
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if showMeetingNote {
-                        MeetingNoteView(isPresented: $showMeetingNote)
+                    if activeModal == .meetingNote {
+                        MeetingNoteView(isPresented: modalBinding(.meetingNote))
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: showFileLauncher)
-        .animation(.easeOut(duration: 0.15), value: showLinkCapture)
-        .animation(.easeOut(duration: 0.15), value: showMeetingNote)
+        .animation(.easeOut(duration: 0.15), value: activeModal)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
@@ -202,17 +209,13 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
-            showFileLauncher = true
+            activeModal = .fileLauncher
         }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
-            showFileLauncher = false
-            showMeetingNote = false
-            showLinkCapture = true
+            activeModal = .linkCapture
         }
         .onReceive(NotificationCenter.default.publisher(for: .showMeetingNote)) { _ in
-            showFileLauncher = false
-            showLinkCapture = false
-            showMeetingNote = true
+            activeModal = .meetingNote
         }
     }
 }
