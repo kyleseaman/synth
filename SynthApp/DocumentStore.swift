@@ -19,6 +19,13 @@ class DocumentStore: ObservableObject {
     let backlinkIndex = BacklinkIndex()
     let tagIndex = TagIndex()
 
+    private static let meetingDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
     private var chatStates: [URL: DocumentChatState] = [:]
     private let maxRecentFiles = 20
     private var fileWatcher: DispatchSourceFileSystemObject?
@@ -342,6 +349,54 @@ class DocumentStore: ObservableObject {
         }
 
         try? "".write(to: url, atomically: true, encoding: .utf8)
+        loadFileTree()
+        open(url)
+    }
+
+    func newMeetingNote(name: String) {
+        guard let workspace = workspace else { return }
+        let meetingDir = workspace.appendingPathComponent("meetings")
+        try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+
+        let sanitized = name.replacingOccurrences(
+            of: "[/:\\x00-\\x1F\\x7F]",
+            with: "-",
+            options: .regularExpression
+        )
+
+        let dateString = Self.meetingDateFormatter.string(from: Date())
+
+        let baseName = "\(dateString) \(sanitized)"
+        var fileName = "\(baseName).md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: meetingDir.appendingPathComponent(fileName).path) {
+            fileName = "\(baseName) \(counter).md"
+            counter += 1
+        }
+
+        let url = meetingDir.appendingPathComponent(fileName)
+        let template = """
+        # \(name)
+
+        **Date:** \(dateString)
+
+        ### Agenda
+
+        -
+
+        ### Attendees
+
+        -
+
+        ### Notes
+
+
+
+        ### TODOs
+
+        - [ ]
+        """
+        try? template.write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
     }

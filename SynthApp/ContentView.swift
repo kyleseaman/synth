@@ -7,6 +7,7 @@ extension Notification.Name {
     static let showFileLauncher = Notification.Name("showFileLauncher")
     static let showLinkCapture = Notification.Name("showLinkCapture")
     static let reloadEditor = Notification.Name("reloadEditor")
+    static let showMeetingNote = Notification.Name("showMeetingNote")
 
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
@@ -19,14 +20,28 @@ extension Notification.Name {
     static let showTagBrowser = Notification.Name("showTagBrowser")
 }
 
+enum ActiveModal: Equatable {
+    case fileLauncher
+    case linkCapture
+    case meetingNote
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: DocumentStore
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var showFileLauncher = false
-    @State private var showLinkCapture = false
+    @State private var activeModal: ActiveModal?
     @State private var showTagBrowser = false
     @State private var initialTagFilter: String?
     @State private var dismissedSetup = false
+
+    private func modalBinding(_ modal: ActiveModal) -> Binding<Bool> {
+        Binding(
+            get: { activeModal == modal },
+            set: { newValue in
+                activeModal = newValue ? modal : nil
+            }
+        )
+    }
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -170,23 +185,27 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if showFileLauncher || showLinkCapture || showTagBrowser {
+            if activeModal != nil || showTagBrowser {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        showFileLauncher = false
-                        showLinkCapture = false
+                        activeModal = nil
                         showTagBrowser = false
                     }
 
                 ZStack {
-                    if showFileLauncher {
-                        FileLauncher(isPresented: $showFileLauncher)
+                    if activeModal == .fileLauncher {
+                        FileLauncher(isPresented: modalBinding(.fileLauncher))
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if showLinkCapture {
-                        LinkCaptureView(isPresented: $showLinkCapture)
+                    if activeModal == .linkCapture {
+                        LinkCaptureView(isPresented: modalBinding(.linkCapture))
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+
+                    if activeModal == .meetingNote {
+                        MeetingNoteView(isPresented: modalBinding(.meetingNote))
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
@@ -200,8 +219,7 @@ struct ContentView: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: showFileLauncher)
-        .animation(.easeOut(duration: 0.15), value: showLinkCapture)
+        .animation(.easeOut(duration: 0.15), value: activeModal)
         .animation(.easeOut(duration: 0.15), value: showTagBrowser)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
@@ -215,16 +233,17 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
-            showFileLauncher = true
+            activeModal = .fileLauncher
         }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
-            showFileLauncher = false
-            showLinkCapture = true
+            activeModal = .linkCapture
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showMeetingNote)) { _ in
+            activeModal = .meetingNote
         }
         .onReceive(NotificationCenter.default.publisher(for: .showTagBrowser)) { notification in
             initialTagFilter = notification.userInfo?["initialTag"] as? String
-            showFileLauncher = false
-            showLinkCapture = false
+            activeModal = nil
             showTagBrowser = true
         }
     }

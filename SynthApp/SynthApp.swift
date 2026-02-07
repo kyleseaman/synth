@@ -46,6 +46,11 @@ struct SynthApp: App {
                     .keyboardShortcut("n")
             }
             CommandGroup(after: .newItem) {
+                Button("New Meeting Note") {
+                    NotificationCenter.default.post(name: .showMeetingNote, object: nil)
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                Divider()
                 Button("Open Workspace...") { store.pickWorkspace() }
                     .keyboardShortcut("o")
                 Button("Save") { store.save() }
