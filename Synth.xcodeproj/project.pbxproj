@@ -28,6 +28,7 @@
 		1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */; };
 		1A0000000000000000000205 /* LinkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* LinkStoreTests.swift */; };
 		1A0000000000000000000206 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* XCTest.framework */; };
+		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,6 +59,7 @@
 		1A0000000000000000000106 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A0000000000000000000107 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		1A0000000000000000000108 /* SynthTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SynthTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A0000000000000000000109 /* MeetingNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNoteView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +99,7 @@
 				1A0000000000000000000101 /* LinkStore.swift */,
 				1A0000000000000000000102 /* LinksView.swift */,
 				1A0000000000000000000103 /* LinkCaptureView.swift */,
+				1A0000000000000000000109 /* MeetingNoteView.swift */,
 				1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */,
 
 				1CED1C0DF1D02542388054A9 /* FileLauncher.swift */,
@@ -246,6 +249,7 @@
 				1A0000000000000000000201 /* LinkStore.swift in Sources */,
 				1A0000000000000000000202 /* LinksView.swift in Sources */,
 				1A0000000000000000000203 /* LinkCaptureView.swift in Sources */,
+				1A0000000000000000000207 /* MeetingNoteView.swift in Sources */,
 				1A0000000000000000000047 /* DocumentStore.swift in Sources */,
 				1A0000000000000000000048 /* SettingsView.swift in Sources */,
 				1A0000000000000000000049 /* DocumentChatTray.swift in Sources */,
