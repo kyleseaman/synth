@@ -12,6 +12,7 @@ class ACPClient: ObservableObject {
     private var cwd: String = ""
     private var agent: String?
     private var lastToolCallDiff: [String: DiffContent] = [:]
+    var mcpServerManager: MCPServerManager?
 
     @Published var isConnected = false
     @Published var sessionId: String?
@@ -382,7 +383,7 @@ class ACPClient: ObservableObject {
     private func createSession() {
         var params: [String: AnyCodable] = [
             "cwd": AnyCodable(cwd),
-            "mcpServers": AnyCodable([AnyCodable]())
+            "mcpServers": AnyCodable(buildMcpServerConfigs())
         ]
         if let agent = agent {
             params["agent"] = AnyCodable(agent)
@@ -399,6 +400,13 @@ class ACPClient: ObservableObject {
                 print("[ACP] session/new response: \(result)")
             }
         }
+    }
+
+    private func buildMcpServerConfigs() -> [AnyCodable] {
+        if let configs = mcpServerManager?.mcpServerConfig(workspace: cwd) {
+            return configs.map { AnyCodable($0) }
+        }
+        return []
     }
 
     func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {

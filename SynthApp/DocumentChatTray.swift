@@ -296,7 +296,12 @@ struct DocumentChatTray: View {
         chatState.toolCalls.removeAll()
 
         let cwdPath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
-        chatState.startIfNeeded(cwd: cwdPath, filePath: documentURL.path, agent: selectedAgent)
+        chatState.startIfNeeded(
+            cwd: cwdPath,
+            filePath: documentURL.path,
+            agent: selectedAgent,
+            mcpServerManager: store.mcpServer
+        )
         wireFileCallbacks()
 
         guard chatState.acpClient?.isConnected == true else {
