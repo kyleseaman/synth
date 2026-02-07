@@ -39,6 +39,8 @@
 		3A0000000000000000000806 /* PeopleIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000126 /* PeopleIndex.swift */; };
 		3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000127 /* PeopleBrowserView.swift */; };
 		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
+		4A0000000000000000000901 /* SynthMcpResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000131 /* SynthMcpResolver.swift */; };
+		4A0000000000000000000902 /* MCPServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000132 /* MCPServerManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +82,8 @@
 		1A0000000000000000000126 /* PeopleIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000127 /* PeopleBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleBrowserView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000109 /* MeetingNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNoteView.swift; sourceTree = "<group>"; };
+		4A0000000000000000000131 /* SynthMcpResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthMcpResolver.swift; sourceTree = "<group>"; };
+		4A0000000000000000000132 /* MCPServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +151,8 @@
 				1A0000000000000000000125 /* RelatedNotesView.swift */,
 				1A0000000000000000000126 /* PeopleIndex.swift */,
 				1A0000000000000000000127 /* PeopleBrowserView.swift */,
+				4A0000000000000000000131 /* SynthMcpResolver.swift */,
+				4A0000000000000000000132 /* MCPServerManager.swift */,
 				1A0000000000000000000013 /* BridgingHeader.h */,
 			);
 			path = SynthApp;
@@ -301,6 +307,8 @@
 				3A0000000000000000000805 /* RelatedNotesView.swift in Sources */,
 				3A0000000000000000000806 /* PeopleIndex.swift in Sources */,
 				3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */,
+				4A0000000000000000000901 /* SynthMcpResolver.swift in Sources */,
+				4A0000000000000000000902 /* MCPServerManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

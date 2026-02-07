@@ -31,11 +31,18 @@ class DocumentChatState: ObservableObject {
     private(set) var acpClient: ACPClient?
     private(set) var isStarted = false
 
-    func startIfNeeded(cwd: String, filePath: String, agent: String? = nil) {
+    // swiftlint:disable:next function_parameter_count
+    func startIfNeeded(
+        cwd: String,
+        filePath: String,
+        agent: String? = nil,
+        mcpServerManager: MCPServerManager? = nil
+    ) {
         guard !isStarted else { return }
         isStarted = true
 
         let client = ACPClient()
+        client.mcpServerManager = mcpServerManager
         self.acpClient = client
 
         client.onUpdate = { [weak self] chunk in

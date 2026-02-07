@@ -12,6 +12,9 @@ Synth is a native macOS text editor (macOS 13+) with AI integration. SwiftUI/App
 # Build Rust core (must be done first)
 cd synth-core && cargo build --release
 
+# Build MCP server
+cd synth-mcp-server && swift build -c release
+
 # Build Swift app (from SynthApp/)
 cd SynthApp && swiftc *.swift -import-objc-header BridgingHeader.h \
   -L ../synth-core/target/release -I ../synth-core -lsynth_core -o Synth
@@ -47,6 +50,12 @@ There is also an Xcode project (`Synth.xcodeproj`) for building via Xcode.
 - `extract_text()` — Parses .docx files via docx-rs, returns plain text
 - `kiro_chat()` — Invokes `kiro-cli chat` subprocess
 - `free_string()` — Frees C strings returned to Swift
+
+**MCP server (`synth-mcp-server/`)**:
+- Swift CLI tool providing 8 workspace tools via MCP protocol (JSON-RPC 2.0)
+- Supports stdio transport (for kiro-cli) and HTTP+SSE on localhost (for external agents)
+- Tools: `read_note`, `list_notes`, `global_search`, `manage_tags`, `update_note`, `get_backlinks`, `get_people`, `create_note`
+- Auto-started by `MCPServerManager` when workspace opens
 
 **UI communication** uses NotificationCenter for cross-component events (toggleChat, toggleSidebar, showFileLauncher).
 

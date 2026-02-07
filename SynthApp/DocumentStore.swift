@@ -239,6 +239,7 @@ class DocumentStore: ObservableObject {
     let backlinkIndex = BacklinkIndex()
     let tagIndex = TagIndex()
     let peopleIndex = PeopleIndex()
+    let mcpServer = MCPServerManager()
 
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -326,6 +327,7 @@ class DocumentStore: ObservableObject {
         startWatching()
         loadKiroConfig()
         checkKiroSetup()
+        mcpServer.start(workspace: url)
     }
 
     func loadFileTree() {
