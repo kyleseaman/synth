@@ -513,6 +513,30 @@ class DocumentStore: ObservableObject {
         isMediaTabSelected = true
     }
 
+    func notesReferencing(
+        mediaFilename: String
+    ) -> [(title: String, url: URL)] {
+        guard let workspace else { return [] }
+        var results: [(title: String, url: URL)] = []
+        let enumerator = FileManager.default.enumerator(
+            at: workspace,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "md",
+                  let content = try? String(
+                      contentsOf: fileURL, encoding: .utf8
+                  ),
+                  content.contains(mediaFilename)
+            else { continue }
+            let title = fileURL.deletingPathExtension()
+                .lastPathComponent
+            results.append((title: title, url: fileURL))
+        }
+        return results
+    }
+
     var currentDocumentURL: URL? {
         guard currentIndex >= 0, currentIndex < openFiles.count else { return nil }
         return openFiles[currentIndex].url

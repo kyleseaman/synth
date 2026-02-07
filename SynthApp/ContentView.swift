@@ -627,6 +627,7 @@ struct LineNumberGutter: View {
 
 struct MediaGridView: View {
     @EnvironmentObject var store: DocumentStore
+    @State private var selectedMedia: URL?
     private let gridColumns = [
         GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)
     ]
@@ -646,7 +647,12 @@ struct MediaGridView: View {
 
                     LazyVGrid(columns: gridColumns, spacing: 12) {
                         ForEach(store.mediaFiles, id: \.self) { mediaURL in
-                            MediaTile(mediaURL: mediaURL)
+                            MediaTile(
+                                mediaURL: mediaURL,
+                                onCopy: { copyImage(at: mediaURL) },
+                                onDelete: { deleteMedia(mediaURL) },
+                                onTap: { selectedMedia = mediaURL }
+                            )
                         }
                     }
                 }
@@ -654,32 +660,216 @@ struct MediaGridView: View {
             .padding(16)
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .sheet(item: $selectedMedia) { mediaURL in
+            MediaDetailView(
+                mediaURL: mediaURL,
+                referencingNotes: store.notesReferencing(
+                    mediaFilename: mediaURL.lastPathComponent
+                ),
+                onCopy: { copyImage(at: mediaURL) },
+                onDelete: {
+                    selectedMedia = nil
+                    deleteMedia(mediaURL)
+                },
+                onNavigate: { noteURL in
+                    selectedMedia = nil
+                    store.open(noteURL)
+                }
+            )
+        }
+    }
+
+    private func copyImage(at mediaURL: URL) {
+        guard let image = NSImage(contentsOf: mediaURL) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+    }
+
+    private func deleteMedia(_ mediaURL: URL) {
+        try? FileManager.default.trashItem(
+            at: mediaURL, resultingItemURL: nil
+        )
+        store.loadFileTree()
     }
 }
 
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
+
+// MARK: - Media Detail (fullscreen sheet)
+
+struct MediaDetailView: View {
+    let mediaURL: URL
+    let referencingNotes: [(title: String, url: URL)]
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let onNavigate: (URL) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var fullImage: NSImage?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Toolbar
+            HStack {
+                Text(mediaURL.lastPathComponent)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button {
+                    onCopy()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+
+            Divider()
+
+            // Image
+            if let fullImage {
+                ScrollView([.horizontal, .vertical]) {
+                    Image(nsImage: fullImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+                        .padding(20)
+                }
+            } else {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+
+            // Referencing notes
+            if !referencingNotes.isEmpty {
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+                    ForEach(
+                        referencingNotes,
+                        id: \.url
+                    ) { note in
+                        Button(note.title) {
+                            onNavigate(note.url)
+                        }
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+        }
+        .frame(minWidth: 600, minHeight: 450)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { loadFullImage() }
+    }
+
+    private func loadFullImage() {
+        let maxSize = NSSize(width: 1600, height: 1200)
+        WorkspaceImageLoader.shared.loadImage(
+            at: mediaURL, maxSize: maxSize
+        ) { loaded in
+            fullImage = loaded
+        }
+    }
+}
+
+// MARK: - Media Tile with hover controls
+
 struct MediaTile: View {
     let mediaURL: URL
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let onTap: () -> Void
     @State private var image: NSImage?
     @State private var isLoadingImage = false
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 140)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.12))
-                    .frame(height: 140)
-                    .overlay {
-                        Image(systemName: "photo")
-                            .foregroundStyle(.secondary)
+            ZStack(alignment: .topTrailing) {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 140)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.12))
+                        .frame(height: 140)
+                        .overlay {
+                            Image(systemName: "photo")
+                                .foregroundStyle(.secondary)
+                        }
+                }
+
+                if isHovering {
+                    HStack(spacing: 4) {
+                        Button {
+                            onCopy()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11))
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThickMaterial)
+                        .clipShape(Circle())
+                        .help("Copy image")
+
+                        Button {
+                            onDelete()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThickMaterial)
+                        .clipShape(Circle())
+                        .help("Delete image")
                     }
+                    .padding(6)
+                    .transition(.opacity)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isHovering = hovering
+                }
             }
 
             Text(mediaURL.lastPathComponent)
