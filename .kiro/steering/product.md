@@ -14,3 +14,7 @@ Writers and developers who want a distraction-free writing environment with AI b
 - Kiro CLI integration for AI assistance
 - Specialized agents (synth-editor, synth-writer)
 - Keyboard-driven workflow
+- Live markdown rendering with [[wiki links]], @mentions, #tags
+- Daily Notes view with chronological scroll and calendar sidebar
+- Backlinks, tag browser, people browser
+- Link capture and meeting notes

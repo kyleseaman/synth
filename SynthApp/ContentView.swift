@@ -24,6 +24,9 @@ extension Notification.Name {
 
     // MARK: - Backlinks Sidebar
     static let toggleBacklinks = Notification.Name("toggleBacklinks")
+
+    // MARK: - Daily Notes
+    static let showDailyNotes = Notification.Name("showDailyNotes")
 }
 
 enum ActiveModal: Equatable {
@@ -75,6 +78,13 @@ struct ContentView: View {
                     )
                 }
                 TabButton(
+                    title: "Daily Notes",
+                    isSelected: store.isDailyNotesViewActive,
+                    isDirty: false,
+                    onSelect: { store.selectDailyNotesTab() },
+                    onClose: nil
+                )
+                TabButton(
                     title: "Links",
                     isSelected: store.isLinksTabSelected,
                     isDirty: false,
@@ -101,6 +111,25 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity)
                 } else {
                     List {
+                        // MARK: - Daily Notes sidebar button
+                        Button {
+                            store.activateDailyNotes()
+                        } label: {
+                            Label("Daily Notes", systemImage: "square.and.pencil")
+                                .fontWeight(
+                                    store.isDailyNotesViewActive ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.isDailyNotesViewActive
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
                         FileTreeView(nodes: store.fileTree, store: store)
                     }
                     .listStyle(.sidebar)
@@ -124,7 +153,9 @@ struct ContentView: View {
                     }
                 }
 
-                if store.isLinksTabSelected {
+                if store.isDailyNotesViewActive {
+                    DailyNotesView()
+                } else if store.isLinksTabSelected {
                     LinksView()
                 } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
@@ -268,6 +299,9 @@ struct ContentView: View {
             initialPersonFilter = notification.userInfo?["initialPerson"] as? String
             activeModal = nil
             showPeopleBrowser = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showDailyNotes)) { _ in
+            store.activateDailyNotes()
         }
     }
 }

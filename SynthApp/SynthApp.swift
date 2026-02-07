@@ -102,8 +102,10 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 
-                Button("Today's Note") {
-                    store.openDailyNote()
+                Button("Daily Notes") {
+                    NotificationCenter.default.post(
+                        name: .showDailyNotes, object: nil
+                    )
                 }
                 .keyboardShortcut("d")
             }

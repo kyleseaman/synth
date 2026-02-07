@@ -52,3 +52,35 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 - `synth-core/` - Rust FFI library
 - `.kiro/agents/` - Custom AI agents
 - `.kiro/steering/` - Project context
+
+## Architecture Patterns
+
+### View Switching
+`DocumentStore` uses boolean flags to switch the detail column content:
+- `isLinksTabSelected` → shows `LinksView`
+- `isDailyNotesViewActive` → shows `DailyNotesView`
+- Neither → shows editor (`EditorViewSimple`)
+
+Flags are mutually exclusive. `open()`, `switchTo()`, `selectLinksTab()`, `selectDailyNotesTab()` all reset the other flags.
+
+### NotificationCenter Events
+All cross-component UI events use NotificationCenter: `.toggleSidebar`, `.toggleChat`, `.showFileLauncher`, `.showLinkCapture`, `.showMeetingNote`, `.showTagBrowser`, `.showPeopleBrowser`, `.toggleBacklinks`, `.showDailyNotes`.
+
+### Daily Notes
+- Files: `{workspace}/daily/YYYY-MM-DD.md`
+- `DailyNoteManager` scans 30 past + 7 future days, auto-creates today+7 on workspace load
+- Virtual notes materialized on first edit
+- Each day uses bare `FormattingTextView` (no NSScrollView wrapper) inside a SwiftUI ScrollView to avoid nested scroll issues
+- Debounced 1s auto-save; `dailyNoteManager.saveAll()` called in `DocumentStore.saveAll()` for app deactivation safety
+
+### Xcode Project
+New Swift files must be added to `Synth.xcodeproj/project.pbxproj` in 4 sections: PBXBuildFile, PBXFileReference, PBXGroup, PBXSourcesBuildPhase. SourceKit "Cannot find type in scope" errors usually mean the file isn't in the Xcode project.
+
+### Key Files
+- `ContentView.swift` — Main NavigationSplitView, tab bar, modals, ~600 lines
+- `DocumentStore.swift` — Central state, indexes, file ops, ~460 lines
+- `MarkdownEditor.swift` — FormattingTextView (NSTextView subclass) with live markdown, wiki links, @mentions, ~1200 lines
+- `DailyNotesView.swift` — Chronological daily notes + inline editors
+- `DailyNoteManager.swift` — Daily note lifecycle management
+- `CalendarSidebarView.swift` — Month calendar widget
+- `DailyNoteResolver.swift` — Daily note file resolution

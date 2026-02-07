@@ -38,8 +38,11 @@ There is also an Xcode project (`Synth.xcodeproj`) for building via Xcode.
 - `ContentView.swift` — Main UI: NavigationSplitView with file sidebar, editor tabs, chat panel
 - `DocumentStore.swift` — Central state management (@StateObject, MVVM). Manages workspace path, file tree, open documents, persists via UserDefaults
 - `Document.swift` — File model with load/save (.docx via Rust FFI, .md, .txt)
-- `EditorView.swift` — NSViewRepresentable wrapping NSTextView for rich text editing
-- `ChatPanel.swift` — AI chat UI with streaming responses
+- `MarkdownEditor.swift` — NSViewRepresentable wrapping FormattingTextView (NSTextView subclass) with live markdown rendering, wiki links, @mentions, #tags
+- `DailyNotesView.swift` — Chronological daily notes scroll view with inline FormattingTextView editors per day
+- `DailyNoteManager.swift` — Daily note lifecycle: entry scanning, virtual note materialization, debounced auto-save
+- `CalendarSidebarView.swift` — Monthly calendar widget for the daily notes right sidebar
+- `DailyNoteResolver.swift` — Daily note file resolution (today/yesterday/tomorrow tokens)
 - `ACPClient.swift` — JSON-RPC 2.0 client for Kiro CLI (ACP protocol)
 - `FileLauncher.swift` — Cmd+P fuzzy file search
 
@@ -48,7 +51,13 @@ There is also an Xcode project (`Synth.xcodeproj`) for building via Xcode.
 - `kiro_chat()` — Invokes `kiro-cli chat` subprocess
 - `free_string()` — Frees C strings returned to Swift
 
-**UI communication** uses NotificationCenter for cross-component events (toggleChat, toggleSidebar, showFileLauncher).
+**UI communication** uses NotificationCenter for cross-component events (toggleChat, toggleSidebar, showFileLauncher, showDailyNotes).
+
+**View switching pattern**: `DocumentStore` has boolean flags (`isLinksTabSelected`, `isDailyNotesViewActive`) that `ContentView` checks in the detail column to render the appropriate view (LinksView, DailyNotesView, or editor). These flags are mutually exclusive — setting one clears the others via `open()`, `switchTo()`, `selectLinksTab()`, `selectDailyNotesTab()`.
+
+**Daily Notes architecture**: Notes stored in `{workspace}/daily/YYYY-MM-DD.md`. `DailyNoteManager` generates entries for 30 past + 7 future days, auto-creates today+7 files on workspace load. Virtual notes (no file) are materialized on first edit. Each day gets a bare `FormattingTextView` (no NSScrollView wrapper) to avoid nested scroll issues. Debounced 1-second auto-save with `saveAll()` also called on app deactivation.
+
+**Xcode project**: When adding new Swift files, they must be registered in `Synth.xcodeproj/project.pbxproj` in 4 places: PBXBuildFile, PBXFileReference, PBXGroup children, and PBXSourcesBuildPhase. Without this, Xcode builds will fail and SourceKit will show "Cannot find type in scope" errors.
 
 ## Code Style
 

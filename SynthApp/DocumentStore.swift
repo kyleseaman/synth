@@ -14,11 +14,13 @@ class DocumentStore: ObservableObject {
     @Published var chatVisibleTabs: Set<URL> = []
     @Published var needsKiroSetup = false
     @Published var isLinksTabSelected = false
+    @Published var isDailyNotesViewActive = false
 
     let noteIndex = NoteIndex()
     let backlinkIndex = BacklinkIndex()
     let tagIndex = TagIndex()
     let peopleIndex = PeopleIndex()
+    let dailyNoteManager = DailyNoteManager()
 
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -100,10 +102,13 @@ class DocumentStore: ObservableObject {
             openFiles.removeAll()
             currentIndex = -1
             isLinksTabSelected = false
+            isDailyNotesViewActive = false
         }
         startWatching()
         loadKiroConfig()
         checkKiroSetup()
+        dailyNoteManager.ensureFutureDays(workspace: url)
+        loadFileTree()
     }
 
     func loadFileTree() {
@@ -208,16 +213,19 @@ class DocumentStore: ObservableObject {
         loadFileTree()
     }
 
-    func openDailyNote() {
-        guard let workspace = workspace else { return }
-        guard let url = DailyNoteResolver.resolve("today", workspace: workspace) else { return }
-        DailyNoteResolver.ensureExists(at: url)
-        loadFileTree()
-        open(url)
+    func activateDailyNotes() {
+        selectDailyNotesTab()
+    }
+
+    func selectDailyNotesTab() {
+        guard workspace != nil else { return }
+        isDailyNotesViewActive = true
+        isLinksTabSelected = false
     }
 
     func open(_ url: URL) {
         isLinksTabSelected = false
+        isDailyNotesViewActive = false
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
             addToRecent(url)
@@ -257,10 +265,12 @@ class DocumentStore: ObservableObject {
         guard index >= 0 && index < openFiles.count else { return }
         currentIndex = index
         isLinksTabSelected = false
+        isDailyNotesViewActive = false
     }
 
     func selectLinksTab() {
         isLinksTabSelected = true
+        isDailyNotesViewActive = false
     }
 
     func updateContent(_ content: NSAttributedString) {
@@ -312,6 +322,7 @@ class DocumentStore: ObservableObject {
             try? openFiles[index].save(openFiles[index].content)
             openFiles[index].isDirty = false
         }
+        dailyNoteManager.saveAll()
     }
 
     func closeCurrentTab() {
@@ -402,6 +413,32 @@ class DocumentStore: ObservableObject {
         try? template.write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
+    }
+
+    func createNoteIfNeeded(title: String, openAfter: Bool = true) {
+        guard let workspace = workspace else { return }
+        let sanitized = title
+            .replacingOccurrences(
+                of: "[/:\\x00-\\x1F\\x7F]",
+                with: "-", options: .regularExpression
+            )
+            .replacingOccurrences(of: "..", with: "-")
+            .trimmingCharacters(in: .whitespaces)
+        guard !sanitized.isEmpty else { return }
+        let url = workspace.appendingPathComponent("\(sanitized).md")
+        guard url.standardizedFileURL.path.hasPrefix(
+            workspace.standardizedFileURL.path
+        ) else { return }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            let content = "# \(sanitized)\n\n"
+            try? content.write(
+                to: url, atomically: true, encoding: .utf8
+            )
+        }
+        loadFileTree()
+        if openAfter {
+            open(url)
+        }
     }
 
     func delete(_ url: URL) {

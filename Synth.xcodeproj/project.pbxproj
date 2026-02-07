@@ -39,6 +39,10 @@
 		3A0000000000000000000806 /* PeopleIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000126 /* PeopleIndex.swift */; };
 		3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000127 /* PeopleBrowserView.swift */; };
 		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
+		4A0000000000000000000901 /* DailyNoteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000131 /* DailyNoteManager.swift */; };
+		4A0000000000000000000902 /* DailyNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000132 /* DailyNotesView.swift */; };
+		4A0000000000000000000903 /* CalendarSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000133 /* CalendarSidebarView.swift */; };
+		4A0000000000000000000904 /* AutocompleteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000134 /* AutocompleteCoordinator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +84,10 @@
 		1A0000000000000000000126 /* PeopleIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000127 /* PeopleBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleBrowserView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000109 /* MeetingNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNoteView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000131 /* DailyNoteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteManager.swift; sourceTree = "<group>"; };
+		1A0000000000000000000132 /* DailyNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNotesView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000133 /* CalendarSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSidebarView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000134 /* AutocompleteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutocompleteCoordinator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +148,10 @@
 				1A0000000000000000000111 /* NoteIndex.swift */,
 				1A0000000000000000000112 /* WikiLinkPopover.swift */,
 				1A0000000000000000000113 /* DailyNoteResolver.swift */,
+				1A0000000000000000000131 /* DailyNoteManager.swift */,
+				1A0000000000000000000132 /* DailyNotesView.swift */,
+				1A0000000000000000000133 /* CalendarSidebarView.swift */,
+				1A0000000000000000000134 /* AutocompleteCoordinator.swift */,
 				1A0000000000000000000121 /* BacklinkIndex.swift */,
 				1A0000000000000000000122 /* BacklinksView.swift */,
 				1A0000000000000000000123 /* TagIndex.swift */,
@@ -294,6 +306,10 @@
 				2A0000000000000000000701 /* NoteIndex.swift in Sources */,
 				2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */,
 				2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */,
+				4A0000000000000000000901 /* DailyNoteManager.swift in Sources */,
+				4A0000000000000000000902 /* DailyNotesView.swift in Sources */,
+				4A0000000000000000000903 /* CalendarSidebarView.swift in Sources */,
+				4A0000000000000000000904 /* AutocompleteCoordinator.swift in Sources */,
 				3A0000000000000000000801 /* BacklinkIndex.swift in Sources */,
 				3A0000000000000000000802 /* BacklinksView.swift in Sources */,
 				3A0000000000000000000803 /* TagIndex.swift in Sources */,
