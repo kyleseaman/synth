@@ -606,10 +606,12 @@ struct MediaGridView: View {
 
 struct MediaTile: View {
     let mediaURL: URL
+    @State private var image: NSImage?
+    @State private var isLoadingImage = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image = NSImage(contentsOf: mediaURL) {
+            if let image {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -638,5 +640,29 @@ struct MediaTile: View {
         .padding(10)
         .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .onAppear {
+            loadImageIfNeeded()
+        }
+        .onChange(of: mediaURL) { _, _ in
+            image = nil
+            isLoadingImage = false
+            loadImageIfNeeded()
+        }
+    }
+
+    private func loadImageIfNeeded() {
+        guard image == nil, !isLoadingImage else { return }
+        let maxSize = NSSize(width: 420, height: 280)
+
+        if let cached = WorkspaceImageLoader.shared.cachedImage(at: mediaURL, maxSize: maxSize) {
+            image = cached
+            return
+        }
+
+        isLoadingImage = true
+        WorkspaceImageLoader.shared.loadImage(at: mediaURL, maxSize: maxSize) { loadedImage in
+            image = loadedImage
+            isLoadingImage = false
+        }
     }
 }
