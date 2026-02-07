@@ -323,6 +323,54 @@ class DocumentStore: ObservableObject {
         open(url)
     }
 
+    func newMeetingNote(name: String) {
+        guard let workspace = workspace else { return }
+        let meetingDir = workspace.appendingPathComponent("meetings")
+        try? FileManager.default.createDirectory(at: meetingDir, withIntermediateDirectories: true)
+
+        let sanitized = name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: Date())
+
+        let baseName = "\(dateString) \(sanitized)"
+        var fileName = "\(baseName).md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: meetingDir.appendingPathComponent(fileName).path) {
+            fileName = "\(baseName) \(counter).md"
+            counter += 1
+        }
+
+        let url = meetingDir.appendingPathComponent(fileName)
+        let template = """
+        # \(name)
+
+        **Date:** \(dateString)
+
+        ### Agenda
+
+        -
+
+        ### Attendees
+
+        -
+
+        ### Notes
+
+
+
+        ### TODOs
+
+        - [ ]
+        """
+        try? template.write(to: url, atomically: true, encoding: .utf8)
+        loadFileTree()
+        open(url)
+    }
+
     func delete(_ url: URL) {
         // Close if open
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {

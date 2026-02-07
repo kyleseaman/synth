@@ -7,6 +7,7 @@ extension Notification.Name {
     static let showFileLauncher = Notification.Name("showFileLauncher")
     static let showLinkCapture = Notification.Name("showLinkCapture")
     static let reloadEditor = Notification.Name("reloadEditor")
+    static let showMeetingNote = Notification.Name("showMeetingNote")
 }
 
 struct ContentView: View {
@@ -14,6 +15,7 @@ struct ContentView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showFileLauncher = false
     @State private var showLinkCapture = false
+    @State private var showMeetingNote = false
     @State private var dismissedSetup = false
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
@@ -158,12 +160,13 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if showFileLauncher || showLinkCapture {
+            if showFileLauncher || showLinkCapture || showMeetingNote {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture {
                         showFileLauncher = false
                         showLinkCapture = false
+                        showMeetingNote = false
                     }
 
                 ZStack {
@@ -176,11 +179,17 @@ struct ContentView: View {
                         LinkCaptureView(isPresented: $showLinkCapture)
                             .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
+
+                    if showMeetingNote {
+                        MeetingNoteView(isPresented: $showMeetingNote)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
                 }
             }
         }
         .animation(.easeOut(duration: 0.15), value: showFileLauncher)
         .animation(.easeOut(duration: 0.15), value: showLinkCapture)
+        .animation(.easeOut(duration: 0.15), value: showMeetingNote)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
         .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
             withAnimation {
@@ -197,7 +206,13 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
             showFileLauncher = false
+            showMeetingNote = false
             showLinkCapture = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showMeetingNote)) { _ in
+            showFileLauncher = false
+            showLinkCapture = false
+            showMeetingNote = true
         }
     }
 }
