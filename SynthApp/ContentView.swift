@@ -91,6 +91,13 @@ struct ContentView: View {
                     onSelect: { store.selectLinksTab() },
                     onClose: nil
                 )
+                TabButton(
+                    title: "Media",
+                    isSelected: store.isMediaTabSelected,
+                    isDirty: false,
+                    onSelect: { store.selectMediaTab() },
+                    onClose: nil
+                )
             }
         }
     }
@@ -157,6 +164,8 @@ struct ContentView: View {
                     DailyNotesView()
                 } else if store.isLinksTabSelected {
                     LinksView()
+                } else if store.isMediaTabSelected {
+                    MediaGridView()
                 } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
@@ -204,7 +213,10 @@ struct ContentView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                if !store.isChatVisibleForCurrentTab && !store.openFiles.isEmpty && !store.isLinksTabSelected {
+                if !store.isChatVisibleForCurrentTab
+                    && !store.openFiles.isEmpty
+                    && !store.isLinksTabSelected
+                    && !store.isMediaTabSelected {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {
@@ -591,5 +603,100 @@ struct LineNumberGutter: View {
             }
         }
         .clipped()
+    }
+}
+
+struct MediaGridView: View {
+    @EnvironmentObject var store: DocumentStore
+    private let gridColumns = [
+        GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if store.mediaFiles.isEmpty {
+                    Text("No screenshots found in /media")
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 20)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    Text("Screenshots (\(store.mediaFiles.count))")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    LazyVGrid(columns: gridColumns, spacing: 12) {
+                        ForEach(store.mediaFiles, id: \.self) { mediaURL in
+                            MediaTile(mediaURL: mediaURL)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+struct MediaTile: View {
+    let mediaURL: URL
+    @State private var image: NSImage?
+    @State private var isLoadingImage = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: 140)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.12))
+                    .frame(height: 140)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .foregroundStyle(.secondary)
+                    }
+            }
+
+            Text(mediaURL.lastPathComponent)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+            Text("media/\(mediaURL.lastPathComponent)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .onAppear {
+            loadImageIfNeeded()
+        }
+        .onChange(of: mediaURL) { _, _ in
+            image = nil
+            isLoadingImage = false
+            loadImageIfNeeded()
+        }
+    }
+
+    private func loadImageIfNeeded() {
+        guard image == nil, !isLoadingImage else { return }
+        let maxSize = NSSize(width: 420, height: 280)
+
+        if let cached = WorkspaceImageLoader.shared.cachedImage(at: mediaURL, maxSize: maxSize) {
+            image = cached
+            return
+        }
+
+        isLoadingImage = true
+        WorkspaceImageLoader.shared.loadImage(at: mediaURL, maxSize: maxSize) { loadedImage in
+            image = loadedImage
+            isLoadingImage = false
+        }
     }
 }

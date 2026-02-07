@@ -28,7 +28,8 @@ struct Document {
             content = attrStr
         case "md":
             let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            content = MarkdownFormat().render(raw)
+            let baseDirectory = url.deletingLastPathComponent()
+            content = MarkdownFormat(baseURL: baseDirectory).render(raw)
         default:
             let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
             content = NSAttributedString(
