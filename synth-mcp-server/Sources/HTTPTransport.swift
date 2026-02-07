@@ -55,12 +55,12 @@ class HTTPTransport {
                 return
             }
 
-            guard let requestString = String(data: data, encoding: .utf8) else {
+            guard let request = HTTPRequest.parse(data) else {
                 self.sendHTTPResponse(connection, status: 400, body: "Bad Request")
                 return
             }
 
-            self.routeRequest(connection, raw: requestString, data: data)
+            self.routeRequest(connection, request: request)
 
             if !isComplete {
                 self.receiveHTTPRequest(connection)
@@ -68,35 +68,20 @@ class HTTPTransport {
         }
     }
 
-    private func routeRequest(_ connection: NWConnection, raw: String, data: Data) {
-        let lines = raw.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else {
-            sendHTTPResponse(connection, status: 400, body: "Bad Request")
-            return
-        }
-
-        let parts = requestLine.split(separator: " ", maxSplits: 2)
-        guard parts.count >= 2 else {
-            sendHTTPResponse(connection, status: 400, body: "Bad Request")
-            return
-        }
-
-        let method = String(parts[0])
-        let path = String(parts[1])
-
+    private func routeRequest(_ connection: NWConnection, request: HTTPRequest) {
         // CORS preflight
-        if method == "OPTIONS" {
+        if request.method == "OPTIONS" {
             sendCORSPreflight(connection)
             return
         }
 
-        switch (method, path) {
+        switch (request.method, request.path) {
         case ("POST", "/mcp"):
-            handlePost(connection, raw: raw)
+            handlePost(connection, request: request)
         case ("GET", "/mcp"):
-            handleSSE(connection, raw: raw)
+            handleSSE(connection, request: request)
         case ("DELETE", "/mcp"):
-            handleDelete(connection, raw: raw)
+            handleDelete(connection, request: request)
         case ("GET", "/health"):
             sendHTTPResponse(connection, status: 200, body: "{\"status\":\"ok\"}")
         default:
@@ -106,28 +91,22 @@ class HTTPTransport {
 
     // MARK: - POST /mcp (JSON-RPC requests)
 
-    private func handlePost(_ connection: NWConnection, raw: String) {
-        // Extract body after the empty line
-        guard let bodyRange = raw.range(of: "\r\n\r\n") else {
+    private func handlePost(_ connection: NWConnection, request: HTTPRequest) {
+        guard let bodyData = request.body, !bodyData.isEmpty else {
             sendHTTPResponse(connection, status: 400, body: "No body")
             return
         }
-        let body = String(raw[bodyRange.upperBound...])
-        guard let bodyData = body.data(using: .utf8) else {
-            sendHTTPResponse(connection, status: 400, body: "Invalid body")
-            return
-        }
 
-        // Extract session ID from header
-        let sessionId = extractHeader(raw, name: "mcp-session-id")
+        let sessionId = request.headers["mcp-session-id"]
 
         if let responseData = handler.handleMessage(bodyData) {
             let responseBody = String(data: responseData, encoding: .utf8) ?? "{}"
             var headers = "Content-Type: application/json\r\n"
             headers += corsHeaders()
 
-            // Generate session ID on initialize
-            if body.contains("\"initialize\"") {
+            // Detect initialize request to generate a session ID
+            let isInitialize = (try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any])?["method"] as? String == "initialize"
+            if isInitialize {
                 let newSessionId = UUID().uuidString
                 headers += "Mcp-Session-Id: \(newSessionId)\r\n"
             } else if let existingId = sessionId {
@@ -142,8 +121,8 @@ class HTTPTransport {
 
     // MARK: - GET /mcp (SSE stream)
 
-    private func handleSSE(_ connection: NWConnection, raw: String) {
-        let sessionId = extractHeader(raw, name: "mcp-session-id") ?? UUID().uuidString
+    private func handleSSE(_ connection: NWConnection, request: HTTPRequest) {
+        let sessionId = request.headers["mcp-session-id"] ?? UUID().uuidString
 
         let session = SSESession(connection: connection, sessionId: sessionId)
         sessionsLock.lock()
@@ -174,8 +153,8 @@ class HTTPTransport {
 
     // MARK: - DELETE /mcp (session cleanup)
 
-    private func handleDelete(_ connection: NWConnection, raw: String) {
-        if let sessionId = extractHeader(raw, name: "mcp-session-id") {
+    private func handleDelete(_ connection: NWConnection, request: HTTPRequest) {
+        if let sessionId = request.headers["mcp-session-id"] {
             sessionsLock.lock()
             sessions.removeValue(forKey: sessionId)?.close()
             sessionsLock.unlock()
@@ -230,17 +209,6 @@ class HTTPTransport {
             + "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n"
             + "Access-Control-Allow-Headers: Content-Type, Mcp-Session-Id\r\n"
             + "Vary: Origin\r\n"
-    }
-
-    private func extractHeader(_ raw: String, name: String) -> String? {
-        let lowerName = name.lowercased()
-        for line in raw.components(separatedBy: "\r\n") {
-            let parts = line.split(separator: ":", maxSplits: 1)
-            if parts.count == 2, parts[0].lowercased().trimmingCharacters(in: .whitespaces) == lowerName {
-                return String(parts[1]).trimmingCharacters(in: .whitespaces)
-            }
-        }
-        return nil
     }
 }
 

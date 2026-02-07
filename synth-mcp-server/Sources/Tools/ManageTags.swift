@@ -80,32 +80,7 @@ enum ManageTags {
             return toolResult("Tag #\(cleanTag) already exists in \(path)")
         }
 
-        var newContent = content
-
-        // Check if file has frontmatter
-        if content.hasPrefix("---\n") {
-            if let endRange = content.range(of: "\n---\n", range: content.index(content.startIndex, offsetBy: 4)..<content.endIndex) {
-                let frontmatter = String(content[content.index(content.startIndex, offsetBy: 4)..<endRange.lowerBound])
-
-                // Check if tags: line exists in frontmatter
-                if let tagsLineRange = frontmatter.range(of: "tags:") {
-                    // Append to existing tags array
-                    let afterTags = frontmatter[tagsLineRange.upperBound...]
-                    if afterTags.hasPrefix(" [") || afterTags.hasPrefix("\n") {
-                        // Add as new line item
-                        let insertPoint = content.index(endRange.lowerBound, offsetBy: 0)
-                        newContent = String(content[..<insertPoint]) + "\n  - \(cleanTag)" + String(content[insertPoint...])
-                    }
-                } else {
-                    // Add tags: section to frontmatter
-                    let insertPoint = endRange.lowerBound
-                    newContent = String(content[..<insertPoint]) + "\ntags:\n  - \(cleanTag)" + String(content[insertPoint...])
-                }
-            }
-        } else {
-            // No frontmatter — add frontmatter with tags
-            newContent = "---\ntags:\n  - \(cleanTag)\n---\n\(content)"
-        }
+        let newContent = FrontmatterParser.addTag(cleanTag, to: content)
 
         do {
             try newContent.write(toFile: fullPath, atomically: true, encoding: .utf8)
@@ -120,20 +95,18 @@ enum ManageTags {
         var newContent = content
         var removed = false
 
-        // Remove from frontmatter tags array
-        let frontmatterPattern = "\\s*-\\s*\(NSRegularExpression.escapedPattern(for: cleanTag))\\s*\\n"
-        if let regex = try? NSRegularExpression(pattern: frontmatterPattern) {
-            let range = NSRange(newContent.startIndex..., in: newContent)
-            let modified = regex.stringByReplacingMatches(in: newContent, range: range, withTemplate: "")
-            if modified != newContent {
-                newContent = modified
-                removed = true
-            }
+        // Remove from frontmatter using FrontmatterParser
+        let (updatedContent, removedFromFrontmatter) = FrontmatterParser.removeTag(
+            cleanTag, fromFrontmatter: newContent
+        )
+        if removedFromFrontmatter {
+            newContent = updatedContent
+            removed = true
         }
 
         // Remove inline #tags
-        let inlinePattern = "#\(NSRegularExpression.escapedPattern(for: cleanTag))\\b"
-        if let regex = try? NSRegularExpression(pattern: inlinePattern) {
+        let escapedTag = NSRegularExpression.escapedPattern(for: cleanTag)
+        if let regex = try? NSRegularExpression(pattern: "#\(escapedTag)\\b") {
             let range = NSRange(newContent.startIndex..., in: newContent)
             let modified = regex.stringByReplacingMatches(in: newContent, range: range, withTemplate: "")
             if modified != newContent {
@@ -157,29 +130,10 @@ enum ManageTags {
     static func extractAllTags(from content: String) -> Set<String> {
         var tags = Set<String>()
 
-        // Extract from frontmatter tags: array
-        if content.hasPrefix("---\n"),
-           let endRange = content.range(of: "\n---\n", range: content.index(content.startIndex, offsetBy: 4)..<content.endIndex) {
-            let frontmatter = String(content[content.index(content.startIndex, offsetBy: 4)..<endRange.lowerBound])
-            if let regex = try? NSRegularExpression(pattern: "^\\s*-\\s*(.+)$", options: .anchorsMatchLines) {
-                var inTagsSection = false
-                for line in frontmatter.components(separatedBy: "\n") {
-                    if line.hasPrefix("tags:") {
-                        inTagsSection = true
-                        continue
-                    }
-                    if inTagsSection {
-                        if line.hasPrefix("  ") || line.hasPrefix("\t") {
-                            let range = NSRange(line.startIndex..., in: line)
-                            if let match = regex.firstMatch(in: line, range: range),
-                               let tagRange = Range(match.range(at: 1), in: line) {
-                                tags.insert(String(line[tagRange]).trimmingCharacters(in: .whitespaces))
-                            }
-                        } else {
-                            inTagsSection = false
-                        }
-                    }
-                }
+        // Extract from frontmatter using FrontmatterParser
+        if let frontmatter = FrontmatterParser.parse(content) {
+            for tag in FrontmatterParser.tags(from: frontmatter) {
+                tags.insert(tag)
             }
         }
 
