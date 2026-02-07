@@ -241,6 +241,7 @@ class DocumentStore: ObservableObject {
     let tagIndex = TagIndex()
     let peopleIndex = PeopleIndex()
     let dailyNoteManager = DailyNoteManager()
+    let mcpServer = MCPServerManager()
 
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -335,6 +336,7 @@ class DocumentStore: ObservableObject {
         loadKiroConfig()
         checkKiroSetup()
         dailyNoteManager.ensureFutureDays(workspace: url)
+        mcpServer.start(workspace: url)
         loadFileTree()
     }
 
