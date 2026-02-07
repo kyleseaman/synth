@@ -1193,6 +1193,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 try? FileManager.default.trashItem(
                     at: imageURL, resultingItemURL: nil
                 )
+                removeImageMarkup(for: imageURL)
                 store?.loadFileTree()
                 applyFormatting()
             case .open:
@@ -1209,6 +1210,26 @@ struct MarkdownEditor: NSViewRepresentable {
                     ]
                 )
             }
+        }
+
+        private func removeImageMarkup(for imageURL: URL) {
+            guard let textView = textView else { return }
+            let filename = imageURL.lastPathComponent
+            let text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            // swiftlint:disable:next force_try
+            let pattern = try! NSRegularExpression(
+                pattern: "!\\[[^\\]]*\\]\\([^)]*"
+                    + NSRegularExpression.escapedPattern(for: filename)
+                    + "\\)\\n?"
+            )
+            let cleaned = pattern.stringByReplacingMatches(
+                in: text,
+                range: NSRange(location: 0, length: text.utf16.count),
+                withTemplate: ""
+            )
+            parent.text = cleaned
         }
 
         // MARK: - Link Click Handling

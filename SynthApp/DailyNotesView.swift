@@ -420,6 +420,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.writeObjects([img])
                 case .delete:
+                    self.removeImageMarkup(for: imageURL)
                     try? FileManager.default.trashItem(
                         at: imageURL, resultingItemURL: nil
                     )
@@ -433,6 +434,30 @@ struct DailyNoteEditor: NSViewRepresentable {
                     )
                 }
             }
+        }
+
+        private func removeImageMarkup(for imageURL: URL) {
+            guard let textView = textView else { return }
+            let filename = imageURL.lastPathComponent
+            let text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            // swiftlint:disable:next force_try
+            let pattern = try! NSRegularExpression(
+                pattern: "!\\[[^\\]]*\\]\\([^)]*"
+                    + NSRegularExpression.escapedPattern(
+                        for: filename
+                    )
+                    + "\\)\\n?"
+            )
+            let cleaned = pattern.stringByReplacingMatches(
+                in: text,
+                range: NSRange(
+                    location: 0, length: text.utf16.count
+                ),
+                withTemplate: ""
+            )
+            parent.onTextChange(cleaned)
         }
 
         // MARK: - Link Click Handling
