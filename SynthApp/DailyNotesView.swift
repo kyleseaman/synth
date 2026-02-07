@@ -220,6 +220,7 @@ struct DailyNoteEditor: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.store = store
         context.coordinator.bindImagePasteHandler(to: textView)
+        context.coordinator.bindImageOverlay(to: textView)
         context.coordinator.setupAutocomplete()
         context.coordinator.applyFormatting()
         return textView
@@ -406,6 +407,31 @@ struct DailyNoteEditor: NSViewRepresentable {
                           image, noteURL: noteURL
                       ) else { return nil }
                 return "![Screenshot](\(relativePath))"
+            }
+        }
+
+        func bindImageOverlay(to textView: FormattingTextView) {
+            textView.onImageAction = { [weak self] action, imageURL in
+                guard let self else { return }
+                switch action {
+                case .copy:
+                    guard let img = NSImage(contentsOf: imageURL)
+                    else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.writeObjects([img])
+                case .delete:
+                    try? FileManager.default.trashItem(
+                        at: imageURL, resultingItemURL: nil
+                    )
+                    self.store?.loadFileTree()
+                    self.applyFormatting()
+                case .open:
+                    NotificationCenter.default.post(
+                        name: .showImageDetail,
+                        object: nil,
+                        userInfo: ["mediaURL": imageURL]
+                    )
+                }
             }
         }
 

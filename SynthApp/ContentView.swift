@@ -28,6 +28,9 @@ extension Notification.Name {
     // MARK: - Daily Notes
     static let showDailyNotes = Notification.Name("showDailyNotes")
     static let showDailyDate = Notification.Name("showDailyDate")
+
+    // MARK: - Image Detail
+    static let showImageDetail = Notification.Name("showImageDetail")
 }
 
 enum ActiveModal: Equatable {
@@ -45,6 +48,7 @@ struct ContentView: View {
     @State private var showPeopleBrowser = false
     @State private var initialPersonFilter: String?
     @State private var dismissedSetup = false
+    @State private var imageDetailURL: URL?
 
     private func modalBinding(_ modal: ActiveModal) -> Binding<Bool> {
         Binding(
@@ -333,6 +337,36 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .showDailyNotes)) { _ in
             store.activateDailyNotes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showImageDetail)) { notification in
+            if let mediaURL = notification.userInfo?["mediaURL"] as? URL {
+                imageDetailURL = mediaURL
+            }
+        }
+        .sheet(item: $imageDetailURL) { mediaURL in
+            MediaDetailView(
+                mediaURL: mediaURL,
+                referencingNotes: store.notesReferencing(
+                    mediaFilename: mediaURL.lastPathComponent
+                ),
+                onCopy: {
+                    if let img = NSImage(contentsOf: mediaURL) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.writeObjects([img])
+                    }
+                },
+                onDelete: {
+                    imageDetailURL = nil
+                    try? FileManager.default.trashItem(
+                        at: mediaURL, resultingItemURL: nil
+                    )
+                    store.loadFileTree()
+                },
+                onNavigate: { noteURL in
+                    imageDetailURL = nil
+                    store.open(noteURL)
+                }
+            )
         }
     }
 }

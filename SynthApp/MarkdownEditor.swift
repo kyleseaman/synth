@@ -1068,6 +1068,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.store = store
         context.coordinator.bindImagePasteHandler(to: textView)
+        context.coordinator.bindImageOverlay(to: textView)
         textView.layoutManager?.delegate = context.coordinator
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
@@ -1167,6 +1168,46 @@ struct MarkdownEditor: NSViewRepresentable {
         func bindImagePasteHandler(to textView: FormattingTextView) {
             textView.imagePasteHandler = { [weak self] image in
                 self?.markdownForPastedImage(image)
+            }
+        }
+
+        // MARK: - Image Overlay
+
+        func bindImageOverlay(to textView: FormattingTextView) {
+            textView.onImageAction = { [weak self] action, imageURL in
+                self?.handleImageAction(action, imageURL: imageURL)
+            }
+        }
+
+        private func handleImageAction(
+            _ action: FormattingTextView.ImageOverlayAction,
+            imageURL: URL
+        ) {
+            switch action {
+            case .copy:
+                guard let image = NSImage(contentsOf: imageURL)
+                else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.writeObjects([image])
+            case .delete:
+                try? FileManager.default.trashItem(
+                    at: imageURL, resultingItemURL: nil
+                )
+                store?.loadFileTree()
+                applyFormatting()
+            case .open:
+                guard let store else { return }
+                let notes = store.notesReferencing(
+                    mediaFilename: imageURL.lastPathComponent
+                )
+                NotificationCenter.default.post(
+                    name: .showImageDetail,
+                    object: nil,
+                    userInfo: [
+                        "mediaURL": imageURL,
+                        "notes": notes.map { $0.url }
+                    ]
+                )
             }
         }
 
