@@ -15,6 +15,10 @@ class DocumentStore: ObservableObject {
     @Published var needsKiroSetup = false
     @Published var isLinksTabSelected = false
 
+    let noteIndex = NoteIndex()
+    let backlinkIndex = BacklinkIndex()
+    let tagIndex = TagIndex()
+
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -107,7 +111,12 @@ class DocumentStore: ObservableObject {
             let tree = FileTreeNode.scan(workspace)
             await MainActor.run {
                 self.fileTree = tree
+                self.noteIndex.rebuild(from: tree, workspace: workspace)
             }
+            // Rebuild backlink and tag indexes on background thread
+            let treeSnapshot = tree
+            self.backlinkIndex.rebuild(fileTree: treeSnapshot)
+            self.tagIndex.rebuild(fileTree: treeSnapshot)
         }
     }
 
@@ -197,6 +206,14 @@ class DocumentStore: ObservableObject {
         loadFileTree()
     }
 
+    func openDailyNote() {
+        guard let workspace = workspace else { return }
+        guard let url = DailyNoteResolver.resolve("today", workspace: workspace) else { return }
+        DailyNoteResolver.ensureExists(at: url)
+        loadFileTree()
+        open(url)
+    }
+
     func open(_ url: URL) {
         isLinksTabSelected = false
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
@@ -279,6 +296,12 @@ class DocumentStore: ObservableObject {
             }
         }
         openFiles[currentIndex].isDirty = false
+
+        // Incremental index updates after save
+        let savedContent = openFiles[currentIndex].content.string
+        let savedURL = openFiles[currentIndex].url
+        backlinkIndex.updateFile(savedURL, content: savedContent)
+        tagIndex.updateFile(savedURL, content: savedContent)
     }
 
     func saveAll() {

@@ -86,6 +86,16 @@ struct SynthApp: App {
                     NotificationCenter.default.post(name: .showFileLauncher, object: nil)
                 }
                 .keyboardShortcut("p")
+
+                Button("Tag Browser") {
+                    NotificationCenter.default.post(name: .showTagBrowser, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button("Today's Note") {
+                    store.openDailyNote()
+                }
+                .keyboardShortcut("d")
             }
         }
 

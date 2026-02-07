@@ -28,6 +28,14 @@
 		1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */; };
 		1A0000000000000000000205 /* LinkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* LinkStoreTests.swift */; };
 		1A0000000000000000000206 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* XCTest.framework */; };
+		2A0000000000000000000701 /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* NoteIndex.swift */; };
+		2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* WikiLinkPopover.swift */; };
+		2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000113 /* DailyNoteResolver.swift */; };
+		3A0000000000000000000801 /* BacklinkIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000121 /* BacklinkIndex.swift */; };
+		3A0000000000000000000802 /* BacklinksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000122 /* BacklinksView.swift */; };
+		3A0000000000000000000803 /* TagIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000123 /* TagIndex.swift */; };
+		3A0000000000000000000804 /* TagBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000124 /* TagBrowserView.swift */; };
+		3A0000000000000000000805 /* RelatedNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000125 /* RelatedNotesView.swift */; };
 		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
 /* End PBXBuildFile section */
 
@@ -59,6 +67,14 @@
 		1A0000000000000000000106 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A0000000000000000000107 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		1A0000000000000000000108 /* SynthTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SynthTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A0000000000000000000111 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
+		1A0000000000000000000112 /* WikiLinkPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinkPopover.swift; sourceTree = "<group>"; };
+		1A0000000000000000000113 /* DailyNoteResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteResolver.swift; sourceTree = "<group>"; };
+		1A0000000000000000000121 /* BacklinkIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacklinkIndex.swift; sourceTree = "<group>"; };
+		1A0000000000000000000122 /* BacklinksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacklinksView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000123 /* TagIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagIndex.swift; sourceTree = "<group>"; };
+		1A0000000000000000000124 /* TagBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagBrowserView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000125 /* RelatedNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelatedNotesView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000109 /* MeetingNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNoteView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -117,6 +133,14 @@
 				1A0000000000000000000028 /* FileTreeNode.swift */,
 				1A0000000000000000000015 /* Theme.swift */,
 				1A0000000000000000000016 /* Document.swift */,
+				1A0000000000000000000111 /* NoteIndex.swift */,
+				1A0000000000000000000112 /* WikiLinkPopover.swift */,
+				1A0000000000000000000113 /* DailyNoteResolver.swift */,
+				1A0000000000000000000121 /* BacklinkIndex.swift */,
+				1A0000000000000000000122 /* BacklinksView.swift */,
+				1A0000000000000000000123 /* TagIndex.swift */,
+				1A0000000000000000000124 /* TagBrowserView.swift */,
+				1A0000000000000000000125 /* RelatedNotesView.swift */,
 				1A0000000000000000000013 /* BridgingHeader.h */,
 			);
 			path = SynthApp;
@@ -261,6 +285,14 @@
 				1A000000000000000000004F /* FileTreeNode.swift in Sources */,
 				1A0000000000000000000041 /* Theme.swift in Sources */,
 				1A0000000000000000000042 /* Document.swift in Sources */,
+				2A0000000000000000000701 /* NoteIndex.swift in Sources */,
+				2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */,
+				2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */,
+				3A0000000000000000000801 /* BacklinkIndex.swift in Sources */,
+				3A0000000000000000000802 /* BacklinksView.swift in Sources */,
+				3A0000000000000000000803 /* TagIndex.swift in Sources */,
+				3A0000000000000000000804 /* TagBrowserView.swift in Sources */,
+				3A0000000000000000000805 /* RelatedNotesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
