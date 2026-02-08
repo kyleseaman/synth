@@ -21,7 +21,7 @@ struct MarkdownFormat: DocumentFormat {
         let result = NSMutableAttributedString()
         let bodyFont = NSFont.systemFont(ofSize: 16)
         let bodyParagraph = NSMutableParagraphStyle()
-        bodyParagraph.lineSpacing = 4
+        bodyParagraph.lineHeightMultiple = 1.25
         let defaultAttrs: [NSAttributedString.Key: Any] = [
             .font: bodyFont, .foregroundColor: NSColor.textColor,
             .paragraphStyle: bodyParagraph
@@ -48,7 +48,7 @@ struct MarkdownFormat: DocumentFormat {
             // collapse the line fragment (e.g. "# " with no content)
             if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
                 let para = NSMutableParagraphStyle()
-                para.lineSpacing = 4
+                para.lineHeightMultiple = 1.25
                 para.minimumLineHeight = ceil(
                     headingFont.ascender - headingFont.descender
                         + headingFont.leading
@@ -1336,9 +1336,12 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
+        let typingParagraph = NSMutableParagraphStyle()
+        typingParagraph.lineHeightMultiple = 1.25
         textView.typingAttributes = [
             .font: NSFont.systemFont(ofSize: 16),
-            .foregroundColor: NSColor.textColor
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: typingParagraph
         ]
         textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
