@@ -344,7 +344,13 @@ class DocumentStore: ObservableObject {
         guard let workspace = workspace else { return }
         Task.detached(priority: .userInitiated) {
             let tree = FileTreeNode.scan(workspace)
-            let media = MediaManager.screenshotURLs(in: workspace)
+            var media = MediaManager.screenshotURLs(in: workspace)
+            let removed = self.cleanOrphanedMedia(
+                mediaFiles: media, workspace: workspace
+            )
+            if !removed.isEmpty {
+                media.removeAll { removed.contains($0) }
+            }
             await MainActor.run {
                 self.fileTree = tree
                 self.noteIndex.rebuild(from: tree, workspace: workspace)
@@ -354,16 +360,14 @@ class DocumentStore: ObservableObject {
             self.backlinkIndex.rebuild(fileTree: treeSnapshot)
             self.tagIndex.rebuild(fileTree: treeSnapshot)
             self.peopleIndex.rebuild(fileTree: treeSnapshot)
-            self.cleanOrphanedMedia(
-                mediaFiles: media, workspace: workspace
-            )
         }
     }
 
+    @discardableResult
     private func cleanOrphanedMedia(
         mediaFiles: [URL], workspace: URL
-    ) {
-        // Collect all note content once
+    ) -> Set<URL> {
+        var removed: Set<URL> = []
         let enumerator = FileManager.default.enumerator(
             at: workspace,
             includingPropertiesForKeys: [.isDirectoryKey],
@@ -383,8 +387,10 @@ class DocumentStore: ObservableObject {
                 try? FileManager.default.trashItem(
                     at: mediaURL, resultingItemURL: nil
                 )
+                removed.insert(mediaURL)
             }
         }
+        return removed
     }
 
     func loadKiroConfig() {
