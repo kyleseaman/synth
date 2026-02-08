@@ -1593,12 +1593,15 @@ struct MarkdownEditor: NSViewRepresentable {
             let pattern = try! NSRegularExpression(
                 pattern: "!\\[[^\\]]*\\]\\([^)]*"
                     + NSRegularExpression.escapedPattern(for: filename)
-                    + "\\)\\n?"
+                    + "(?:\\s+=\\d+x)?\\)\\n?"
             )
-            let cleaned = pattern.stringByReplacingMatches(
+            // Only remove the first occurrence
+            guard let match = pattern.firstMatch(
                 in: text,
-                range: NSRange(location: 0, length: text.utf16.count),
-                withTemplate: ""
+                range: NSRange(location: 0, length: text.utf16.count)
+            ) else { return }
+            let cleaned = (text as NSString).replacingCharacters(
+                in: match.range, with: ""
             )
             textView.string = cleaned
             parent.text = cleaned

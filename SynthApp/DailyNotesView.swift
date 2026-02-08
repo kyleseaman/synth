@@ -497,15 +497,16 @@ struct DailyNoteEditor: NSViewRepresentable {
                     + NSRegularExpression.escapedPattern(
                         for: filename
                     )
-                    + "\\)\\n?"
+                    + "(?:\\s+=\\d+x)?\\)\\n?"
             )
-            let cleaned = pattern.stringByReplacingMatches(
+            guard let match = pattern.firstMatch(
                 in: text,
                 range: NSRange(
                     location: 0, length: text.utf16.count
-                ),
-                withTemplate: ""
-            )
+                )
+            ) else { return }
+            let cleaned = (text as NSString)
+                .replacingCharacters(in: match.range, with: "")
             textView.string = cleaned
             parent.onTextChange(cleaned)
         }
