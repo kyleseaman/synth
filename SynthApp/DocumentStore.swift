@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import AppKit
 import ImageIO
 
@@ -219,26 +218,51 @@ final class WorkspaceImageLoader {
     }
 }
 
+enum DetailViewMode: Equatable {
+    case editor
+    case dailyNotes
+    case links
+    case media
+}
+
+enum ActiveModal: Equatable {
+    case fileLauncher
+    case linkCapture
+    case meetingNote
+    case tagBrowser(String?)
+    case peopleBrowser(String?)
+}
+
 // swiftlint:disable:next type_body_length
-class DocumentStore: ObservableObject {
-    @Published var workspace: URL?
-    @Published var fileTree: [FileTreeNode] = []
-    @Published var openFiles: [Document] = []
-    @Published var currentIndex = -1
-    @Published var steeringFiles: [String] = []
-    @Published var customAgents: [AgentInfo] = []
-    @Published var recentFiles: [URL] = []
-    @Published var expandedFolders: Set<URL> = []
-    @Published var chatVisibleTabs: Set<URL> = []
-    @Published var needsKiroSetup = false
-    @Published var isLinksTabSelected = false
-    @Published var isMediaTabSelected = false
-    @Published var mediaFiles: [URL] = []
+@Observable
+class DocumentStore {
+    var workspace: URL?
+    var fileTree: [FileTreeNode] = []
+    var openFiles: [Document] = []
+    var currentIndex = -1
+    var steeringFiles: [String] = []
+    var customAgents: [AgentInfo] = []
+    var recentFiles: [URL] = []
+    var expandedFolders: Set<URL> = []
+    var chatVisibleTabs: Set<URL> = []
+    var needsKiroSetup = false
+    var detailMode: DetailViewMode = .editor
+    var mediaFiles: [URL] = []
+
+    // MARK: - Centralized UI State
+    var columnVisibility: NavigationSplitViewVisibility = .all
+    var activeModal: ActiveModal?
+    var imageDetailURL: URL?
+    var showBacklinks = true
+    var renameTarget: URL?
+    var renameText: String = ""
+    var showWorkspacePicker = false
 
     let noteIndex = NoteIndex()
     let backlinkIndex = BacklinkIndex()
     let tagIndex = TagIndex()
     let peopleIndex = PeopleIndex()
+    let dailyNoteManager = DailyNoteManager()
     let mcpServer = MCPServerManager()
 
     private static let meetingDateFormatter: DateFormatter = {
@@ -248,13 +272,18 @@ class DocumentStore: ObservableObject {
         return formatter
     }()
 
-    private var chatStates: [URL: DocumentChatState] = [:]
-    private let maxRecentFiles = 20
-    private var fileWatcher: DispatchSourceFileSystemObject?
-    private var watcherFD: Int32 = -1
+    @ObservationIgnored private var chatStates: [URL: DocumentChatState] = [:]
+    @ObservationIgnored private let maxRecentFiles = 20
+    @ObservationIgnored private var fileWatcher: DispatchSourceFileSystemObject?
+    @ObservationIgnored private var watcherFD: Int32 = -1
 
     init() {
         loadRecentFiles()
+        dailyNoteManager.onSave = { [weak self] url, content in
+            self?.backlinkIndex.updateFile(url, content: content)
+            self?.tagIndex.updateFile(url, content: content)
+            self?.peopleIndex.updateFile(url, content: content)
+        }
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
             workspace = URL(fileURLWithPath: path)
@@ -320,32 +349,69 @@ class DocumentStore: ObservableObject {
             fileTree = FileTreeNode.scan(url)
             openFiles.removeAll()
             currentIndex = -1
-            isLinksTabSelected = false
-            isMediaTabSelected = false
+            detailMode = .editor
             mediaFiles = MediaManager.screenshotURLs(in: url)
         }
         startWatching()
         loadKiroConfig()
         checkKiroSetup()
+        dailyNoteManager.ensureFutureDays(workspace: url)
         mcpServer.start(workspace: url)
+        loadFileTree()
     }
 
     func loadFileTree() {
         guard let workspace = workspace else { return }
         Task.detached(priority: .userInitiated) {
             let tree = FileTreeNode.scan(workspace)
-            let media = MediaManager.screenshotURLs(in: workspace)
+            var media = MediaManager.screenshotURLs(in: workspace)
+            let removed = self.cleanOrphanedMedia(
+                mediaFiles: media, workspace: workspace
+            )
+            if !removed.isEmpty {
+                media.removeAll { removed.contains($0) }
+            }
+            let scannedMedia = media
             await MainActor.run {
                 self.fileTree = tree
                 self.noteIndex.rebuild(from: tree, workspace: workspace)
-                self.mediaFiles = media
+                self.mediaFiles = scannedMedia
             }
-            // Rebuild backlink and tag indexes on background thread
             let treeSnapshot = tree
             self.backlinkIndex.rebuild(fileTree: treeSnapshot)
             self.tagIndex.rebuild(fileTree: treeSnapshot)
             self.peopleIndex.rebuild(fileTree: treeSnapshot)
         }
+    }
+
+    @discardableResult
+    private func cleanOrphanedMedia(
+        mediaFiles: [URL], workspace: URL
+    ) -> Set<URL> {
+        var removed: Set<URL> = []
+        let enumerator = FileManager.default.enumerator(
+            at: workspace,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        var allContent = ""
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "md",
+                  let content = try? String(
+                      contentsOf: fileURL, encoding: .utf8
+                  ) else { continue }
+            allContent += content
+        }
+        for mediaURL in mediaFiles {
+            let filename = mediaURL.lastPathComponent
+            if !allContent.contains(filename) {
+                try? FileManager.default.trashItem(
+                    at: mediaURL, resultingItemURL: nil
+                )
+                removed.insert(mediaURL)
+            }
+        }
+        return removed
     }
 
     func loadKiroConfig() {
@@ -434,17 +500,18 @@ class DocumentStore: ObservableObject {
         loadFileTree()
     }
 
-    func openDailyNote() {
-        guard let workspace = workspace else { return }
-        guard let url = DailyNoteResolver.resolve("today", workspace: workspace) else { return }
-        DailyNoteResolver.ensureExists(at: url)
-        loadFileTree()
-        open(url)
+    func activateDailyNotes() {
+        selectDailyNotesTab()
+    }
+
+    func selectDailyNotesTab() {
+        guard workspace != nil else { return }
+        detailMode = .dailyNotes
     }
 
     func open(_ url: URL) {
-        isLinksTabSelected = false
-        isMediaTabSelected = false
+        saveAll()
+        detailMode = .editor
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
             addToRecent(url)
@@ -483,18 +550,39 @@ class DocumentStore: ObservableObject {
     func switchTo(_ index: Int) {
         guard index >= 0 && index < openFiles.count else { return }
         currentIndex = index
-        isLinksTabSelected = false
-        isMediaTabSelected = false
+        detailMode = .editor
     }
 
     func selectLinksTab() {
-        isLinksTabSelected = true
-        isMediaTabSelected = false
+        detailMode = .links
     }
 
     func selectMediaTab() {
-        isLinksTabSelected = false
-        isMediaTabSelected = true
+        detailMode = .media
+    }
+
+    func notesReferencing(
+        mediaFilename: String
+    ) -> [(title: String, url: URL)] {
+        guard let workspace else { return [] }
+        var results: [(title: String, url: URL)] = []
+        let enumerator = FileManager.default.enumerator(
+            at: workspace,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "md",
+                  let content = try? String(
+                      contentsOf: fileURL, encoding: .utf8
+                  ),
+                  content.contains(mediaFilename)
+            else { continue }
+            let title = fileURL.deletingPathExtension()
+                .lastPathComponent
+            results.append((title: title, url: fileURL))
+        }
+        return results
     }
 
     var currentDocumentURL: URL? {
@@ -530,21 +618,10 @@ class DocumentStore: ObservableObject {
 
         // Rename Untitled files based on first line
         if doc.url.lastPathComponent.hasPrefix("Untitled") {
-            let firstLine = doc.content.string.components(separatedBy: "\n").first ?? ""
-            let cleaned = firstLine
-                .trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "#", with: "")
-                .trimmingCharacters(in: .whitespaces)
-                .prefix(50)
-            if !cleaned.isEmpty {
-                let safeName = String(cleaned).replacingOccurrences(of: "/", with: "-")
-                let ext = doc.url.pathExtension
-                let newURL = doc.url.deletingLastPathComponent().appendingPathComponent("\(safeName).\(ext)")
-                if !FileManager.default.fileExists(atPath: newURL.path) {
-                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
-                    openFiles[currentIndex] = Document(url: newURL, content: doc.content)
-                    loadFileTree()
-                }
+            if let newURL = renamedURL(for: doc) {
+                try? FileManager.default.moveItem(at: doc.url, to: newURL)
+                openFiles[currentIndex] = Document(url: newURL, content: doc.content)
+                loadFileTree()
             }
         }
         openFiles[currentIndex].isDirty = false
@@ -558,10 +635,46 @@ class DocumentStore: ObservableObject {
     }
 
     func saveAll() {
+        var didRename = false
         for index in openFiles.indices where openFiles[index].isDirty {
-            try? openFiles[index].save(openFiles[index].content)
+            let doc = openFiles[index]
+            try? doc.save(doc.content)
+
+            // Rename Untitled files based on first line
+            if doc.url.lastPathComponent.hasPrefix("Untitled") {
+                if let newURL = renamedURL(for: doc) {
+                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
+                    openFiles[index] = Document(url: newURL, content: doc.content)
+                    didRename = true
+                }
+            }
             openFiles[index].isDirty = false
+
+            // Incremental index updates
+            let savedURL = openFiles[index].url
+            let savedContent = openFiles[index].content.string
+            backlinkIndex.updateFile(savedURL, content: savedContent)
+            tagIndex.updateFile(savedURL, content: savedContent)
+            peopleIndex.updateFile(savedURL, content: savedContent)
         }
+        if didRename { loadFileTree() }
+        dailyNoteManager.saveAll()
+    }
+
+    private func renamedURL(for doc: Document) -> URL? {
+        let firstLine = doc.content.string.components(separatedBy: "\n").first ?? ""
+        let cleaned = firstLine
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "#", with: "")
+            .trimmingCharacters(in: .whitespaces)
+            .prefix(50)
+        guard !cleaned.isEmpty else { return nil }
+        let safeName = String(cleaned).replacingOccurrences(of: "/", with: "-")
+        let ext = doc.url.pathExtension
+        let newURL = doc.url.deletingLastPathComponent()
+            .appendingPathComponent("\(safeName).\(ext)")
+        guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
+        return newURL
     }
 
     func closeCurrentTab() {
@@ -601,7 +714,7 @@ class DocumentStore: ObservableObject {
             url = drafts.appendingPathComponent("Untitled \(num).md")
         }
 
-        try? "".write(to: url, atomically: true, encoding: .utf8)
+        try? "# \n\n".write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
     }
@@ -654,6 +767,32 @@ class DocumentStore: ObservableObject {
         open(url)
     }
 
+    func createNoteIfNeeded(title: String, openAfter: Bool = true) {
+        guard let workspace = workspace else { return }
+        let sanitized = title
+            .replacingOccurrences(
+                of: "[/:\\x00-\\x1F\\x7F]",
+                with: "-", options: .regularExpression
+            )
+            .replacingOccurrences(of: "..", with: "-")
+            .trimmingCharacters(in: .whitespaces)
+        guard !sanitized.isEmpty else { return }
+        let url = workspace.appendingPathComponent("\(sanitized).md")
+        guard url.standardizedFileURL.path.hasPrefix(
+            workspace.standardizedFileURL.path
+        ) else { return }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            let content = "# \(sanitized)\n\n"
+            try? content.write(
+                to: url, atomically: true, encoding: .utf8
+            )
+        }
+        loadFileTree()
+        if openAfter {
+            open(url)
+        }
+    }
+
     func delete(_ url: URL) {
         // Close if open
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
@@ -664,39 +803,63 @@ class DocumentStore: ObservableObject {
     }
 
     func promptRename(_ url: URL) {
-        let alert = NSAlert()
-        alert.messageText = "Rename"
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
+        renameTarget = url
+        renameText = url.lastPathComponent
+    }
 
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-        input.stringValue = url.lastPathComponent
-        alert.accessoryView = input
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            let newName = input.stringValue.trimmingCharacters(in: .whitespaces)
-            guard !newName.isEmpty, newName != url.lastPathComponent else { return }
-            let newURL = url.deletingLastPathComponent().appendingPathComponent(newName)
-            do {
-                try FileManager.default.moveItem(at: url, to: newURL)
-                // Update open file if renamed
-                if let idx = openFiles.firstIndex(where: { $0.url == url }) {
-                    openFiles[idx] = Document(url: newURL, content: openFiles[idx].content)
-                }
-                loadFileTree()
-            } catch {}
+    func confirmRename() {
+        guard let url = renameTarget else { return }
+        let newName = renameText.trimmingCharacters(in: .whitespaces)
+        guard !newName.isEmpty, newName != url.lastPathComponent else {
+            renameTarget = nil
+            return
         }
+        let newURL = url.deletingLastPathComponent().appendingPathComponent(newName)
+        do {
+            try FileManager.default.moveItem(at: url, to: newURL)
+            if let idx = openFiles.firstIndex(where: { $0.url == url }) {
+                openFiles[idx] = Document(url: newURL, content: openFiles[idx].content)
+            }
+            loadFileTree()
+        } catch {}
+        renameTarget = nil
     }
 
     func pickWorkspace() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.prompt = "Open Workspace"
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                self.setWorkspace(url)
-            }
-        }
+        showWorkspacePicker = true
+    }
+
+    // MARK: - UI State Methods
+
+    func toggleSidebar() {
+        columnVisibility = columnVisibility == .all ? .detailOnly : .all
+    }
+
+    func toggleBacklinks() {
+        showBacklinks.toggle()
+    }
+
+    func showFileLauncherModal() {
+        activeModal = .fileLauncher
+    }
+
+    func showLinkCaptureModal() {
+        activeModal = .linkCapture
+    }
+
+    func showMeetingNoteModal() {
+        activeModal = .meetingNote
+    }
+
+    func showTagBrowserModal(tag: String? = nil) {
+        activeModal = .tagBrowser(tag)
+    }
+
+    func showPeopleBrowserModal(person: String? = nil) {
+        activeModal = .peopleBrowser(person)
+    }
+
+    func showImageDetailModal(_ url: URL) {
+        imageDetailURL = url
     }
 }

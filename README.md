@@ -1,111 +1,91 @@
 # Synth
 
-A minimal, fast, native macOS text editor built around AI workflows and keyboard shortcuts.
-
-Minimal and fast, Synth combines SwiftUI with a Rust core for performance. Press `Cmd+K` to invoke AI assistance—choose between an editing agent that refines your existing text or a writing agent that generates new content.
-
-## Structure
-
-```
-synth/
-├── .kiro/
-│   └── agents/
-│       ├── synth-editor.json   # Editing assistance
-│       └── synth-writer.json   # Content generation
-├── SynthApp/                   # Swift/AppKit frontend
-│   ├── main.swift
-│   └── BridgingHeader.h
-└── synth-core/                 # Rust core library
-    ├── src/lib.rs
-    ├── Cargo.toml
-    └── synth_core.h
-```
-
-## Agents
-
-**synth-editor** - Document editing assistant
-- Grammar, spelling, punctuation fixes
-- Restructuring and reformatting
-- Inline suggestions and improvements
-- Minimal changes, preserves author voice
-
-**synth-writer** - Content generation
-- Draft documents from descriptions
-- Expand outlines into prose
-- Write in various styles (technical, creative, business)
-- Create structured documents
-
-Usage:
-```bash
-kiro-cli chat --agent synth-editor
-kiro-cli chat --agent synth-writer
-```
-
-## Build
-
-### 1. Build Rust library
-
-```bash
-cd synth-core
-cargo build --release
-```
-
-### 2. Build Swift app
-
-```bash
-cd SynthApp
-swiftc main.swift \
-  -import-objc-header BridgingHeader.h \
-  -L ../synth-core/target/release \
-  -I ../synth-core \
-  -lsynth_core \
-  -o Synth
-```
-
-### 3. Run
-
-```bash
-./Synth
-```
+A native macOS 26 text editor built for writers who think in links, tags, and daily notes — with AI woven into every workflow.
 
 ## Features
 
-- [x] Native macOS app (AppKit)
-- [x] Open .docx files
-- [x] Rich text editing via NSTextView
-- [x] Kiro AI integration (Cmd+K)
-- [x] Specialized agents (editor, writer)
-- [ ] Save .docx
-- [ ] Markdown support
-- [ ] Streaming AI responses
-- [ ] Context-aware AI (selected text, document content)
+### Editor
+- Live markdown rendering as you type — headings, bold, italic, code, lists, blockquotes, and inline images
+- `[[Wiki links]]` with autocomplete and navigation between notes
+- `@mentions` for people with autocomplete
+- `#tags` with inline highlighting
+- Tabbed editing with `Cmd+1`–`9` switching
+- Fuzzy file search with `Cmd+P`
+- Inline image paste, drag-and-drop, resize, and detail view
+- `.md`, `.txt`, and `.docx` file support
 
-## AI Integration
+### Knowledge Graph
+- **Backlinks** — see every note that links to the current one, with context snippets
+- **Related notes** — surface connections you didn't explicitly make
+- **Tag browser** (`Cmd+Shift+T`) — browse all tags across your workspace
+- **People browser** (`Cmd+Shift+P`) — browse all @mentioned people and the notes they appear in
 
-Press `Cmd+K` to open the Kiro AI panel. The app invokes `kiro-cli` as a subprocess:
+### Daily Notes
+- Chronological scroll view with one editor per day (`Cmd+D`)
+- Calendar sidebar for quick date navigation
+- 30 past + 7 future days, virtual notes materialized on first edit
+- Auto-save with 1-second debounce
 
-```
-kiro-cli chat --no-interactive -a '<your prompt>'
-```
+### AI Chat
+- Per-document AI chat panel (`Cmd+J`)
+- Three specialized agents: **Editor** (grammar, clarity, restructuring), **Writer** (drafting from descriptions/outlines), **Researcher** (finding and summarizing information)
+- Selection-aware — highlight text and chat about just that passage
+- File read/write tool use with inline diff review and undo
+- MCP server exposing 8 workspace tools (`read_note`, `list_notes`, `global_search`, `manage_tags`, `update_note`, `get_backlinks`, `get_people`, `create_note`) so AI has full workspace context
 
-Requires `kiro-cli` to be installed and in your PATH.
+### Capture
+- **Link capture** (`Cmd+Shift+L`) — global hotkey to save URLs from anywhere, even when Synth isn't focused
+- **Meeting notes** (`Cmd+Shift+M`) — templated meeting note creation with date and attendees
 
-## Development
+### Keyboard Shortcuts
 
-### Prerequisites
+| Shortcut | Action |
+|---|---|
+| `Cmd+N` | New draft |
+| `Cmd+O` | Open workspace |
+| `Cmd+S` | Save |
+| `Cmd+W` | Close tab |
+| `Cmd+P` | Go to file |
+| `Cmd+D` | Daily notes |
+| `Cmd+J` | Toggle AI chat |
+| `Cmd+\` | Toggle sidebar |
+| `Cmd+1`–`9` | Switch tabs |
+| `Cmd+Shift+T` | Tag browser |
+| `Cmd+Shift+P` | People browser |
+| `Cmd+Shift+B` | Toggle backlinks |
+| `Cmd+Shift+L` | Capture link (global) |
+| `Cmd+Shift+M` | New meeting note |
+
+## Architecture
+
+Modern SwiftUI (macOS 26) frontend with a Rust core linked via C FFI.
+
+- **SwiftUI** — all views, state management (`@Observable`), and navigation
+- **AppKit** — only for `FormattingTextView` (NSTextView subclass for rich text editing) and `WikiLinkPopover` (NSPopover for positioned autocomplete)
+- **Rust** — document processing via `synth-core` static library
+- **MCP server** — Swift CLI tool providing workspace tools over JSON-RPC 2.0 (stdio + HTTP/SSE)
+
+## Build
 
 ```bash
-brew install swiftlint
+# Rust core (must be first)
+cd synth-core && cargo build --release
+
+# MCP server
+cd synth-mcp-server && swift build -c release
+
+# Swift app
+cd SynthApp && swiftc *.swift -import-objc-header BridgingHeader.h \
+  -L ../synth-core/target/release -I ../synth-core -lsynth_core -o Synth
+
+# Run
+./SynthApp/Synth
 ```
 
-### Pre-commit Hooks
+Or open `Synth.xcodeproj` in Xcode.
 
-The repo includes a pre-commit hook that runs:
-- `cargo fmt --check` on Rust code
-- `swiftlint` on Swift code
+## Requirements
 
-To fix issues before committing:
-```bash
-cd synth-core && cargo fmt
-swiftlint lint --fix SynthApp/
-```
+- macOS 26
+- Rust toolchain (for synth-core)
+- Xcode 26 or Swift 6 toolchain

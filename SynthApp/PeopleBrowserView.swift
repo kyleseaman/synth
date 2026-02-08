@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - People Browser
 
 struct PeopleBrowserView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     var initialPerson: String?
     @State private var query = ""
@@ -129,7 +129,7 @@ struct PeopleBrowserView: View {
                         HStack {
                             Text("@\(person.name)")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(nsColor: .systemPurple))
+                                .foregroundColor(.purple)
                             Spacer()
                             Text("(\(person.count))")
                                 .font(.caption)
@@ -235,7 +235,7 @@ struct PersonPill: View {
         HStack(spacing: 4) {
             Text("@\(personName)")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(Color(nsColor: .systemPurple))
+                .foregroundColor(.purple)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -247,7 +247,7 @@ struct PersonPill: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(Color(nsColor: .systemPurple).opacity(0.15))
+                .fill(.purple.opacity(0.15))
         )
     }
 }

@@ -13,7 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyMonitor = GlobalHotkeyMonitor(key: "l", modifiers: [.command, .shift]) {
             DispatchQueue.main.async {
                 NSApp.activate(ignoringOtherApps: true)
-                NotificationCenter.default.post(name: .showLinkCapture, object: nil)
+                self.store?.showLinkCaptureModal()
             }
         }
     }
@@ -22,9 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct SynthApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @StateObject private var store = DocumentStore()
-    @StateObject private var linkStore = LinkStore()
-    @StateObject private var templateStore = TemplateStore()
+    @State private var store = DocumentStore()
+    @State private var linkStore = LinkStore()
+    @State private var templateStore = TemplateStore()
 
     init() {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
@@ -52,9 +52,9 @@ struct SynthApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(store)
-                .environmentObject(linkStore)
-                .environmentObject(templateStore)
+                .environment(store)
+                .environment(linkStore)
+                .environment(templateStore)
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1200, height: 800)
@@ -67,7 +67,7 @@ struct SynthApp: App {
             }
             CommandGroup(after: .newItem) {
                 Button("New Meeting Note") {
-                    NotificationCenter.default.post(name: .showMeetingNote, object: nil)
+                    store.showMeetingNoteModal()
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
                 Divider()
@@ -81,17 +81,17 @@ struct SynthApp: App {
             }
             CommandGroup(after: .sidebar) {
                 Button("Toggle Sidebar") {
-                    NotificationCenter.default.post(name: .toggleSidebar, object: nil)
+                    store.toggleSidebar()
                 }
                 .keyboardShortcut("\\", modifiers: .command)
 
                 Button("Toggle Chat") {
-                    NotificationCenter.default.post(name: .toggleChat, object: nil)
+                    store.toggleChatForCurrentTab()
                 }
                 .keyboardShortcut("j")
 
                 Button("Toggle Chat (Terminal)") {
-                    NotificationCenter.default.post(name: .toggleChat, object: nil)
+                    store.toggleChatForCurrentTab()
                 }
                 .keyboardShortcut("`", modifiers: .control)
             }
@@ -103,27 +103,27 @@ struct SynthApp: App {
             }
             CommandGroup(after: .textFormatting) {
                 Button("Go to File") {
-                    NotificationCenter.default.post(name: .showFileLauncher, object: nil)
+                    store.showFileLauncherModal()
                 }
                 .keyboardShortcut("p")
 
                 Button("Tag Browser") {
-                    NotificationCenter.default.post(name: .showTagBrowser, object: nil)
+                    store.showTagBrowserModal()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
                 Button("People Browser") {
-                    NotificationCenter.default.post(name: .showPeopleBrowser, object: nil)
+                    store.showPeopleBrowserModal()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
 
                 Button("Toggle Backlinks") {
-                    NotificationCenter.default.post(name: .toggleBacklinks, object: nil)
+                    store.toggleBacklinks()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
 
-                Button("Today's Note") {
-                    store.openDailyNote()
+                Button("Daily Notes") {
+                    store.activateDailyNotes()
                 }
                 .keyboardShortcut("d")
             }
@@ -162,8 +162,8 @@ struct SynthApp: App {
 
         Settings {
             SettingsView()
-                .environmentObject(store)
-                .environmentObject(templateStore)
+                .environment(store)
+                .environment(templateStore)
         }
     }
 }
