@@ -40,7 +40,7 @@ struct CalendarSidebarView: View {
         }
         .padding(12)
         .frame(width: 220)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+        .background(Color(.textBackgroundColor).opacity(0.5))
     }
 
     // MARK: - Month Header

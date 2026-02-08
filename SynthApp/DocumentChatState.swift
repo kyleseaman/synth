@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 
 // MARK: - Chat Message
 
@@ -20,16 +19,16 @@ struct UndoSnapshot: Equatable {
 
 // MARK: - Document Chat State
 
-class DocumentChatState: ObservableObject {
-    @Published var messages: [ChatMessage] = []
-    @Published var currentResponse = ""
-    @Published var isLoading = false
-    @Published var undoSnapshot: UndoSnapshot?
-    @Published var toolCalls: [ACPToolCall] = []
-    @Published var pendingPermission: ACPPermissionRequest?
+@Observable class DocumentChatState {
+    var messages: [ChatMessage] = []
+    var currentResponse = ""
+    var isLoading = false
+    var undoSnapshot: UndoSnapshot?
+    var toolCalls: [ACPToolCall] = []
+    var pendingPermission: ACPPermissionRequest?
 
-    private(set) var acpClient: ACPClient?
-    private(set) var isStarted = false
+    @ObservationIgnored private(set) var acpClient: ACPClient?
+    @ObservationIgnored private(set) var isStarted = false
 
     // swiftlint:disable:next function_parameter_count
     func startIfNeeded(

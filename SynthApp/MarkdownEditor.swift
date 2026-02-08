@@ -1568,18 +1568,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 store?.loadFileTree()
                 applyFormatting()
             case .open:
-                guard let store else { return }
-                let notes = store.notesReferencing(
-                    mediaFilename: imageURL.lastPathComponent
-                )
-                NotificationCenter.default.post(
-                    name: .showImageDetail,
-                    object: nil,
-                    userInfo: [
-                        "mediaURL": imageURL,
-                        "notes": notes.map { $0.url }
-                    ]
-                )
+                self.store?.showImageDetailModal(imageURL)
             }
         }
 

@@ -4,7 +4,7 @@ import AppKit
 // MARK: - Daily Notes View
 
 struct DailyNotesView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @State private var scrollTarget: String?
 
     private var noteDates: Set<String> {
@@ -28,7 +28,7 @@ struct DailyNotesView: View {
                 noteDates: noteDates
             )
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(.textBackgroundColor))
         .onAppear {
             loadAllEntries()
             scrollToToday()
@@ -453,11 +453,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                     }
                     self.store?.loadFileTree()
                 case .open:
-                    NotificationCenter.default.post(
-                        name: .showImageDetail,
-                        object: nil,
-                        userInfo: ["mediaURL": imageURL]
-                    )
+                    self.store?.showImageDetailModal(imageURL)
                 }
             }
             textView.onImageResize = { [weak self] markup, width in
@@ -528,7 +524,7 @@ struct DailyNoteEditor: NSViewRepresentable {
 
 struct DailyNoteBacklinks: View {
     let entry: DailyNoteEntry
-    @ObservedObject var store: DocumentStore
+    var store: DocumentStore
     @State private var isExpanded = true
 
     private static let titleFormatter: DateFormatter = {

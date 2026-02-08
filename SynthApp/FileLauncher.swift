@@ -50,7 +50,7 @@ extension String {
 }
 
 struct FileLauncher: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     @State private var query = ""
     @State private var selectedIndex = 0
@@ -124,9 +124,9 @@ struct FileLauncher: View {
                                             .font(.caption)
                                     case .person(let name, let count, _):
                                         Image(systemName: "person.fill")
-                                            .foregroundColor(Color(nsColor: .systemPurple))
+                                            .foregroundColor(.purple)
                                         Text("@\(name)")
-                                            .foregroundColor(Color(nsColor: .systemPurple))
+                                            .foregroundColor(.purple)
                                         Spacer()
                                         let label = count == 1 ? "1 note" : "\(count) notes"
                                         Text(label)
@@ -194,11 +194,7 @@ struct FileLauncher: View {
         case .file(let node, _):
             store.open(node.url)
         case .person(let name, _, _):
-            NotificationCenter.default.post(
-                name: .showPeopleBrowser,
-                object: nil,
-                userInfo: ["initialPerson": name]
-            )
+            store.showPeopleBrowserModal(person: name)
         }
         isPresented = false
     }

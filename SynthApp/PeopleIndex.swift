@@ -1,18 +1,19 @@
 import Foundation
+import Observation
 
 // MARK: - People Index
 
-class PeopleIndex: ObservableObject {
+@Observable class PeopleIndex {
     /// Map from normalized person name -> set of file URLs containing that mention
-    @Published private(set) var personToFiles: [String: Set<URL>] = [:]
+    private(set) var personToFiles: [String: Set<URL>] = [:]
 
     /// Map from file URL -> set of normalized person names in that file
-    private var fileToPersons: [URL: Set<String>] = [:]
+    @ObservationIgnored private var fileToPersons: [URL: Set<String>] = [:]
 
     /// Global people set persisted across workspaces via UserDefaults
-    @Published private(set) var globalPeople: Set<String> = []
+    private(set) var globalPeople: Set<String> = []
 
-    private let storageKey = "synth.globalPeople"
+    @ObservationIgnored private let storageKey = "synth.globalPeople"
 
     // Person regex: @ followed by a word, optionally followed by space + Capitalized words
     // Single-word: any case. Multi-word: subsequent words must start uppercase (Title Case).

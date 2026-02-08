@@ -2,8 +2,8 @@ import SwiftUI
 import AppKit
 
 struct LinkCaptureView: View {
-    @EnvironmentObject var linkStore: LinkStore
-    @EnvironmentObject var store: DocumentStore
+    @Environment(LinkStore.self) var linkStore
+    @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
 
     @State private var linkText = ""
@@ -42,7 +42,7 @@ struct LinkCaptureView: View {
         .frame(width: 420)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: NSColor.windowBackgroundColor))
+                .fill(Color(.windowBackgroundColor))
                 .shadow(radius: 12)
         )
         .onAppear {

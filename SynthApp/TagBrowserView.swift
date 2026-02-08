@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Tag Browser
 
 struct TagBrowserView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     var initialTag: String?
     @State private var query = ""
@@ -129,7 +129,7 @@ struct TagBrowserView: View {
                         HStack {
                             Text("#\(tag.name)")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(nsColor: .systemTeal))
+                                .foregroundColor(.teal)
                             Spacer()
                             Text("(\(tag.count))")
                                 .font(.caption)
@@ -235,7 +235,7 @@ struct TagPill: View {
         HStack(spacing: 4) {
             Text("#\(tagName)")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundColor(Color(nsColor: .systemTeal))
+                .foregroundColor(.teal)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -247,7 +247,7 @@ struct TagPill: View {
         .padding(.vertical, 4)
         .background(
             Capsule()
-                .fill(Color(nsColor: .systemTeal).opacity(0.15))
+                .fill(.teal.opacity(0.15))
         )
     }
 }

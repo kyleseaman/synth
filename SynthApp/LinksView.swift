@@ -2,7 +2,9 @@ import SwiftUI
 import AppKit
 
 struct LinksView: View {
-    @EnvironmentObject var linkStore: LinkStore
+    @Environment(LinkStore.self) var linkStore
+    @Environment(DocumentStore.self) var store
+    @Environment(\.openURL) var openURL
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +30,7 @@ struct LinksView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: NSColor.textBackgroundColor))
+        .background(Color(.textBackgroundColor))
     }
 
     private var header: some View {
@@ -43,7 +45,7 @@ struct LinksView: View {
             Spacer()
 
             Button {
-                NotificationCenter.default.post(name: .showLinkCapture, object: nil)
+                store.showLinkCaptureModal()
             } label: {
                 Image(systemName: "plus")
             }
@@ -70,7 +72,7 @@ struct LinksView: View {
 
     private func open(link: SavedLink) {
         guard let url = URL(string: link.urlString) else { return }
-        NSWorkspace.shared.open(url)
+        openURL(url)
     }
 
     private func copy(link: SavedLink) {

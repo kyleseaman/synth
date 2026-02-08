@@ -370,20 +370,14 @@ class AutocompleteCoordinator {
         if url.host == "tag" {
             let tagName = url.pathComponents.dropFirst()
                 .joined(separator: "/")
-            NotificationCenter.default.post(
-                name: .showTagBrowser, object: nil,
-                userInfo: ["initialTag": tagName]
-            )
+            store?.showTagBrowserModal(tag: tagName)
             return true
         }
 
         if url.host == "person" {
             let personName = url.pathComponents.dropFirst()
                 .joined(separator: "/")
-            NotificationCenter.default.post(
-                name: .showPeopleBrowser, object: nil,
-                userInfo: ["initialPerson": personName]
-            )
+            store?.showPeopleBrowserModal(person: personName)
             return true
         }
 

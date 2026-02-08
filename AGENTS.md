@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project Overview
-Synth is a minimal, fast, native macOS text editor with AI integration. SwiftUI frontend, Rust core.
+Synth is a minimal, fast, native macOS 26 text editor with AI integration. Modern SwiftUI frontend, Rust core.
 
 ## Build Commands
 ```bash
@@ -55,16 +55,18 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 
 ## Architecture Patterns
 
+### Modern SwiftUI (macOS 26)
+- All model classes use `@Observable` (never `ObservableObject`/`@Published`)
+- Views use `@Environment(Type.self)` (never `@EnvironmentObject`), `@State` (never `@StateObject`), plain `var` for passed-in observables (never `@ObservedObject`)
+- Use `@Bindable` when creating `$` bindings to `@Environment`-injected objects
+- Use `.fileImporter()` (not NSOpenPanel), `.alert()` (not NSAlert), `@Environment(\.openURL)` (not NSWorkspace.shared.open)
+- AppKit exceptions: FormattingTextView (NSTextView) and WikiLinkPopover (NSPopover) only — no SwiftUI equivalents exist
+
 ### View Switching
-`DocumentStore` uses boolean flags to switch the detail column content:
-- `isLinksTabSelected` → shows `LinksView`
-- `isDailyNotesViewActive` → shows `DailyNotesView`
-- Neither → shows editor (`EditorViewSimple`)
+`DocumentStore` uses a `DetailViewMode` enum (`.editor`, `.dailyNotes`, `.links`, `.media`) to control the detail column content. Modal presentation uses an `ActiveModal` enum on DocumentStore.
 
-Flags are mutually exclusive. `open()`, `switchTo()`, `selectLinksTab()`, `selectDailyNotesTab()` all reset the other flags.
-
-### NotificationCenter Events
-All cross-component UI events use NotificationCenter: `.toggleSidebar`, `.toggleChat`, `.showFileLauncher`, `.showLinkCapture`, `.showMeetingNote`, `.showTagBrowser`, `.showPeopleBrowser`, `.toggleBacklinks`, `.showDailyNotes`.
+### UI Events
+Direct method calls on `DocumentStore` for all UI events (toggle sidebar, show modals, switch views). NotificationCenter is only used for AppKit↔SwiftUI bridging: wiki link signals between FormattingTextView and AutocompleteCoordinator, `.reloadEditor`, `.showDailyDate`.
 
 ### Daily Notes
 - Files: `{workspace}/daily/YYYY-MM-DD.md`

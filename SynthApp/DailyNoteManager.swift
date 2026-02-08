@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 
 // MARK: - Daily Note Entry
 
@@ -20,16 +20,16 @@ struct DailyNoteEntry: Identifiable, Equatable {
 
 // MARK: - Daily Note Manager
 
-class DailyNoteManager: ObservableObject {
-    @Published var entries: [DailyNoteEntry] = []
+@Observable class DailyNoteManager {
+    var entries: [DailyNoteEntry] = []
 
     /// Called after a daily note is saved with (url, content)
     /// so indexes (backlinks, tags, people) can update.
-    var onSave: ((URL, String) -> Void)?
+    @ObservationIgnored var onSave: ((URL, String) -> Void)?
 
     private let pastDays = 30
     private let futureDays = 7
-    private var saveTimer: Timer?
+    @ObservationIgnored private var saveTimer: Timer?
 
     private static let fileDateFormatter: DateFormatter = {
         let formatter = DateFormatter()

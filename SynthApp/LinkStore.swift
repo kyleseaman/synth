@@ -1,5 +1,5 @@
 import Foundation
-import Combine
+import Observation
 
 struct SavedLink: Codable, Equatable {
     let identifier: UUID
@@ -7,11 +7,11 @@ struct SavedLink: Codable, Equatable {
     let createdAt: Date
 }
 
-final class LinkStore: ObservableObject {
-    @Published private(set) var links: [SavedLink] = []
+@Observable final class LinkStore {
+    private(set) var links: [SavedLink] = []
 
-    private let storage: UserDefaults
-    private let storageKey: String
+    @ObservationIgnored private let storage: UserDefaults
+    @ObservationIgnored private let storageKey: String
 
     init(storage: UserDefaults = .standard, storageKey: String = "synth.savedLinks") {
         self.storage = storage

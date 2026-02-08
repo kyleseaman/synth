@@ -1,23 +1,24 @@
 import Foundation
+import Observation
 
 // MARK: - Backlink Index
 
-class BacklinkIndex: ObservableObject {
+@Observable class BacklinkIndex {
     /// Map from note title (lowercased) -> set of URLs that reference it
-    @Published private(set) var incomingLinks: [String: Set<URL>] = [:]
+    private(set) var incomingLinks: [String: Set<URL>] = [:]
 
     /// Map from source URL -> set of note titles it links to
-    private var outgoingLinks: [URL: Set<String>] = [:]
+    @ObservationIgnored private var outgoingLinks: [URL: Set<String>] = [:]
 
     /// Map from source URL -> (note title -> context snippet)
-    @Published private(set) var contextSnippets: [URL: [String: String]] = [:]
+    private(set) var contextSnippets: [URL: [String: String]] = [:]
 
     // swiftlint:disable:next force_try
-    private let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    @ObservationIgnored private let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
 
     /// Matches unfurled date mentions like @2026-02-07
     // swiftlint:disable:next force_try
-    private let atDatePattern = try! NSRegularExpression(
+    @ObservationIgnored private let atDatePattern = try! NSRegularExpression(
         pattern: "@(\\d{4}-\\d{2}-\\d{2})"
     )
 

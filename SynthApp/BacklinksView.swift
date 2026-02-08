@@ -4,7 +4,7 @@ import SwiftUI
 
 struct BacklinksSection: View {
     let noteTitle: String
-    @ObservedObject var backlinkIndex: BacklinkIndex
+    var backlinkIndex: BacklinkIndex
     let onNavigate: (URL) -> Void
     @AppStorage("backlinksExpanded") private var isExpanded = true
 
