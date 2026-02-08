@@ -16,6 +16,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install SwiftLint
+      run: |
+        brew update
+        brew install swiftlint
+        swiftlint version
+    - name: Lint Swift
+      run: swiftlint lint --strict
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Build Rust core
