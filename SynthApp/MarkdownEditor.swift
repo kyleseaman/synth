@@ -819,9 +819,7 @@ class FormattingTextView: NSTextView {
     }
 
     private func imageURL(at point: CGPoint) -> URL? {
-        guard let textStorage = textStorage,
-              let layoutManager = layoutManager,
-              let textContainer = textContainer
+        guard let textStorage = textStorage
         else { return nil }
         let idx = charIndex(at: point)
         guard let idx, idx < textStorage.length else { return nil }
