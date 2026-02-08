@@ -350,11 +350,40 @@ class DocumentStore: ObservableObject {
                 self.noteIndex.rebuild(from: tree, workspace: workspace)
                 self.mediaFiles = media
             }
-            // Rebuild backlink and tag indexes on background thread
             let treeSnapshot = tree
             self.backlinkIndex.rebuild(fileTree: treeSnapshot)
             self.tagIndex.rebuild(fileTree: treeSnapshot)
             self.peopleIndex.rebuild(fileTree: treeSnapshot)
+            self.cleanOrphanedMedia(
+                mediaFiles: media, workspace: workspace
+            )
+        }
+    }
+
+    private func cleanOrphanedMedia(
+        mediaFiles: [URL], workspace: URL
+    ) {
+        // Collect all note content once
+        let enumerator = FileManager.default.enumerator(
+            at: workspace,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        var allContent = ""
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "md",
+                  let content = try? String(
+                      contentsOf: fileURL, encoding: .utf8
+                  ) else { continue }
+            allContent += content
+        }
+        for mediaURL in mediaFiles {
+            let filename = mediaURL.lastPathComponent
+            if !allContent.contains(filename) {
+                try? FileManager.default.trashItem(
+                    at: mediaURL, resultingItemURL: nil
+                )
+            }
         }
     }
 
