@@ -703,10 +703,13 @@ class FormattingTextView: NSTextView {
             }
         }
 
-        if let imageURL = imageURL(at: point) {
+        // Double-click on image opens detail view
+        if event.clickCount == 2,
+           let imageURL = imageURL(at: point) {
             onImageAction?(.open, imageURL)
             return
         }
+
         super.mouseDown(with: event)
     }
 
@@ -798,6 +801,19 @@ class FormattingTextView: NSTextView {
 
     private func updateImageOverlay(for event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
+
+        // Don't dismiss if mouse is over the overlay or resize handle
+        if !imageOverlay.isHidden {
+            let overlayPoint = imageOverlay.convert(
+                event.locationInWindow, from: nil
+            )
+            if imageOverlay.bounds.contains(overlayPoint) { return }
+            let handlePoint = resizeHandle.convert(
+                event.locationInWindow, from: nil
+            )
+            if resizeHandle.bounds.contains(handlePoint) { return }
+        }
+
         guard let imageURL = imageURL(at: point),
               let attachRect = attachmentRect(at: point)
         else {
@@ -923,8 +939,7 @@ class FormattingTextView: NSTextView {
     override func paste(_ sender: Any?) {
         let classes: [AnyClass] = [NSImage.self]
         if let imageObject = NSPasteboard.general.readObjects(
-            forClasses: classes,
-            options: nil
+            forClasses: classes, options: nil
         )?.first as? NSImage {
             guard let markdownImage = imagePasteHandler?(imageObject) else {
                 NSSound.beep()
