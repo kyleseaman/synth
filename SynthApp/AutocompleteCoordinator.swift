@@ -423,11 +423,7 @@ class AutocompleteCoordinator {
                   ) else { return true }
             DailyNoteResolver.ensureExists(at: resolved)
             store.loadFileTree()
-            store.activateDailyNotes()
-            NotificationCenter.default.post(
-                name: .showDailyDate, object: nil,
-                userInfo: ["date": token]
-            )
+            store.requestDailyDateScroll(token)
             return true
         }
 

@@ -81,6 +81,13 @@ struct UndoSnapshot: Equatable {
             }
         }
 
+        client.onError = { [weak self] message in
+            DispatchQueue.main.async {
+                self?.isLoading = false
+                self?.messages.append(ChatMessage(role: .assistant, content: message))
+            }
+        }
+
         client.start(cwd: cwd, agent: agent)
     }
 

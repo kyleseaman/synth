@@ -1,5 +1,15 @@
 import SwiftUI
 
+@ViewBuilder
+private func roleBadge(symbolName: String, tintColor: Color) -> some View {
+    Image(systemName: symbolName)
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(tintColor)
+        .frame(width: 18, height: 18)
+        .background(tintColor.opacity(0.13))
+        .clipShape(Circle())
+}
+
 // MARK: - Chat Bubble
 
 struct ChatBubble: View {
@@ -8,16 +18,22 @@ struct ChatBubble: View {
 
     var body: some View {
         HStack {
-            if message.role == .user { Spacer(minLength: 60) }
+            if message.role == .user {
+                Spacer(minLength: 70)
+            } else {
+                roleBadge(symbolName: "sparkles", tintColor: .accentColor)
+            }
+
             MarkdownText(message.content)
                 .font(.system(size: 13))
-                .padding(10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(
                     message.role == .user
-                        ? Color.accentColor.opacity(0.15)
-                        : Color.primary.opacity(0.05)
+                        ? Color.accentColor.opacity(0.18)
+                        : Color.primary.opacity(0.06)
                 )
-                .cornerRadius(8)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
                     if message.role == .assistant && isHovered {
                         Button {
@@ -36,9 +52,15 @@ struct ChatBubble: View {
                     }
                 }
                 .onHover { isHovered = $0 }
-            if message.role == .assistant { Spacer(minLength: 60) }
+
+            if message.role == .assistant {
+                Spacer(minLength: 70)
+            } else {
+                roleBadge(symbolName: "person.fill", tintColor: .orange)
+            }
         }
     }
+
 }
 
 // MARK: - Streaming Bubble
@@ -49,6 +71,7 @@ struct StreamingBubble: View {
 
     var body: some View {
         HStack {
+            roleBadge(symbolName: "sparkles", tintColor: .accentColor)
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
                     MarkdownText(text)
@@ -63,10 +86,11 @@ struct StreamingBubble: View {
                     }
                 }
             }
-            .padding(10)
-            .background(Color.primary.opacity(0.05))
-            .cornerRadius(8)
-            Spacer(minLength: 60)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color.primary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            Spacer(minLength: 70)
         }
     }
 }
@@ -117,9 +141,9 @@ struct ToolCallBubble: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.primary.opacity(0.03))
-        .cornerRadius(6)
+        .padding(.vertical, 7)
+        .background(Color.primary.opacity(0.045))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var iconName: String {
