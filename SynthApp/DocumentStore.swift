@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import ImageIO
+import Observation
 
 struct StoredMediaAsset {
     let fileURL: URL
@@ -235,7 +236,7 @@ enum ActiveModal: Equatable {
 
 // swiftlint:disable:next type_body_length
 @Observable
-class DocumentStore {
+final class DocumentStore {
     var workspace: URL?
     var fileTree: [FileTreeNode] = []
     var openFiles: [Document] = []
@@ -254,6 +255,7 @@ class DocumentStore {
     var activeModal: ActiveModal?
     var imageDetailURL: URL?
     var showBacklinks = true
+    var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
     var showWorkspacePicker = false
@@ -276,6 +278,7 @@ class DocumentStore {
     @ObservationIgnored private let maxRecentFiles = 20
     @ObservationIgnored private var fileWatcher: DispatchSourceFileSystemObject?
     @ObservationIgnored private var watcherFD: Int32 = -1
+    @ObservationIgnored private var fileTreeLoadTask: Task<Void, Never>?
 
     init() {
         loadRecentFiles()
@@ -286,13 +289,18 @@ class DocumentStore {
         }
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
-            workspace = URL(fileURLWithPath: path)
+            let restoredWorkspace = URL(fileURLWithPath: path)
+            workspace = restoredWorkspace
             loadFileTree()
             startWatching()
+            loadKiroConfig()
+            checkKiroSetup()
+            mcpServer.start(workspace: restoredWorkspace)
         }
     }
 
     deinit {
+        fileTreeLoadTask?.cancel()
         stopWatching()
     }
 
@@ -362,30 +370,39 @@ class DocumentStore {
 
     func loadFileTree() {
         guard let workspace = workspace else { return }
-        Task.detached(priority: .userInitiated) {
-            let tree = FileTreeNode.scan(workspace)
-            var media = MediaManager.screenshotURLs(in: workspace)
-            let removed = self.cleanOrphanedMedia(
-                mediaFiles: media, workspace: workspace
-            )
-            if !removed.isEmpty {
-                media.removeAll { removed.contains($0) }
-            }
-            let scannedMedia = media
+        fileTreeLoadTask?.cancel()
+        fileTreeLoadTask = Task(priority: .userInitiated) { [weak self] in
+            let scanResult = Self.scanWorkspace(at: workspace)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
-                self.fileTree = tree
-                self.noteIndex.rebuild(from: tree, workspace: workspace)
-                self.mediaFiles = scannedMedia
+                guard let self = self, self.workspace == workspace else { return }
+                self.fileTree = scanResult.tree
+                self.noteIndex.rebuild(from: scanResult.tree, workspace: workspace)
+                self.mediaFiles = scanResult.media
+                self.backlinkIndex.rebuild(fileTree: scanResult.tree)
+                self.tagIndex.rebuild(fileTree: scanResult.tree)
+                self.peopleIndex.rebuild(fileTree: scanResult.tree)
             }
-            let treeSnapshot = tree
-            self.backlinkIndex.rebuild(fileTree: treeSnapshot)
-            self.tagIndex.rebuild(fileTree: treeSnapshot)
-            self.peopleIndex.rebuild(fileTree: treeSnapshot)
         }
     }
 
+    private struct WorkspaceScanResult {
+        let tree: [FileTreeNode]
+        let media: [URL]
+    }
+
+    private static func scanWorkspace(at workspace: URL) -> WorkspaceScanResult {
+        let tree = FileTreeNode.scan(workspace)
+        var media = MediaManager.screenshotURLs(in: workspace)
+        let removed = cleanOrphanedMedia(mediaFiles: media, workspace: workspace)
+        if !removed.isEmpty {
+            media.removeAll { removed.contains($0) }
+        }
+        return WorkspaceScanResult(tree: tree, media: media)
+    }
+
     @discardableResult
-    private func cleanOrphanedMedia(
+    private static func cleanOrphanedMedia(
         mediaFiles: [URL], workspace: URL
     ) -> Set<URL> {
         var removed: Set<URL> = []
@@ -502,6 +519,11 @@ class DocumentStore {
 
     func activateDailyNotes() {
         selectDailyNotesTab()
+    }
+
+    func requestDailyDateScroll(_ dateIdentifier: String) {
+        activateDailyNotes()
+        dailyDateScrollTarget = dateIdentifier
     }
 
     func selectDailyNotesTab() {

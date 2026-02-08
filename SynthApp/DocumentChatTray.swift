@@ -10,46 +10,136 @@ struct DocumentChatTray: View {
     var selectedLineRange: String?
 
     @State private var input = ""
-    @State private var trayHeight: CGFloat = 250
+    @State private var trayHeight: CGFloat = 300
     @State private var selectedAgent: String?
     @FocusState private var isInputFocused: Bool
 
-    private let minHeight: CGFloat = 150
-    private let maxHeight: CGFloat = 600
+    private let minHeight: CGFloat = 180
+    private let maxHeight: CGFloat = 720
+    private let quickPrompts = [
+        "Summarize this file into action items",
+        "Propose a cleaner structure",
+        "Find unclear or risky sections",
+        "Draft a commit message for recent edits"
+    ]
 
     var body: some View {
         VStack(spacing: 0) {
             dragHandle
+            headerBar
+            Divider().opacity(0.3)
             messageList
             permissionBar
             selectionIndicator
+            quickPromptBar
             inputBar
         }
         .frame(height: trayHeight)
-        .background(Color(.windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(backgroundGradient)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
         )
-        .overlay(alignment: .topTrailing) {
+        .shadow(color: .black.opacity(0.22), radius: 16, y: -3)
+        .onAppear {
+            isInputFocused = true
+            wireFileCallbacks()
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Collaborate with Assistant")
+                    .font(.system(size: 13, weight: .semibold))
+                HStack(spacing: 8) {
+                    Label(documentURL.lastPathComponent, systemImage: "doc.text")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    connectionBadge
+                }
+            }
+
+            Spacer()
+
+            Menu {
+                Button("Auto (Workspace Default)") { selectedAgent = nil }
+                if !store.customAgents.isEmpty {
+                    Divider()
+                    ForEach(store.customAgents, id: \.name) { agentInfo in
+                        Button(agentInfo.name) {
+                            selectedAgent = agentInfo.name
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.crop.circle.badge.sparkles")
+                        .font(.system(size: 11))
+                    Text(selectedAgent ?? "Auto Agent")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.07))
+                .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+
             Button {
                 store.toggleChatForCurrentTab()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 16, height: 16)
-                    .background(Color.primary.opacity(0.1))
+                    .frame(width: 18, height: 18)
+                    .background(Color.primary.opacity(0.08))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .padding(6)
         }
-        .shadow(color: .black.opacity(0.1), radius: 8, y: -2)
-        .onAppear {
-            isInputFocused = true
-            wireFileCallbacks()
+        .padding(.leading, 14)
+        .padding(.trailing, 12)
+        .padding(.vertical, 10)
+    }
+
+    private var connectionBadge: some View {
+        Text(connectionTitle)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(connectionColor)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(connectionColor.opacity(0.15))
+            .clipShape(Capsule())
+    }
+
+    private var connectionTitle: String {
+        if chatState.acpClient?.connectionFailed == true {
+            return "Disconnected"
+        }
+        if chatState.acpClient?.isConnected == true, chatState.acpClient?.sessionId != nil {
+            return "Connected"
+        }
+        if chatState.isLoading || chatState.acpClient != nil {
+            return "Connecting"
+        }
+        return "Ready"
+    }
+
+    private var connectionColor: Color {
+        switch connectionTitle {
+        case "Connected":
+            return .green
+        case "Disconnected":
+            return .red
+        case "Connecting":
+            return .orange
+        default:
+            return .secondary
         }
     }
 
@@ -57,21 +147,21 @@ struct DocumentChatTray: View {
 
     private var dragHandle: some View {
         Rectangle()
-            .fill(Color.secondary.opacity(0.3))
-            .frame(width: 36, height: 3)
+            .fill(Color.secondary.opacity(0.35))
+            .frame(width: 42, height: 3)
             .cornerRadius(1.5)
             .frame(maxWidth: .infinity)
-            .frame(height: 10)
+            .frame(height: 11)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture()
                     .onChanged { gesture in
-                        let newHeight = trayHeight - gesture.translation.height
-                        trayHeight = min(max(newHeight, minHeight), maxHeight)
+                        let nextHeight = trayHeight - gesture.translation.height
+                        trayHeight = min(max(nextHeight, minHeight), maxHeight)
                     }
             )
-            .onHover { hovering in
-                if hovering {
+            .onHover { isHovering in
+                if isHovering {
                     NSCursor.resizeUpDown.push()
                 } else {
                     NSCursor.pop()
@@ -85,8 +175,12 @@ struct DocumentChatTray: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(chatState.messages) { msg in
-                        ChatBubble(message: msg).id(msg.id)
+                    if chatState.messages.isEmpty && chatState.currentResponse.isEmpty && !chatState.isLoading {
+                        emptyStateView
+                    }
+
+                    ForEach(chatState.messages) { message in
+                        ChatBubble(message: message).id(message.id)
                     }
                     ForEach(chatState.toolCalls.filter { $0.status != "completed" }) { call in
                         ToolCallBubble(toolCall: call).id(call.id)
@@ -97,18 +191,18 @@ struct DocumentChatTray: View {
                         StreamingBubble(
                             text: chatState.currentResponse,
                             isLoading: showSpinner
-                        ).id("streaming")
+                        )
+                        .id("streaming")
                     }
                 }
-                .padding(.leading, 38)
-                .padding(.trailing, 56)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
             .scrollIndicators(.hidden)
             .onChange(of: chatState.messages.count) {
-                if let last = chatState.messages.last {
+                if let lastMessage = chatState.messages.last {
                     withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
+                        proxy.scrollTo(lastMessage.id, anchor: .bottom)
                     }
                 }
             }
@@ -116,48 +210,87 @@ struct DocumentChatTray: View {
                 proxy.scrollTo("streaming", anchor: .bottom)
             }
             .onChange(of: chatState.toolCalls.count) {
-                if let last = chatState.toolCalls.last {
-                    proxy.scrollTo(last.id, anchor: .bottom)
+                if let lastCall = chatState.toolCalls.last {
+                    proxy.scrollTo(lastCall.id, anchor: .bottom)
                 }
             }
         }
+    }
+
+    private var emptyStateView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Start a collaborative turn")
+                .font(.system(size: 13, weight: .semibold))
+            Text("I can read, edit, and reason over this workspace with your approval.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Selection Indicator
 
     @ViewBuilder
     private var selectionIndicator: some View {
-        if let range = selectedLineRange, selectedText != nil {
-            HStack(spacing: 4) {
+        if let selectedLineRange, selectedText != nil {
+            HStack(spacing: 5) {
                 Image(systemName: "text.line.first.and.arrowtriangle.forward")
                     .font(.system(size: 10))
-                Text("Sending selection: \(range)")
+                Text("Using selection context: \(selectedLineRange)")
                     .font(.system(size: 11))
                 Spacer()
             }
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 14)
+            .padding(.top, 5)
+        }
+    }
+
+    // MARK: - Quick Prompts
+
+    private var quickPromptBar: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(quickPrompts, id: \.self) { prompt in
+                    Button(prompt) {
+                        input = prompt
+                        sendMessage()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(Capsule())
+                    .disabled(chatState.isLoading)
+                }
+            }
+            .padding(.horizontal, 14)
             .padding(.top, 6)
         }
+        .scrollIndicators(.hidden)
     }
 
     // MARK: - Permission Bar
 
     @ViewBuilder
     private var permissionBar: some View {
-        if let perm = chatState.pendingPermission {
+        if let permission = chatState.pendingPermission {
             VStack(alignment: .leading, spacing: 6) {
-                Text(perm.title)
+                Text(permission.title)
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
-                if let diff = perm.diffContent {
+                if let diff = permission.diffContent {
                     ScrollView {
                         permissionDiffView(diff)
                     }
                     .frame(height: 120)
-                    .padding(6)
-                    .background(Color.primary.opacity(0.05))
-                    .cornerRadius(4)
+                    .padding(7)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(6)
                 }
                 HStack(spacing: 8) {
                     Spacer()
@@ -195,10 +328,13 @@ struct DocumentChatTray: View {
             }
             .padding(10)
             .frame(maxWidth: .infinity)
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.leading, 38)
-            .padding(.trailing, 56)
+            .background(Color.orange.opacity(0.12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+            )
+            .cornerRadius(9)
+            .padding(.horizontal, 14)
             .padding(.top, 6)
         }
     }
@@ -252,28 +388,56 @@ struct DocumentChatTray: View {
         )
     }
 
+    // MARK: - Styling
+
+    private var backgroundGradient: some View {
+        LinearGradient(
+            colors: [
+                Color(nsColor: .windowBackgroundColor),
+                Color(nsColor: .windowBackgroundColor).opacity(0.95),
+                Color.accentColor.opacity(0.05)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     // MARK: - Actions
 
     private func wireFileCallbacks() {
         chatState.acpClient?.onFileRead = { [weak store] path in
-            guard let store = store else { return nil }
-            if let idx = store.openFiles.firstIndex(where: { $0.url.path == path }) {
-                return store.openFiles[idx].content.string
+            guard let store else { return nil }
+            let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
+            guard let requestedURL = Self.scopedWorkspaceURL(path: path, root: rootURL) else {
+                return nil
             }
-            return try? String(contentsOfFile: path, encoding: .utf8)
+
+            if let fileIndex = store.openFiles.firstIndex(
+                where: { Self.canonicalURL($0.url) == requestedURL }
+            ) {
+                return store.openFiles[fileIndex].content.string
+            }
+            return try? String(contentsOf: requestedURL, encoding: .utf8)
         }
 
         chatState.acpClient?.onFileWrite = { [weak store, weak chatState] path, content in
-            guard let store = store, let chatState = chatState else { return }
-            if let idx = store.openFiles.firstIndex(where: { $0.url.path == path }) {
+            guard let store, let chatState else { return }
+            let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
+            guard let requestedURL = Self.scopedWorkspaceURL(path: path, root: rootURL) else {
+                return
+            }
+
+            if let fileIndex = store.openFiles.firstIndex(
+                where: { Self.canonicalURL($0.url) == requestedURL }
+            ) {
                 let snapshot = UndoSnapshot(
-                    url: store.openFiles[idx].url,
-                    content: store.openFiles[idx].content.string,
+                    url: store.openFiles[fileIndex].url,
+                    content: store.openFiles[fileIndex].content.string,
                     timestamp: Date()
                 )
                 chatState.undoSnapshot = snapshot
-                store.openFiles[idx].content = NSAttributedString(string: content)
-                store.openFiles[idx].isDirty = true
+                store.openFiles[fileIndex].content = NSAttributedString(string: content)
+                store.openFiles[fileIndex].isDirty = true
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     if chatState.undoSnapshot?.timestamp == snapshot.timestamp {
@@ -282,6 +446,19 @@ struct DocumentChatTray: View {
                 }
             }
         }
+    }
+
+    private static func scopedWorkspaceURL(path: String, root: URL) -> URL? {
+        let requestedURL = canonicalURL(URL(fileURLWithPath: path))
+        let rootURL = canonicalURL(root)
+        let rootPath = rootURL.path
+        let isRoot = requestedURL.path == rootPath
+        let isDescendant = requestedURL.path.hasPrefix(rootPath + "/")
+        return (isRoot || isDescendant) ? requestedURL : nil
+    }
+
+    private static func canonicalURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     private func sendMessage() {
@@ -294,9 +471,9 @@ struct DocumentChatTray: View {
         chatState.isLoading = true
         chatState.toolCalls.removeAll()
 
-        let cwdPath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
+        let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
         chatState.startIfNeeded(
-            cwd: cwdPath,
+            cwd: workspacePath,
             filePath: documentURL.path,
             agent: selectedAgent,
             mcpServerManager: store.mcpServer
@@ -304,8 +481,7 @@ struct DocumentChatTray: View {
         wireFileCallbacks()
 
         guard chatState.acpClient?.isConnected == true else {
-            // Wait for connection then send
-            waitAndSend(prompt: prompt, retries: 10)
+            waitAndSend(prompt: prompt, retries: 20)
             return
         }
 
@@ -316,7 +492,7 @@ struct DocumentChatTray: View {
         guard retries > 0 else {
             chatState.isLoading = false
             chatState.messages.append(
-                ChatMessage(role: .assistant, content: "Failed to connect to Kiro.")
+                ChatMessage(role: .assistant, content: "Failed to connect to kiro-cli.")
             )
             return
         }
@@ -333,7 +509,6 @@ struct DocumentChatTray: View {
     private func buildContentBlocks(prompt: String) -> [[String: AnyCodable]] {
         var blocks: [[String: AnyCodable]] = []
 
-        // Add document context as text (agent doesn't support embeddedContext)
         if let selection = selectedText, !selection.isEmpty {
             let label = selectedLineRange ?? "selection"
             blocks.append([
@@ -343,13 +518,10 @@ struct DocumentChatTray: View {
         } else {
             blocks.append([
                 "type": AnyCodable("text"),
-                "text": AnyCodable(
-                    "[Current file: \(documentURL.path)]\n\n\(documentContent)"
-                )
+                "text": AnyCodable("[Current file: \(documentURL.path)]\n\n\(documentContent)")
             ])
         }
 
-        // Add user prompt
         blocks.append([
             "type": AnyCodable("text"),
             "text": AnyCodable(prompt)

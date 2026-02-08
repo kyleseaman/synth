@@ -117,6 +117,48 @@ struct ACPPermissionRequest: Identifiable {
     var diffContent: DiffContent?
 }
 
+enum ACPUpdateKind: Equatable {
+    case agentMessageChunk
+    case toolCall
+    case toolCallUpdate
+    case turnEnd
+}
+
+enum ACPProtocolAdapter {
+    static func isSessionUpdateMethod(_ methodName: String) -> Bool {
+        methodName == "session/update" || methodName == "session/notification"
+    }
+
+    static func parseUpdateKind(_ rawValue: String) -> ACPUpdateKind? {
+        let normalized = rawValue
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+
+        switch normalized {
+        case "agentmessagechunk":
+            return .agentMessageChunk
+        case "toolcall":
+            return .toolCall
+        case "toolcallupdate":
+            return .toolCallUpdate
+        case "turnend":
+            return .turnEnd
+        default:
+            return nil
+        }
+    }
+
+    static func promptParams(
+        sessionId: String,
+        contentBlocks: [[String: AnyCodable]]
+    ) -> [String: AnyCodable] {
+        [
+            "sessionId": AnyCodable(sessionId),
+            "content": AnyCodable(contentBlocks.map { AnyCodable($0) })
+        ]
+    }
+}
+
 // MARK: - Kiro CLI Path Resolution
 
 enum KiroCliResolver {

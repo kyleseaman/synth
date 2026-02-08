@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 
 extension Notification.Name {
-    static let reloadEditor = Notification.Name("reloadEditor")
-
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
     static let wikiLinkDismiss = Notification.Name("wikiLinkDismiss")
@@ -11,13 +9,17 @@ extension Notification.Name {
     static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
 
-    // MARK: - Daily Notes
-    static let showDailyDate = Notification.Name("showDailyDate")
+}
+
+struct EditorSelectionContext {
+    let selectedText: String
+    let selectedLineRange: String
 }
 
 struct ContentView: View {
     @Environment(DocumentStore.self) var store
     @State private var dismissedSetup = false
+    @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -152,9 +154,20 @@ struct ContentView: View {
                 } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
+                    let selectionContext = selectionByDocument[currentDoc.url]
 
                     ZStack(alignment: .bottom) {
-                        EditorViewSimple()
+                        EditorViewSimple { documentURL, selectedText, selectedLineRange in
+                            let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmedText.isEmpty {
+                                selectionByDocument.removeValue(forKey: documentURL)
+                            } else {
+                                selectionByDocument[documentURL] = EditorSelectionContext(
+                                    selectedText: selectedText,
+                                    selectedLineRange: selectedLineRange
+                                )
+                            }
+                        }
                             .id(currentDoc.url)
 
                         // Undo toast overlay
@@ -181,8 +194,8 @@ struct ContentView: View {
                             chatState: chatState,
                             documentURL: currentDoc.url,
                             documentContent: currentDoc.content.string,
-                            selectedText: nil,
-                            selectedLineRange: nil
+                            selectedText: selectionContext?.selectedText,
+                            selectedLineRange: selectionContext?.selectedLineRange
                         )
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
@@ -487,6 +500,7 @@ struct EditorViewSimple: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
+    var onSelectionChange: ((URL, String, String) -> Void)? = nil
 
     private var currentNoteTitle: String {
         guard store.currentIndex >= 0,
@@ -561,22 +575,33 @@ struct EditorViewSimple: View {
             .padding(.top, 4)
             .padding(.trailing, 4)
         }
+        .onChange(of: selectedText) { _, _ in
+            publishSelectionContext()
+        }
+        .onChange(of: selectedLineRange) { _, _ in
+            publishSelectionContext()
+        }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
         .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
-        .onReceive(NotificationCenter.default.publisher(for: .reloadEditor)) { _ in
-            loadText()
-        }
     }
 
     func loadText() {
         guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
         text = store.openFiles[store.currentIndex].content.string
+        selectedText = ""
+        selectedLineRange = ""
+        publishSelectionContext()
     }
 
     func saveText() {
         guard store.currentIndex >= 0 && store.currentIndex < store.openFiles.count else { return }
         store.updateContent(NSAttributedString(string: text))
+    }
+
+    private func publishSelectionContext() {
+        guard let currentNoteURL = currentNoteURL else { return }
+        onSelectionChange?(currentNoteURL, selectedText, selectedLineRange)
     }
 }
 

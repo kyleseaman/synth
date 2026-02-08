@@ -16,6 +16,7 @@ struct DailyNotesView: View {
     }
 
     var body: some View {
+        @Bindable var store = store
         HStack(spacing: 0) {
             // Main scrollable daily notes
             dailyNotesScroll
@@ -33,14 +34,10 @@ struct DailyNotesView: View {
             loadAllEntries()
             scrollToToday()
         }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: .showDailyDate
-            )
-        ) { notification in
-            guard let dateStr = notification.userInfo?["date"]
-                as? String else { return }
-            scrollTarget = dateStr
+        .onChange(of: store.dailyDateScrollTarget) { _, target in
+            guard let target else { return }
+            scrollTarget = target
+            store.dailyDateScrollTarget = nil
         }
     }
 
