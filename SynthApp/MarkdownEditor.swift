@@ -1522,6 +1522,7 @@ struct MarkdownEditor: NSViewRepresentable {
             let newText = text.replacingOccurrences(
                 of: originalMarkup, with: updated
             )
+            textView.string = newText
             parent.text = newText
             applyFormatting()
         }
@@ -1576,6 +1577,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 range: NSRange(location: 0, length: text.utf16.count),
                 withTemplate: ""
             )
+            textView.string = cleaned
             parent.text = cleaned
         }
 

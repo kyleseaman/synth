@@ -474,6 +474,7 @@ struct DailyNoteEditor: NSViewRepresentable {
             let newText = text.replacingOccurrences(
                 of: originalMarkup, with: updated
             )
+            textView.string = newText
             parent.onTextChange(newText)
             applyFormatting()
         }
@@ -499,6 +500,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                 ),
                 withTemplate: ""
             )
+            textView.string = cleaned
             parent.onTextChange(cleaned)
         }
 
