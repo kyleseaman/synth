@@ -1553,10 +1553,18 @@ struct MarkdownEditor: NSViewRepresentable {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.writeObjects([image])
             case .delete:
-                try? FileManager.default.trashItem(
-                    at: imageURL, resultingItemURL: nil
-                )
                 removeImageMarkup(for: imageURL)
+                applyFormatting()
+                // Save so disk content is up to date for the check
+                store?.saveAll()
+                let refs = store?.notesReferencing(
+                    mediaFilename: imageURL.lastPathComponent
+                ) ?? []
+                if refs.isEmpty {
+                    try? FileManager.default.trashItem(
+                        at: imageURL, resultingItemURL: nil
+                    )
+                }
                 store?.loadFileTree()
                 applyFormatting()
             case .open:

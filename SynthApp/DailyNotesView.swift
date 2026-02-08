@@ -441,11 +441,17 @@ struct DailyNoteEditor: NSViewRepresentable {
                     NSPasteboard.general.writeObjects([img])
                 case .delete:
                     self.removeImageMarkup(for: imageURL)
-                    try? FileManager.default.trashItem(
-                        at: imageURL, resultingItemURL: nil
-                    )
-                    self.store?.loadFileTree()
                     self.applyFormatting()
+                    self.store?.dailyNoteManager.saveAll()
+                    let refs = self.store?.notesReferencing(
+                        mediaFilename: imageURL.lastPathComponent
+                    ) ?? []
+                    if refs.isEmpty {
+                        try? FileManager.default.trashItem(
+                            at: imageURL, resultingItemURL: nil
+                        )
+                    }
+                    self.store?.loadFileTree()
                 case .open:
                     NotificationCenter.default.post(
                         name: .showImageDetail,
