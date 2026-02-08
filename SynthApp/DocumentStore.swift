@@ -303,6 +303,16 @@ final class DocumentStore {
         fileTreeLoadTask?.cancel()
         fileWatcher?.cancel()
         fileWatcher = nil
+        mcpServer.stop()
+    }
+
+    func shutdownForTermination() {
+        saveAll()
+        chatStates.values.forEach { chatState in
+            chatState.stop()
+        }
+        stopWatching()
+        mcpServer.stop()
     }
 
     private func startWatching() {
@@ -613,6 +623,26 @@ final class DocumentStore {
         return openFiles[currentIndex].url
     }
 
+    @discardableResult
+    func reloadOpenDocumentFromDisk(_ fileURL: URL) -> Bool {
+        let resolvedURL = Self.canonicalFileURL(fileURL)
+        guard let fileIndex = openFiles.firstIndex(
+            where: { Self.canonicalFileURL($0.url) == resolvedURL }
+        ) else { return false }
+        guard let reloadedDocument = Document.load(from: openFiles[fileIndex].url) else { return false }
+
+        openFiles[fileIndex].content = reloadedDocument.content
+        openFiles[fileIndex].isDirty = false
+
+        let reloadedContent = reloadedDocument.content.string
+        let reloadedURL = openFiles[fileIndex].url
+        noteIndex.updateFile(reloadedURL, content: reloadedContent)
+        backlinkIndex.updateFile(reloadedURL, content: reloadedContent)
+        tagIndex.updateFile(reloadedURL, content: reloadedContent)
+        peopleIndex.updateFile(reloadedURL, content: reloadedContent)
+        return true
+    }
+
     func savePastedImageToMedia(_ image: NSImage, noteURL: URL) -> String? {
         guard let workspace else { return nil }
         guard let savedMedia = try? MediaManager.saveScreenshotImage(
@@ -700,6 +730,10 @@ final class DocumentStore {
             .appendingPathComponent("\(safeName).\(ext)")
         guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
         return newURL
+    }
+
+    private static func canonicalFileURL(_ fileURL: URL) -> URL {
+        fileURL.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     func closeCurrentTab() {

@@ -15,12 +15,28 @@ struct DocumentChatTray: View {
 
     private let minHeight: CGFloat = 180
     private let maxHeight: CGFloat = 720
+    private static let preferredAgentIdentifier = "synth-writer"
     private let quickPrompts = [
-        "Summarize this file into action items",
-        "Propose a cleaner structure",
-        "Find unclear or risky sections",
-        "Draft a commit message for recent edits"
+        "Summarize this document into key points",
+        "Rewrite this section for clarity and flow",
+        "Improve headings and overall structure",
+        "Find gaps, ambiguities, or inconsistencies"
     ]
+
+    static func preferredAgentName(from agents: [AgentInfo]) -> String? {
+        if agents.contains(where: { $0.name == preferredAgentIdentifier }) {
+            return preferredAgentIdentifier
+        }
+        return agents.first(where: { $0.name.localizedCaseInsensitiveContains("writer") })?.name
+    }
+
+    static func shouldShowChatHints(
+        messageCount: Int,
+        currentResponse: String,
+        isLoading: Bool
+    ) -> Bool {
+        messageCount == 0 && currentResponse.isEmpty && !isLoading
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,8 +58,25 @@ struct DocumentChatTray: View {
         )
         .shadow(color: .black.opacity(0.22), radius: 16, y: -3)
         .onAppear {
-            isInputFocused = true
+            refocusInputIfNeeded()
+            if selectedAgent == nil {
+                selectedAgent = Self.preferredAgentName(from: store.customAgents)
+            }
             wireFileCallbacks()
+        }
+        .onChange(of: store.customAgents.map(\.name)) {
+            if selectedAgent == nil {
+                selectedAgent = Self.preferredAgentName(from: store.customAgents)
+            }
+        }
+        .onChange(of: chatState.messages.count) {
+            refocusInputIfNeeded()
+        }
+        .onChange(of: chatState.currentResponse) {
+            refocusInputIfNeeded()
+        }
+        .onChange(of: chatState.isLoading) {
+            refocusInputIfNeeded()
         }
     }
 
@@ -174,7 +207,11 @@ struct DocumentChatTray: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    if chatState.messages.isEmpty && chatState.currentResponse.isEmpty && !chatState.isLoading {
+                    if Self.shouldShowChatHints(
+                        messageCount: chatState.messages.count,
+                        currentResponse: chatState.currentResponse,
+                        isLoading: chatState.isLoading
+                    ) {
                         emptyStateView
                     }
 
@@ -189,7 +226,8 @@ struct DocumentChatTray: View {
                             chatState.toolCalls.allSatisfy { $0.status == "completed" }
                         StreamingBubble(
                             text: chatState.currentResponse,
-                            isLoading: showSpinner
+                            isLoading: showSpinner,
+                            latestToolCall: chatState.toolCalls.last
                         )
                         .id("streaming")
                     }
@@ -251,26 +289,34 @@ struct DocumentChatTray: View {
     // MARK: - Quick Prompts
 
     private var quickPromptBar: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(quickPrompts, id: \.self) { prompt in
-                    Button(prompt) {
-                        input = prompt
-                        sendMessage()
+        Group {
+            if Self.shouldShowChatHints(
+                messageCount: chatState.messages.count,
+                currentResponse: chatState.currentResponse,
+                isLoading: chatState.isLoading
+            ) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(quickPrompts, id: \.self) { prompt in
+                            Button(prompt) {
+                                input = prompt
+                                sendMessage()
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 10.5))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.primary.opacity(0.06))
+                            .clipShape(Capsule())
+                            .disabled(chatState.isLoading)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10.5))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(Capsule())
-                    .disabled(chatState.isLoading)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 6)
                 }
+                .scrollIndicators(.hidden)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 6)
         }
-        .scrollIndicators(.hidden)
     }
 
     // MARK: - Permission Bar
@@ -404,6 +450,17 @@ struct DocumentChatTray: View {
     // MARK: - Actions
 
     private func wireFileCallbacks() {
+        chatState.onEditToolCompleted = { [weak store] locationPaths in
+            guard let store else { return }
+            let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
+            for locationPath in locationPaths {
+                guard let requestedURL = Self.scopedWorkspaceURL(path: locationPath, root: rootURL) else {
+                    continue
+                }
+                _ = store.reloadOpenDocumentFromDisk(requestedURL)
+            }
+        }
+
         chatState.acpClient?.onFileRead = { [weak store] path in
             guard let store else { return nil }
             let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
@@ -469,6 +526,7 @@ struct DocumentChatTray: View {
         chatState.currentResponse = ""
         chatState.isLoading = true
         chatState.toolCalls.removeAll()
+        refocusInputIfNeeded()
 
         let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
         chatState.startIfNeeded(
@@ -485,6 +543,12 @@ struct DocumentChatTray: View {
         }
 
         chatState.acpClient?.sendPrompt(buildContentBlocks(prompt: prompt))
+    }
+
+    private func refocusInputIfNeeded() {
+        DispatchQueue.main.async {
+            self.isInputFocused = true
+        }
     }
 
     private func waitAndSend(prompt: String, retries: Int) {

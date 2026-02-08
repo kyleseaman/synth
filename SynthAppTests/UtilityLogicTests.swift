@@ -205,6 +205,215 @@ final class UtilityLogicTests: XCTestCase {
 
         XCTAssertEqual(KiroCliResolver.resolve(), executableURL.path)
     }
+
+    func testSynthMcpResolverDevelopmentBuildCandidatePathsIncludeSourceRoot() {
+        let bundleURL = URL(fileURLWithPath: "/tmp/DerivedData/Build/Products/Debug/Synth.app")
+        let sourceFilePath = "/tmp/workspace/synth/SynthApp/SynthMcpResolver.swift"
+        let currentDirectoryPath = "/tmp/other/location"
+
+        let candidatePaths = SynthMcpResolver.developmentBuildCandidatePaths(
+            bundleURL: bundleURL,
+            sourceFilePath: sourceFilePath,
+            currentDirectoryPath: currentDirectoryPath
+        )
+
+        XCTAssertTrue(
+            candidatePaths.contains("/tmp/workspace/synth/synth-mcp-server/.build/release/synth-mcp-server")
+        )
+        XCTAssertTrue(
+            candidatePaths.contains("/tmp/workspace/synth/synth-mcp-server/.build/debug/synth-mcp-server")
+        )
+    }
+
+    func testSynthMcpResolverFirstExecutablePathReturnsFirstMatch() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let firstCandidateURL = rootDirectory.appendingPathComponent("first")
+        let secondCandidateURL = rootDirectory.appendingPathComponent("second")
+
+        try "#!/bin/sh\nexit 0\n".write(to: secondCandidateURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: secondCandidateURL.path
+        )
+
+        let foundPath = SynthMcpResolver.firstExecutablePath(
+            in: [firstCandidateURL.path, secondCandidateURL.path]
+        )
+
+        XCTAssertEqual(foundPath, secondCandidateURL.path)
+    }
+
+    func testACPClientLocationPathsParsesUniqueFilePaths() {
+        let update: [String: AnyCodable] = [
+            "locations": AnyCodable([
+                AnyCodable([
+                    "path": AnyCodable("/tmp/one.md"),
+                    "line": AnyCodable(3)
+                ]),
+                AnyCodable([
+                    "path": AnyCodable("/tmp/two.md"),
+                    "line": AnyCodable(8)
+                ]),
+                AnyCodable([
+                    "path": AnyCodable("/tmp/one.md"),
+                    "line": AnyCodable(12)
+                ]),
+                AnyCodable([
+                    "line": AnyCodable(20)
+                ])
+            ])
+        ]
+
+        let paths = ACPClient.locationPaths(from: update)
+
+        XCTAssertEqual(paths, ["/tmp/one.md", "/tmp/two.md"])
+    }
+
+    @MainActor
+    func testDocumentChatTrayQuickPromptsFocusOnDocumentEditing() {
+        let chatState = DocumentChatState()
+        let tray = DocumentChatTray(
+            chatState: chatState,
+            documentURL: URL(fileURLWithPath: "/tmp/notes.md"),
+            documentContent: "Draft content",
+            selectedText: nil,
+            selectedLineRange: nil
+        )
+
+        let reflectedTray = Mirror(reflecting: tray)
+        guard let quickPrompts = reflectedTray.children.first(where: { $0.label == "quickPrompts" })?.value
+            as? [String] else {
+            XCTFail("Failed to inspect quick prompts from DocumentChatTray")
+            return
+        }
+
+        XCTAssertEqual(quickPrompts, [
+            "Summarize this document into key points",
+            "Rewrite this section for clarity and flow",
+            "Improve headings and overall structure",
+            "Find gaps, ambiguities, or inconsistencies"
+        ])
+    }
+
+    func testDocumentChatTrayPreferredAgentNameSelectsWriter() {
+        let agents = [
+            AgentInfo(name: "synth-editor", description: nil),
+            AgentInfo(name: "synth-writer", description: nil),
+            AgentInfo(name: "synth-researcher", description: nil)
+        ]
+
+        XCTAssertEqual(DocumentChatTray.preferredAgentName(from: agents), "synth-writer")
+    }
+
+    func testDocumentChatTrayPreferredAgentNameReturnsNilWithoutWriter() {
+        let agents = [
+            AgentInfo(name: "synth-editor", description: nil),
+            AgentInfo(name: "synth-researcher", description: nil)
+        ]
+
+        XCTAssertNil(DocumentChatTray.preferredAgentName(from: agents))
+    }
+
+    func testThinkingAnimationPhaseIndexAdvancesWithTime() {
+        let baseTime = Date(timeIntervalSinceReferenceDate: 0)
+        let phaseDuration = ThinkingAnimation.phaseDuration
+
+        XCTAssertEqual(ThinkingAnimation.phaseIndex(at: baseTime), 0)
+        XCTAssertEqual(
+            ThinkingAnimation.phaseIndex(at: baseTime.addingTimeInterval(phaseDuration)),
+            1
+        )
+        XCTAssertEqual(
+            ThinkingAnimation.phaseIndex(at: baseTime.addingTimeInterval(phaseDuration * 5)),
+            5
+        )
+        XCTAssertEqual(
+            ThinkingAnimation.phaseIndex(at: baseTime.addingTimeInterval(phaseDuration * 6)),
+            0
+        )
+    }
+
+    func testThinkingAnimationActiveDotIndexCycles() {
+        XCTAssertEqual(ThinkingAnimation.activeDotIndex(for: 0), 0)
+        XCTAssertEqual(ThinkingAnimation.activeDotIndex(for: 1), 1)
+        XCTAssertEqual(ThinkingAnimation.activeDotIndex(for: 2), 2)
+        XCTAssertEqual(ThinkingAnimation.activeDotIndex(for: 3), 0)
+    }
+
+    func testThinkingAnimationStatusTextCycles() {
+        XCTAssertEqual(ThinkingAnimation.statusText(for: 0), "Thinking")
+        XCTAssertEqual(ThinkingAnimation.statusText(for: 1), "Reviewing")
+        XCTAssertEqual(ThinkingAnimation.statusText(for: 2), "Reasoning")
+        XCTAssertEqual(ThinkingAnimation.statusText(for: 5), "Reasoning")
+    }
+
+    func testThinkingAnimationStatusTextUsesToolCallTitleWhenAvailable() {
+        let editCall = ACPToolCall(
+            id: "tool-1",
+            title: "Editing TESTING NOTE.md",
+            kind: "edit",
+            status: "in_progress"
+        )
+
+        XCTAssertEqual(
+            ThinkingAnimation.statusText(for: 0, latestToolCall: editCall),
+            "Editing"
+        )
+    }
+
+    @MainActor
+    func testDocumentChatTrayHintsOnlyShownBeforeConversationStarts() {
+        XCTAssertTrue(
+            DocumentChatTray.shouldShowChatHints(
+                messageCount: 0,
+                currentResponse: "",
+                isLoading: false
+            )
+        )
+        XCTAssertFalse(
+            DocumentChatTray.shouldShowChatHints(
+                messageCount: 1,
+                currentResponse: "",
+                isLoading: false
+            )
+        )
+        XCTAssertFalse(
+            DocumentChatTray.shouldShowChatHints(
+                messageCount: 0,
+                currentResponse: "partial",
+                isLoading: true
+            )
+        )
+    }
+
+    func testShortcutHintRulesUsesOneSecondDelay() {
+        XCTAssertEqual(ShortcutHintRules.revealDelaySeconds, 1.0)
+    }
+
+    func testShortcutHintRulesRevealStateAfterDelay() {
+        let hoverStartDate = Date(timeIntervalSinceReferenceDate: 0)
+        let beforeDelayDate = Date(timeIntervalSinceReferenceDate: 0.9)
+        let afterDelayDate = Date(timeIntervalSinceReferenceDate: 1.0)
+
+        XCTAssertFalse(
+            ShortcutHintRules.shouldRevealHint(
+                hoverStartDate: hoverStartDate,
+                currentDate: beforeDelayDate
+            )
+        )
+        XCTAssertTrue(
+            ShortcutHintRules.shouldRevealHint(
+                hoverStartDate: hoverStartDate,
+                currentDate: afterDelayDate
+            )
+        )
+    }
 }
 
 final class NoteIndexTests: XCTestCase {
@@ -392,6 +601,8 @@ final class MCPServerManagerTests: XCTestCase {
         defer { setenv("PATH", originalPathEnv, 1) }
 
         let manager = MCPServerManager()
+        manager.enableHTTPBridge = true
+        manager.healthProbe = { _ in true }
         manager.httpPort = 9823
         manager.start(workspace: workspaceURL)
         defer { manager.stop() }
@@ -409,18 +620,23 @@ final class MCPServerManagerTests: XCTestCase {
         let servers = configJSON?["mcpServers"] as? [String: Any]
         let synthServer = servers?["synth-mcp"] as? [String: Any]
         let synthArgs = synthServer?["args"] as? [String]
+        let configuredCommand = synthServer?["command"] as? String
 
-        XCTAssertEqual(synthServer?["command"] as? String, executableURL.path)
+        XCTAssertNotNil(configuredCommand)
+        XCTAssertTrue(configuredCommand?.hasSuffix("/synth-mcp-server") == true)
         XCTAssertEqual(synthArgs ?? [], ["--workspace", workspaceURL.path, "--stdio"])
         XCTAssertEqual(synthServer?["disabled"] as? Bool, false)
 
         let runtimeConfig = manager.mcpServerConfig(workspace: workspaceURL.path)
         let runtimeEntry = runtimeConfig?.first
         let runtimeArgs = runtimeEntry?["args"]?.arrayValue?.compactMap { $0.stringValue }
+        let runtimeCommand = runtimeEntry?["command"]?.stringValue
+        let runtimeEnvironment = runtimeEntry?["env"]?.arrayValue ?? []
         XCTAssertEqual(runtimeEntry?["name"]?.stringValue, "synth-mcp")
-        XCTAssertEqual(runtimeEntry?["command"]?.stringValue, executableURL.path)
+        XCTAssertEqual(runtimeCommand, configuredCommand)
         XCTAssertEqual(runtimeArgs ?? [], ["--workspace", workspaceURL.path, "--stdio"])
-        XCTAssertEqual(runtimeEntry?["transport"]?.stringValue, "stdio")
+        XCTAssertEqual(runtimeEnvironment.count, 0)
+        XCTAssertNil(runtimeEntry?["transport"])
 
         manager.stop()
         XCTAssertFalse(manager.isRunning)
@@ -469,6 +685,7 @@ final class MCPServerManagerTests: XCTestCase {
         defer { setenv("PATH", originalPathEnv, 1) }
 
         let manager = MCPServerManager()
+        manager.enableHTTPBridge = false
         manager.start(workspace: workspaceURL)
         defer { manager.stop() }
 
@@ -478,5 +695,91 @@ final class MCPServerManagerTests: XCTestCase {
 
         XCTAssertNotNil(mergedServers?["custom-server"])
         XCTAssertNotNil(mergedServers?["synth-mcp"])
+    }
+
+    func testStartWithHttpBridgeDisabledWritesConfigWithoutLaunchingProcess() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let binaryDirectory = rootDirectory.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binaryDirectory, withIntermediateDirectories: true)
+        let executableURL = binaryDirectory.appendingPathComponent("synth-mcp-server")
+        try "#!/bin/sh\nsleep 10\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executableURL.path
+        )
+
+        let originalPathEnv = getenv("PATH").map { String(cString: $0) } ?? ""
+        setenv("PATH", "\(binaryDirectory.path):\(originalPathEnv)", 1)
+        defer { setenv("PATH", originalPathEnv, 1) }
+
+        let manager = MCPServerManager()
+        manager.enableHTTPBridge = false
+        manager.start(workspace: workspaceURL)
+        defer { manager.stop() }
+
+        let configURL = workspaceURL
+            .appendingPathComponent(".kiro")
+            .appendingPathComponent("settings")
+            .appendingPathComponent("mcp.json")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: configURL.path))
+        XCTAssertFalse(manager.isRunning)
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: manager.runtimeLeaseURL(workspace: workspaceURL).path
+            )
+        )
+    }
+
+    func testRuntimeLeaseRoundTripAndRemoval() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let manager = MCPServerManager()
+        manager.writeRuntimeLease(
+            workspace: workspaceURL,
+            pid: 123,
+            port: 9731,
+            commandPath: "/tmp/synth-mcp-server"
+        )
+
+        let lease = manager.readRuntimeLease(workspace: workspaceURL)
+        XCTAssertEqual(lease?.pid, 123)
+        XCTAssertEqual(lease?.port, 9731)
+        XCTAssertEqual(lease?.workspacePath, workspaceURL.path)
+        XCTAssertEqual(lease?.commandPath, "/tmp/synth-mcp-server")
+
+        manager.removeRuntimeLease(workspace: workspaceURL)
+        XCTAssertNil(manager.readRuntimeLease(workspace: workspaceURL))
+    }
+
+    func testSelectAvailablePortFallsBackFromPreferredPort() {
+        let manager = MCPServerManager()
+        manager.portAvailabilityProbe = { portValue in
+            portValue == 9724
+        }
+
+        let selectedPort = manager.selectAvailablePort(
+            preferredPort: 9722,
+            searchWindow: 3
+        )
+
+        XCTAssertEqual(selectedPort, 9724)
     }
 }

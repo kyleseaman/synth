@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(DocumentStore.self) var store
     @Environment(TemplateStore.self) var templateStore
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
+    @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
     @State private var detectedPath = ""
     @State private var showKiroPicker = false
     @State private var selectedTemplateIdentifier: UUID?
@@ -59,6 +60,14 @@ struct SettingsView: View {
                     Button("Browse...") { showKiroPicker = true }
                         .controlSize(.small)
                 }
+
+                Toggle("Enable HTTP MCP bridge", isOn: $mcpHttpBridgeEnabled)
+                Text(
+                    "Keeps a background synth-mcp-server for localhost clients. "
+                    + "Kiro chat uses stdio MCP per session."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
         .padding()
@@ -101,6 +110,30 @@ struct SettingsView: View {
                         Label(file, systemImage: "doc.text")
                     }
                 }
+            }
+
+            Section {
+                if store.customAgents.isEmpty {
+                    Text("No custom agents found")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(store.customAgents, id: \.name) { agent in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(agent.name)
+                            if let desc = agent.description {
+                                Text(desc)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("Custom Agents")
+            } footer: {
+                Text("Workspace AI context is stored in .kiro/, hidden from the sidebar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             if store.needsKiroSetup && store.workspace != nil {

@@ -30,6 +30,7 @@ struct UndoSnapshot: Equatable {
 
     @ObservationIgnored private(set) var acpClient: ACPClient?
     @ObservationIgnored private(set) var isStarted = false
+    @ObservationIgnored var onEditToolCompleted: (([String]) -> Void)?
 
     func startIfNeeded(
         cwd: String,
@@ -65,6 +66,10 @@ struct UndoSnapshot: Equatable {
             if let idx = self?.toolCalls.firstIndex(where: { $0.id == callId }) {
                 self?.toolCalls[idx].status = status
             }
+        }
+
+        client.onEditToolCompleted = { [weak self] _, locationPaths in
+            self?.onEditToolCompleted?(locationPaths)
         }
 
         client.onPermissionRequest = { [weak self] request in

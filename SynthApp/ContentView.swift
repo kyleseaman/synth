@@ -17,6 +17,74 @@ struct EditorSelectionContext {
     let selectedLineRange: String
 }
 
+enum ShortcutHintRules {
+    static let revealDelaySeconds: TimeInterval = 1.0
+
+    static func shouldRevealHint(hoverStartDate: Date, currentDate: Date) -> Bool {
+        currentDate.timeIntervalSince(hoverStartDate) >= revealDelaySeconds
+    }
+}
+
+private struct DelayedShortcutHintModifier: ViewModifier {
+    let shortcutText: String
+    @State private var isPointerHovering = false
+    @State private var hoverStartDate: Date?
+    @State private var shouldShowHint = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if shouldShowHint {
+                    Text(shortcutText)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial, in: Capsule())
+                        .offset(y: 24)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .allowsHitTesting(false)
+                }
+            }
+            .onHover { hovering in
+                isPointerHovering = hovering
+                if hovering {
+                    let hoverDate = Date()
+                    hoverStartDate = hoverDate
+                    shouldShowHint = false
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + ShortcutHintRules.revealDelaySeconds
+                    ) {
+                        guard isPointerHovering,
+                              hoverStartDate == hoverDate,
+                              ShortcutHintRules.shouldRevealHint(
+                                  hoverStartDate: hoverDate,
+                                  currentDate: Date()
+                              ) else { return }
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            shouldShowHint = true
+                        }
+                    }
+                } else {
+                    hoverStartDate = nil
+                    withAnimation(.easeOut(duration: 0.08)) {
+                        shouldShowHint = false
+                    }
+                }
+            }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func keyboardShortcutHint(_ shortcutText: String?) -> some View {
+        if let shortcutText {
+            modifier(DelayedShortcutHintModifier(shortcutText: shortcutText))
+        } else {
+            self
+        }
+    }
+}
+
 struct ContentView: View {
     @Environment(DocumentStore.self) var store
     @State private var dismissedSetup = false
@@ -29,7 +97,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "folder")
             }
-            .help("Open Workspace (⌘O)")
+            .keyboardShortcutHint("⌘O")
         }
     }
 
@@ -62,6 +130,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         Button("Open Workspace...") { store.pickWorkspace() }
                             .keyboardShortcut("o")
+                            .keyboardShortcutHint("⌘O")
                     }
                     .frame(maxHeight: .infinity)
                 } else {
@@ -221,6 +290,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive())
+                    .keyboardShortcutHint("⌘J")
                     .padding(12)
                 }
             }
@@ -517,6 +587,10 @@ struct EditorViewSimple: View {
         return store.openFiles[store.currentIndex].url
     }
 
+    private func showSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             // Editor
@@ -562,21 +636,37 @@ struct EditorViewSimple: View {
                 .background(Color(.textBackgroundColor).opacity(0.5))
             }
         }
-        .overlay(alignment: .topTrailing) {
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    store.toggleBacklinks()
+        .overlay(alignment: .top) {
+            HStack(spacing: 8) {
+                Button(action: showSettingsWindow) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .padding(7)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                 }
-            } label: {
-                Image(systemName: "link")
-                    .font(.system(size: 12))
-                    .foregroundStyle(store.showBacklinks ? .primary : .tertiary)
-                    .padding(6)
+                .buttonStyle(.plain)
+                .keyboardShortcut(",", modifiers: .command)
+                .keyboardShortcutHint("⌘,")
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        store.toggleBacklinks()
+                    }
+                } label: {
+                    Image(systemName: "link")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(store.showBacklinks ? .primary : .tertiary)
+                        .padding(7)
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcutHint("⌘⇧B")
             }
-            .buttonStyle(.plain)
-            .help("Toggle Backlinks (⌘⇧B)")
             .padding(.top, 4)
-            .padding(.trailing, 4)
+            .padding(.horizontal, 4)
         }
         .onChange(of: selectedText) { _, _ in
             publishSelectionContext()

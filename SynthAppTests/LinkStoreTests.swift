@@ -429,7 +429,7 @@ final class ACPProtocolAdapterTests: XCTestCase {
         XCTAssertNil(ACPProtocolAdapter.parseUpdateKind("unknown_update"))
     }
 
-    func testPromptRequestUsesContentField() {
+    func testPromptRequestUsesPromptField() {
         let contentBlocks: [[String: AnyCodable]] = [[
             "type": AnyCodable("text"),
             "text": AnyCodable("Explain this file")
@@ -438,7 +438,7 @@ final class ACPProtocolAdapterTests: XCTestCase {
         let params = ACPProtocolAdapter.promptParams(sessionId: "sess_test", contentBlocks: contentBlocks)
 
         XCTAssertEqual(params["sessionId"]?.stringValue, "sess_test")
-        XCTAssertNotNil(params["content"]?.arrayValue)
-        XCTAssertNil(params["prompt"])
+        XCTAssertNotNil(params["prompt"]?.arrayValue)
+        XCTAssertNil(params["content"])
     }
 }

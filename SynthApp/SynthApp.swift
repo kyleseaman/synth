@@ -9,6 +9,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         store?.saveAll()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        store?.shutdownForTermination()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         hotkeyMonitor = GlobalHotkeyMonitor(key: "l", modifiers: [.command, .shift]) {
             DispatchQueue.main.async {

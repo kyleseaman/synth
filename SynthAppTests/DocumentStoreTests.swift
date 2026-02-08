@@ -260,4 +260,100 @@ final class DocumentStoreTests: XCTestCase {
 
         XCTAssertEqual(returnedPaths, expectedPaths)
     }
+
+    func testFileTreeScanHidesKiroDirectoryFromSidebarTree() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let kiroDirectory = workspaceURL.appendingPathComponent(".kiro", isDirectory: true)
+        let steeringDirectory = kiroDirectory.appendingPathComponent("steering", isDirectory: true)
+        try FileManager.default.createDirectory(at: steeringDirectory, withIntermediateDirectories: true)
+        let steeringFile = steeringDirectory.appendingPathComponent("product.md")
+        try "# Product".write(to: steeringFile, atomically: true, encoding: .utf8)
+
+        let noteURL = workspaceURL.appendingPathComponent("notes.md")
+        try "# Notes".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let scannedNodes = FileTreeNode.scan(workspaceURL)
+        let scannedNames = Set(scannedNodes.map(\.name))
+
+        XCTAssertFalse(scannedNames.contains(".kiro"))
+        XCTAssertTrue(scannedNames.contains("notes.md"))
+    }
+
+    @MainActor
+    func testLoadKiroConfigSurfacesSteeringFilesAndCustomAgents() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let steeringDirectory = workspaceURL
+            .appendingPathComponent(".kiro", isDirectory: true)
+            .appendingPathComponent("steering", isDirectory: true)
+        let agentsDirectory = workspaceURL
+            .appendingPathComponent(".kiro", isDirectory: true)
+            .appendingPathComponent("agents", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: steeringDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: agentsDirectory, withIntermediateDirectories: true)
+
+        let steeringFile = steeringDirectory.appendingPathComponent("voice.md")
+        try "# Voice".write(to: steeringFile, atomically: true, encoding: .utf8)
+
+        let agentFile = agentsDirectory.appendingPathComponent("doc-editor.json")
+        let agentJSON: [String: Any] = [
+            "name": "doc-editor",
+            "description": "Edits and improves document prose"
+        ]
+        let agentData = try JSONSerialization.data(withJSONObject: agentJSON)
+        try agentData.write(to: agentFile)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.loadKiroConfig()
+
+        XCTAssertEqual(store.steeringFiles, ["voice.md"])
+        XCTAssertEqual(store.customAgents.map(\.name), ["doc-editor"])
+        XCTAssertEqual(store.customAgents.first?.description, "Edits and improves document prose")
+    }
+
+    @MainActor
+    func testReloadOpenDocumentFromDiskRefreshesContentAndClearsDirtyFlag() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let noteURL = workspaceURL.appendingPathComponent("note.md")
+        try "Original text".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.open(noteURL)
+
+        guard let openIndex = store.currentIndex >= 0 ? Optional(store.currentIndex) : nil else {
+            XCTFail("Missing open document index")
+            return
+        }
+
+        store.openFiles[openIndex].content = NSAttributedString(string: "Unsaved local change")
+        store.openFiles[openIndex].isDirty = true
+
+        try "Edited by agent".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let didReload = store.reloadOpenDocumentFromDisk(noteURL)
+
+        XCTAssertTrue(didReload)
+        XCTAssertEqual(store.openFiles[openIndex].content.string, "Edited by agent")
+        XCTAssertFalse(store.openFiles[openIndex].isDirty)
+    }
 }

@@ -3,6 +3,7 @@ import Network
 
 enum HTTPTransportError: Error {
     case invalidPort(UInt16)
+    case startupTimeout(UInt16)
 }
 
 class HTTPTransport {
@@ -23,13 +24,33 @@ class HTTPTransport {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw HTTPTransportError.invalidPort(port)
         }
-        listener = try NWListener(using: params, on: nwPort)
+        let createdListener = try NWListener(using: params, on: nwPort)
+        listener = createdListener
+
+        let startupSemaphore = DispatchSemaphore(value: 0)
+        let startupLock = NSLock()
+        var startupSignaled = false
+        var startupError: Error?
+
         listener?.stateUpdateHandler = { state in
             switch state {
             case .ready:
                 log("HTTP transport listening on localhost:\(self.port)")
+                startupLock.lock()
+                if !startupSignaled {
+                    startupSignaled = true
+                    startupSemaphore.signal()
+                }
+                startupLock.unlock()
             case .failed(let error):
                 log("HTTP listener failed: \(error)")
+                startupLock.lock()
+                startupError = error
+                if !startupSignaled {
+                    startupSignaled = true
+                    startupSemaphore.signal()
+                }
+                startupLock.unlock()
             default:
                 break
             }
@@ -38,6 +59,16 @@ class HTTPTransport {
             self?.handleConnection(connection)
         }
         listener?.start(queue: .global(qos: .userInitiated))
+
+        if startupSemaphore.wait(timeout: .now() + 2) == .timedOut {
+            listener?.cancel()
+            throw HTTPTransportError.startupTimeout(port)
+        }
+
+        if let startupError {
+            listener?.cancel()
+            throw startupError
+        }
     }
 
     func stop() {
