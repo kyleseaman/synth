@@ -5,8 +5,8 @@ import SwiftUI
 struct RelatedNotesSection: View {
     let noteTitle: String
     let noteURL: URL?
-    @ObservedObject var backlinkIndex: BacklinkIndex
-    @ObservedObject var tagIndex: TagIndex
+    var backlinkIndex: BacklinkIndex
+    var tagIndex: TagIndex
     let onNavigate: (URL) -> Void
     @AppStorage("relatedNotesExpanded") private var isExpanded = false
 

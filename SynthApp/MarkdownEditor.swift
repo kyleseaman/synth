@@ -20,34 +20,56 @@ struct MarkdownFormat: DocumentFormat {
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let bodyFont = NSFont.systemFont(ofSize: 16)
-        let defaultAttrs: [NSAttributedString.Key: Any] = [.font: bodyFont, .foregroundColor: NSColor.textColor]
+        let bodyParagraph = NSMutableParagraphStyle()
+        bodyParagraph.lineHeightMultiple = 1.25
+        let defaultAttrs: [NSAttributedString.Key: Any] = [
+            .font: bodyFont, .foregroundColor: NSColor.textColor,
+            .paragraphStyle: bodyParagraph
+        ]
 
         let lines = text.components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
             var attrs = defaultAttrs
-            var content = line
 
+            // Style headings — hide # prefix visually
+            var headingPrefixLen = 0
             if line.hasPrefix("# ") {
-                content = String(line.dropFirst(2))
                 attrs[.font] = NSFont.systemFont(ofSize: 28, weight: .bold)
+                headingPrefixLen = 2
             } else if line.hasPrefix("## ") {
-                content = String(line.dropFirst(3))
                 attrs[.font] = NSFont.systemFont(ofSize: 22, weight: .bold)
+                headingPrefixLen = 3
             } else if line.hasPrefix("### ") {
-                content = String(line.dropFirst(4))
                 attrs[.font] = NSFont.systemFont(ofSize: 18, weight: .semibold)
-            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
-                content = "• " + String(line.dropFirst(2))
-            } else if line.hasPrefix("\t- ") || line.hasPrefix("\t* ") {
-                content = "\t• " + String(line.dropFirst(3))
-            } else if line.hasPrefix("\t\t- ") || line.hasPrefix("\t\t* ") {
-                content = "\t\t• " + String(line.dropFirst(4))
+                headingPrefixLen = 4
             }
 
-            let lineStr = NSMutableAttributedString(string: content, attributes: attrs)
+            // Enforce minimum line height so hidden prefix doesn't
+            // collapse the line fragment (e.g. "# " with no content)
+            if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
+                let para = NSMutableParagraphStyle()
+                para.lineHeightMultiple = 1.25
+                para.minimumLineHeight = ceil(
+                    headingFont.ascender - headingFont.descender
+                        + headingFont.leading
+                )
+                attrs[.paragraphStyle] = para
+            }
+
+            let lineStr = NSMutableAttributedString(string: line, attributes: attrs)
+            if headingPrefixLen > 0 {
+                let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ]
+                lineStr.addAttributes(
+                    hiddenAttrs,
+                    range: NSRange(location: 0, length: headingPrefixLen)
+                )
+            }
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
             if index < lines.count - 1 {
-                lineStr.append(NSAttributedString(string: "\n", attributes: attrs))
+                lineStr.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
             }
             result.append(lineStr)
         }
@@ -58,6 +80,17 @@ struct MarkdownFormat: DocumentFormat {
         attributed.string
     }
 
+    /// Character used by NSTextView to render inline attachments.
+    static let attachmentCharacter = "\u{FFFC}"
+
+    /// Custom attribute key storing the resolved image file URL.
+    static let imageURLKey = NSAttributedString.Key("synth.imageURL")
+
+    /// Custom attribute storing the original markup text for resize.
+    static let imageMarkupKey = NSAttributedString.Key(
+        "synth.imageMarkup"
+    )
+
     @discardableResult
     static func applyImageRendering(
         in attributedText: NSMutableAttributedString,
@@ -67,45 +100,114 @@ struct MarkdownFormat: DocumentFormat {
         let maxSize = maxRenderedImageSize(for: baseFont)
         var pendingRenders: [PendingImageRender] = []
 
+        // Match ![alt](path) or ![alt](path =WIDTHx)
         // swiftlint:disable:next force_try
-        let imagePattern = try! NSRegularExpression(pattern: "!\\[[^\\]]*\\]\\(([^)]+)\\)")
-        let fullRange = NSRange(location: 0, length: attributedText.string.utf16.count)
+        let imagePattern = try! NSRegularExpression(
+            pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
+        )
+        let fullRange = NSRange(
+            location: 0, length: attributedText.string.utf16.count
+        )
 
-        for imageMatch in imagePattern.matches(in: attributedText.string, range: fullRange).reversed() {
+        for imageMatch in imagePattern.matches(
+            in: attributedText.string, range: fullRange
+        ).reversed() {
             let markupRange = imageMatch.range
             let pathRange = imageMatch.range(at: 1)
             guard pathRange.location != NSNotFound,
-                  let pathSwiftRange = Range(pathRange, in: attributedText.string) else { continue }
+                  let pathSwiftRange = Range(
+                      pathRange, in: attributedText.string
+                  ) else { continue }
 
-            let pathValue = String(attributedText.string[pathSwiftRange])
+            let pathValue = String(
+                attributedText.string[pathSwiftRange]
+            )
             guard let imageURL = MediaManager.resolvedImageURL(
                 from: pathValue,
                 baseDirectoryURL: baseDirectoryURL
             ) else { continue }
 
-            let markupText = (attributedText.string as NSString).substring(with: markupRange)
+            // Parse optional width
+            var requestedWidth: CGFloat?
+            let widthRange = imageMatch.range(at: 2)
+            if widthRange.location != NSNotFound,
+               let widthSwiftRange = Range(
+                   widthRange, in: attributedText.string
+               ),
+               let parsed = Int(
+                   attributedText.string[widthSwiftRange]
+               ) {
+                requestedWidth = CGFloat(parsed)
+            }
+
+            let markupText = (attributedText.string as NSString)
+                .substring(with: markupRange)
             let cachedImage = WorkspaceImageLoader.shared.cachedImage(
                 at: imageURL,
                 maxSize: maxSize
             )
             let attachment = NSTextAttachment()
-            attachment.image = cachedImage
-                ?? NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+            let displayImage = cachedImage
+                ?? NSImage(
+                    systemSymbolName: "photo",
+                    accessibilityDescription: nil
+                )
+            attachment.image = displayImage
 
+            if let width = requestedWidth,
+               let img = displayImage,
+               img.size.width > 0 {
+                let scale = width / img.size.width
+                attachment.bounds = CGRect(
+                    x: 0, y: 0,
+                    width: width,
+                    height: img.size.height * scale
+                )
+            }
+
+            // Hide the markdown syntax after the first character
+            let tailRange = NSRange(
+                location: markupRange.location + 1,
+                length: markupRange.length - 1
+            )
             let hiddenAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 0.01),
                 .foregroundColor: NSColor.clear
             ]
-            attributedText.addAttributes(hiddenAttributes, range: markupRange)
-            let attachmentRange = NSRange(location: markupRange.location, length: 1)
-            attributedText.addAttributes([.attachment: attachment], range: attachmentRange)
+            attributedText.addAttributes(
+                hiddenAttributes, range: tailRange
+            )
+
+            // Replace leading "!" with the object replacement
+            // character so NSTextView renders the attachment
+            let bangRange = NSRange(
+                location: markupRange.location, length: 1
+            )
+            let attachmentStr = NSMutableAttributedString(
+                attributedString: NSAttributedString(
+                    attachment: attachment
+                )
+            )
+            let attrRange = NSRange(location: 0, length: 1)
+            attachmentStr.addAttribute(
+                imageURLKey, value: imageURL, range: attrRange
+            )
+            attachmentStr.addAttribute(
+                imageMarkupKey,
+                value: markupText,
+                range: attrRange
+            )
+            attributedText.replaceCharacters(
+                in: bangRange,
+                with: attachmentStr
+            )
 
             pendingRenders.append(
                 PendingImageRender(
                     imageURL: imageURL,
                     markupRange: markupRange,
                     markupText: markupText,
-                    attachmentRange: attachmentRange
+                    attachmentRange: bangRange
                 )
             )
         }
@@ -113,11 +215,45 @@ struct MarkdownFormat: DocumentFormat {
         return pendingRenders
     }
 
+    /// Restore object replacement characters back to `!` so the
+    /// underlying plain text stays valid markdown.
+    static func restoreImageMarkup(in text: String) -> String {
+        text.replacingOccurrences(of: attachmentCharacter, with: "!")
+    }
+
     static func maxRenderedImageSize(for baseFont: NSFont) -> NSSize {
         NSSize(
             width: 560,
             height: max(baseFont.pointSize * 18, 220)
         )
+    }
+
+    /// Parse `=WIDTHx` from image markup like `![alt](path =300x)`.
+    static func parseImageWidth(from markup: String) -> CGFloat? {
+        guard let range = markup.range(of: #"=(\d+)x\)$"#, options: .regularExpression),
+              let numRange = markup.range(of: #"\d+"#, options: .regularExpression, range: range)
+        else { return nil }
+        return CGFloat(Int(markup[numRange]) ?? 0)
+    }
+
+    /// Return new markup with the width set or updated.
+    static func markupWithWidth(
+        _ markup: String, width: Int
+    ) -> String {
+        // Remove existing =WIDTHx if present
+        var cleaned = markup.replacingOccurrences(
+            of: #"\s+=\d+x\)"#,
+            with: ")",
+            options: .regularExpression
+        )
+        // Insert =WIDTHx before closing paren
+        if let parenIndex = cleaned.lastIndex(of: ")") {
+            cleaned.insert(
+                contentsOf: " =\(width)x",
+                at: parenIndex
+            )
+        }
+        return cleaned
     }
 
     // swiftlint:disable:next function_body_length
@@ -183,44 +319,60 @@ struct MarkdownFormat: DocumentFormat {
             str.addAttributes(hiddenAttrs, range: closeRange)
         }
 
-        // MARK: @Today, @Yesterday, @Tomorrow
+        // MARK: @Date mentions (@2026-02-07) — styled as daily note links
         // swiftlint:disable:next force_try
-        let atPattern = try! NSRegularExpression(
-            pattern: "@(Today|Yesterday|Tomorrow)",
-            options: .caseInsensitive
+        let datePattern = try! NSRegularExpression(
+            pattern: "@(\\d{4}-\\d{2}-\\d{2})"
         )
-        let atRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in atPattern.matches(in: str.string, range: atRange).reversed() {
+        let dateRange = NSRange(
+            location: 0, length: str.string.utf16.count
+        )
+        for match in datePattern.matches(
+            in: str.string, range: dateRange
+        ).reversed() {
             let fullNSRange = match.range
-            let tokenNSRange = match.range(at: 1)
-            guard let tokenSwiftRange = Range(tokenNSRange, in: str.string) else { continue }
-            let token = String(str.string[tokenSwiftRange])
+            let innerNSRange = match.range(at: 1)
+            guard let innerSwiftRange = Range(
+                innerNSRange, in: str.string
+            ) else { continue }
+            let dateStr = String(str.string[innerSwiftRange])
             // swiftlint:disable:next force_unwrapping
-            let linkURL = URL(string: "synth://daily/\(token.lowercased())")!
-            guard let fullSwiftRange = Range(fullNSRange, in: str.string) else { continue }
-            let displayText = String(str.string[fullSwiftRange])
-            let replacement = NSAttributedString(
-                string: displayText,
-                attributes: [
-                    .font: baseFont,
-                    .foregroundColor: NSColor.controlAccentColor,
-                    .link: linkURL
-                ]
+            let linkURL = URL(string: "synth://daily/\(dateStr)")!
+            // Style the date part as a link
+            let linkAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(
+                    ofSize: baseFont.pointSize, weight: .medium
+                ),
+                .foregroundColor: NSColor.controlAccentColor,
+                .link: linkURL,
+                .cursor: NSCursor.pointingHand
+            ]
+            str.addAttributes(linkAttrs, range: innerNSRange)
+
+            // Hide the @ prefix
+            let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 0.01),
+                .foregroundColor: NSColor.clear,
+                .link: linkURL
+            ]
+            str.addAttributes(
+                hiddenAttrs,
+                range: NSRange(
+                    location: fullNSRange.location, length: 1
+                )
             )
-            str.replaceCharacters(in: fullNSRange, with: replacement)
         }
+
+
 
         // MARK: @People mentions
         let personPattern = PeopleIndex.personPattern
         let personRange = NSRange(location: 0, length: str.string.utf16.count)
-        let personDateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
         for match in personPattern.matches(in: str.string, range: personRange).reversed() {
             let fullNSRange = match.range
             let innerNSRange = match.range(at: 1)
             guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
             let personName = String(str.string[innerSwiftRange])
-            // Skip date tokens — they're handled by the @Today block above
-            guard !personDateTokens.contains(personName.lowercased()) else { continue }
             guard personName.count >= 2 else { continue }
             let personLower = personName.lowercased()
             // swiftlint:disable:next force_unwrapping
@@ -266,59 +418,56 @@ struct MarkdownFormat: DocumentFormat {
             str.replaceCharacters(in: fullNSRange, with: replacement)
         }
 
-        // MARK: Bold **text**
-        let text = str.string
+        // MARK: Bold **text** — style inner text, keep markers
         // swiftlint:disable:next force_try
         let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
-        let fullNSRange = NSRange(location: 0, length: text.utf16.count)
-        for match in boldPattern.matches(in: text, range: fullNSRange).reversed() {
-            if let fullRange = Range(match.range, in: text),
-               let innerRange = Range(match.range(at: 1), in: text) {
-                let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: boldFont, .foregroundColor: NSColor.textColor
-                ]
-                let replacement = NSAttributedString(string: String(text[innerRange]), attributes: attrs)
-                str.replaceCharacters(in: NSRange(fullRange, in: text), with: replacement)
-            }
+        let boldRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in boldPattern.matches(in: str.string, range: boldRange) {
+            let innerRange = match.range(at: 1)
+            let boldFont = NSFontManager.shared.convert(
+                baseFont, toHaveTrait: .boldFontMask
+            )
+            str.addAttribute(.font, value: boldFont, range: innerRange)
         }
 
-        // MARK: Italic *text*
+        // MARK: Italic *text* — style inner text, keep markers
         // swiftlint:disable:next force_try
-        let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
-        let strRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in italicPattern.matches(in: str.string, range: strRange).reversed() {
-            if let fullRange = Range(match.range, in: str.string),
-               let innerRange = Range(match.range(at: 1), in: str.string) {
-                let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
-                let attrs: [NSAttributedString.Key: Any] = [
-                    .font: italicFont, .foregroundColor: NSColor.textColor
-                ]
-                let replacement = NSAttributedString(
-                    string: String(str.string[innerRange]),
-                    attributes: attrs
-                )
-                str.replaceCharacters(in: NSRange(fullRange, in: str.string), with: replacement)
-            }
+        let italicPattern = try! NSRegularExpression(
+            pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
+        )
+        let italicRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in italicPattern.matches(in: str.string, range: italicRange) {
+            let innerRange = match.range(at: 1)
+            let italicFont = NSFontManager.shared.convert(
+                baseFont, toHaveTrait: .italicFontMask
+            )
+            str.addAttribute(.font, value: italicFont, range: innerRange)
         }
 
-        // MARK: Inline code `text`
+        // MARK: Underline __text__ — style inner text, keep markers
+        // swiftlint:disable:next force_try
+        let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
+        let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
+        for match in underlinePattern.matches(in: str.string, range: underlineRange) {
+            let innerRange = match.range(at: 1)
+            str.addAttribute(
+                .underlineStyle,
+                value: NSUnderlineStyle.single.rawValue,
+                range: innerRange
+            )
+        }
+
+        // MARK: Inline code `text` — style inner text, keep backticks
         // swiftlint:disable:next force_try
         let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
         let codeRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in codePattern.matches(in: str.string, range: codeRange).reversed() {
-            if let fullRange = Range(match.range, in: str.string),
-               let innerRange = Range(match.range(at: 1), in: str.string) {
-                let replacement = NSAttributedString(
-                    string: String(str.string[innerRange]),
-                    attributes: [
-                        .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
-                        .foregroundColor: NSColor.systemPink,
-                        .backgroundColor: NSColor.quaternaryLabelColor
-                    ]
-                )
-                str.replaceCharacters(in: NSRange(fullRange, in: str.string), with: replacement)
-            }
+        for match in codePattern.matches(in: str.string, range: codeRange) {
+            let innerRange = match.range(at: 1)
+            str.addAttributes([
+                .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
+                .foregroundColor: NSColor.systemPink,
+                .backgroundColor: NSColor.quaternaryLabelColor
+            ], range: innerRange)
         }
     }
 }
@@ -337,6 +486,121 @@ struct RichTextFormat: DocumentFormat {
     }
 }
 
+// MARK: - Resize Grip View
+
+class ResizeGripView: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 3
+        layer?.backgroundColor = NSColor.windowBackgroundColor
+            .withAlphaComponent(0.8).cgColor
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let context = NSGraphicsContext.current?.cgContext
+        else { return }
+        let inset: CGFloat = 4
+        let lineWidth: CGFloat = 1.5
+        context.setStrokeColor(
+            NSColor.secondaryLabelColor.cgColor
+        )
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        // Draw two diagonal lines (bottom-right grip)
+        // Line 1: shorter
+        context.move(to: CGPoint(
+            x: bounds.maxX - inset,
+            y: bounds.maxY - inset - 4
+        ))
+        context.addLine(to: CGPoint(
+            x: bounds.maxX - inset - 4,
+            y: bounds.maxY - inset
+        ))
+        // Line 2: longer
+        context.move(to: CGPoint(
+            x: bounds.maxX - inset,
+            y: bounds.maxY - inset - 8
+        ))
+        context.addLine(to: CGPoint(
+            x: bounds.maxX - inset - 8,
+            y: bounds.maxY - inset
+        ))
+        context.strokePath()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+// MARK: - Image Attachment Overlay
+
+class ImageAttachmentOverlay: NSView {
+    var onCopy: (() -> Void)?
+    var onDelete: (() -> Void)?
+
+    private let copyButton = NSButton()
+    private let deleteButton = NSButton()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.backgroundColor = NSColor.windowBackgroundColor
+            .withAlphaComponent(0.85).cgColor
+
+        copyButton.image = NSImage(
+            systemSymbolName: "doc.on.doc",
+            accessibilityDescription: "Copy"
+        )
+        copyButton.bezelStyle = .inline
+        copyButton.isBordered = false
+        copyButton.target = self
+        copyButton.action = #selector(copyTapped)
+        copyButton.toolTip = "Copy image"
+        addSubview(copyButton)
+
+        deleteButton.image = NSImage(
+            systemSymbolName: "trash",
+            accessibilityDescription: "Delete"
+        )
+        deleteButton.bezelStyle = .inline
+        deleteButton.isBordered = false
+        deleteButton.contentTintColor = .systemRed
+        deleteButton.target = self
+        deleteButton.action = #selector(deleteTapped)
+        deleteButton.toolTip = "Delete image"
+        addSubview(deleteButton)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let buttonSize: CGFloat = 24
+        let padding: CGFloat = 4
+        copyButton.frame = CGRect(
+            x: padding, y: (bounds.height - buttonSize) / 2,
+            width: buttonSize, height: buttonSize
+        )
+        deleteButton.frame = CGRect(
+            x: padding + buttonSize + 4,
+            y: (bounds.height - buttonSize) / 2,
+            width: buttonSize, height: buttonSize
+        )
+    }
+
+    // Prevent clicks from passing through to the text view
+    override func mouseDown(with event: NSEvent) {}
+
+    @objc private func copyTapped() { onCopy?() }
+    @objc private func deleteTapped() { onDelete?() }
+}
+
 // MARK: - Wiki Link State Machine
 
 enum WikiLinkState {
@@ -350,6 +614,317 @@ enum WikiLinkState {
 class FormattingTextView: NSTextView {
     var wikiLinkState: WikiLinkState = .idle
     var imagePasteHandler: ((NSImage) -> String?)?
+    var onImageAction: ((ImageOverlayAction, URL) -> Void)?
+
+    enum ImageOverlayAction { case copy, delete, open }
+
+    /// Called when the user finishes dragging the resize handle.
+    /// Parameters: original markup string, new width in points.
+    var onImageResize: ((String, Int) -> Void)?
+
+    private lazy var imageOverlay: ImageAttachmentOverlay = {
+        let overlay = ImageAttachmentOverlay()
+        overlay.isHidden = true
+        overlay.onCopy = { [weak self] in
+            guard let url = self?.hoveredImageURL else { return }
+            self?.onImageAction?(.copy, url)
+        }
+        overlay.onDelete = { [weak self] in
+            guard let url = self?.hoveredImageURL else { return }
+            self?.onImageAction?(.delete, url)
+        }
+        addSubview(overlay)
+        return overlay
+    }()
+    private var hoveredImageURL: URL?
+    private var hoveredImageMarkup: String?
+    private var hoveredImageRect: CGRect?
+    private var hoveredImageCharIndex: Int?
+    private var imageTrackingArea: NSTrackingArea?
+    private var isResizeDragging = false
+    private var resizeDragStartX: CGFloat = 0
+    private var resizeDragStartWidth: CGFloat = 0
+    private var resizeDragAspectRatio: CGFloat = 1
+    /// Set during live resize to suppress textDidChange reformatting.
+    var isResizing = false
+
+    private lazy var resizeHandle: ResizeGripView = {
+        let handle = ResizeGripView(
+            frame: CGRect(x: 0, y: 0, width: 16, height: 16)
+        )
+        handle.isHidden = true
+        addSubview(handle)
+        return handle
+    }()
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = imageTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        imageTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateImageOverlay(for: event)
+        let point = convert(event.locationInWindow, from: nil)
+        if !resizeHandle.isHidden,
+           let rect = hoveredImageRect,
+           resizeHandleRect(for: rect).contains(point) {
+            NSCursor.resizeLeftRight.set()
+        } else {
+            NSCursor.iBeam.set()
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+
+        // Check if clicking the resize handle
+        if !resizeHandle.isHidden,
+           let rect = hoveredImageRect {
+            let handleRect = resizeHandleRect(for: rect)
+            if handleRect.contains(point) {
+                isResizeDragging = true
+                isResizing = true
+                resizeDragStartX = point.x
+                resizeDragStartWidth = rect.width
+                resizeDragAspectRatio = rect.height > 0
+                    ? rect.width / rect.height : 1
+                return
+            }
+        }
+
+        // Double-click on image opens detail view
+        if event.clickCount == 2,
+           let imageURL = imageURL(at: point) {
+            onImageAction?(.open, imageURL)
+            return
+        }
+
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isResizeDragging,
+              let charIndex = hoveredImageCharIndex,
+              let storage = textStorage,
+              charIndex < storage.length
+        else {
+            if !isResizeDragging {
+                super.mouseDragged(with: event)
+            }
+            return
+        }
+
+        // Hide copy/delete during resize
+        if !imageOverlay.isHidden { imageOverlay.isHidden = true }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let delta = point.x - resizeDragStartX
+        let newWidth = max(80, resizeDragStartWidth + delta)
+        let newHeight = newWidth / resizeDragAspectRatio
+
+        guard let oldAttachment = storage.attribute(
+            .attachment, at: charIndex, effectiveRange: nil
+        ) as? NSTextAttachment else { return }
+
+        let newAttachment = NSTextAttachment()
+        newAttachment.image = oldAttachment.image
+        newAttachment.bounds = CGRect(
+            x: 0, y: 0, width: newWidth, height: newHeight
+        )
+        let replacement = NSMutableAttributedString(
+            attributedString: NSAttributedString(
+                attachment: newAttachment
+            )
+        )
+        let attrRange = NSRange(location: 0, length: 1)
+        if let url = hoveredImageURL {
+            replacement.addAttribute(
+                MarkdownFormat.imageURLKey,
+                value: url, range: attrRange
+            )
+        }
+        if let markup = hoveredImageMarkup {
+            replacement.addAttribute(
+                MarkdownFormat.imageMarkupKey,
+                value: markup, range: attrRange
+            )
+        }
+        let charRange = NSRange(location: charIndex, length: 1)
+        storage.replaceCharacters(in: charRange, with: replacement)
+
+        // Reposition grip after layout updates
+        layoutManager?.ensureLayout(
+            forCharacterRange: charRange
+        )
+        if let glyphRange = layoutManager?.glyphRange(
+            forCharacterRange: charRange,
+            actualCharacterRange: nil
+        ), let textContainer = textContainer {
+            let glyphRect = layoutManager?.boundingRect(
+                forGlyphRange: glyphRange, in: textContainer
+            ) ?? .zero
+            let newRect = CGRect(
+                x: glyphRect.origin.x + textContainerInset.width,
+                y: glyphRect.origin.y + textContainerInset.height,
+                width: glyphRect.width,
+                height: glyphRect.height
+            )
+            resizeHandle.frame = resizeHandleRect(for: newRect)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard isResizeDragging else {
+            super.mouseUp(with: event)
+            return
+        }
+        isResizeDragging = false
+        isResizing = false
+        let point = convert(event.locationInWindow, from: nil)
+        let delta = point.x - resizeDragStartX
+        let newWidth = Int(max(80, resizeDragStartWidth + delta))
+        if let markup = hoveredImageMarkup {
+            onImageResize?(markup, newWidth)
+        }
+    }
+
+    private func updateImageOverlay(for event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+
+        // Don't dismiss if mouse is over the overlay or resize handle
+        if !imageOverlay.isHidden {
+            let overlayPoint = imageOverlay.convert(
+                event.locationInWindow, from: nil
+            )
+            if imageOverlay.bounds.contains(overlayPoint) { return }
+            let handlePoint = resizeHandle.convert(
+                event.locationInWindow, from: nil
+            )
+            if resizeHandle.bounds.contains(handlePoint) { return }
+        }
+
+        guard let imageURL = imageURL(at: point),
+              let attachRect = attachmentRect(at: point)
+        else {
+            if !imageOverlay.isHidden {
+                imageOverlay.isHidden = true
+                resizeHandle.isHidden = true
+                hoveredImageURL = nil
+                hoveredImageMarkup = nil
+                hoveredImageRect = nil
+                hoveredImageCharIndex = nil
+            }
+            return
+        }
+        hoveredImageURL = imageURL
+        hoveredImageRect = attachRect
+        hoveredImageMarkup = imageMarkup(at: point)
+        hoveredImageCharIndex = charIndex(at: point)
+
+        let overlaySize = CGSize(width: 64, height: 28)
+        imageOverlay.frame = CGRect(
+            x: attachRect.maxX - overlaySize.width - 6,
+            y: attachRect.minY + 6,
+            width: overlaySize.width,
+            height: overlaySize.height
+        )
+        imageOverlay.isHidden = false
+
+        let handleRect = resizeHandleRect(for: attachRect)
+        resizeHandle.frame = handleRect
+        resizeHandle.isHidden = false
+    }
+
+    private func resizeHandleRect(for imageRect: CGRect) -> CGRect {
+        CGRect(
+            x: imageRect.maxX - 16,
+            y: imageRect.maxY - 16,
+            width: 16,
+            height: 16
+        )
+    }
+
+    private func imageMarkup(at point: CGPoint) -> String? {
+        guard let textStorage = textStorage else { return nil }
+        guard let idx = charIndex(at: point),
+              idx < textStorage.length else { return nil }
+        return textStorage.attribute(
+            MarkdownFormat.imageMarkupKey,
+            at: idx,
+            effectiveRange: nil
+        ) as? String
+    }
+
+    private func imageURL(at point: CGPoint) -> URL? {
+        guard let textStorage = textStorage
+        else { return nil }
+        let idx = charIndex(at: point)
+        guard let idx, idx < textStorage.length else { return nil }
+        return textStorage.attribute(
+            MarkdownFormat.imageURLKey,
+            at: idx,
+            effectiveRange: nil
+        ) as? URL
+    }
+
+    private func charIndex(at point: CGPoint) -> Int? {
+        guard let textStorage = textStorage,
+              let layoutManager = layoutManager,
+              let textContainer = textContainer
+        else { return nil }
+        let textPoint = CGPoint(
+            x: point.x - textContainerInset.width,
+            y: point.y - textContainerInset.height
+        )
+        let idx = layoutManager.characterIndex(
+            for: textPoint,
+            in: textContainer,
+            fractionOfDistanceBetweenInsertionPoints: nil
+        )
+        guard idx < textStorage.length else { return nil }
+        return idx
+    }
+
+    private func attachmentRect(at point: CGPoint) -> CGRect? {
+        guard let layoutManager = layoutManager,
+              let textContainer = textContainer
+        else { return nil }
+        let textPoint = CGPoint(
+            x: point.x - textContainerInset.width,
+            y: point.y - textContainerInset.height
+        )
+        let glyphIndex = layoutManager.glyphIndex(
+            for: textPoint, in: textContainer
+        )
+        var lineRange = NSRange()
+        let lineRect = layoutManager.lineFragmentRect(
+            forGlyphAt: glyphIndex, effectiveRange: &lineRange
+        )
+        let glyphRect = layoutManager.boundingRect(
+            forGlyphRange: NSRange(location: glyphIndex, length: 1),
+            in: textContainer
+        )
+        let rect = CGRect(
+            x: glyphRect.origin.x + textContainerInset.width,
+            y: lineRect.origin.y + textContainerInset.height,
+            width: glyphRect.width,
+            height: lineRect.height
+        )
+        // Only return if the point is actually inside the image area
+        guard rect.contains(point), rect.height > 20 else { return nil }
+        return rect
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
@@ -364,8 +939,7 @@ class FormattingTextView: NSTextView {
     override func paste(_ sender: Any?) {
         let classes: [AnyClass] = [NSImage.self]
         if let imageObject = NSPasteboard.general.readObjects(
-            forClasses: classes,
-            options: nil
+            forClasses: classes, options: nil
         )?.first as? NSImage {
             guard let markdownImage = imagePasteHandler?(imageObject) else {
                 NSSound.beep()
@@ -646,42 +1220,144 @@ class FormattingTextView: NSTextView {
         super.insertBacktab(sender)
     }
 
-    func toggleBold() { toggleTrait(.boldFontMask) }
-    func toggleItalic() { toggleTrait(.italicFontMask) }
+    func toggleBold() { toggleMarkdownWrap("**") }
+    func toggleItalic() { toggleMarkdownWrap("*") }
 
-    private func toggleTrait(_ trait: NSFontTraitMask) {
+    private func toggleMarkdownWrap(_ marker: String) {
         let range = selectedRange()
         guard range.length > 0, let storage = textStorage else { return }
+        let text = storage.string as NSString
+        let selected = text.substring(with: range)
+        let markerLen = marker.count
 
-        var hasTrait = false
-        storage.enumerateAttribute(.font, in: range) { value, _, _ in
-            if let font = value as? NSFont {
-                let traits = font.fontDescriptor.symbolicTraits
-                let check = trait == .boldFontMask ? traits.contains(.bold) : traits.contains(.italic)
-                hasTrait = hasTrait || check
-            }
-        }
+        // Check if already wrapped with this marker
+        let hasBefore = range.location >= markerLen
+            && text.substring(
+                with: NSRange(location: range.location - markerLen, length: markerLen)
+            ) == marker
+        let hasAfter = range.location + range.length + markerLen <= text.length
+            && text.substring(
+                with: NSRange(location: range.location + range.length, length: markerLen)
+            ) == marker
 
-        storage.enumerateAttribute(.font, in: range) { value, attrRange, _ in
-            if let font = value as? NSFont {
-                let mgr = NSFontManager.shared
-                let newFont = hasTrait
-                    ? mgr.convert(font, toNotHaveTrait: trait)
-                    : mgr.convert(font, toHaveTrait: trait)
-                storage.addAttribute(.font, value: newFont, range: attrRange)
-            }
+        if hasBefore && hasAfter {
+            // Remove markers
+            let fullRange = NSRange(
+                location: range.location - markerLen,
+                length: range.length + markerLen * 2
+            )
+            storage.replaceCharacters(in: fullRange, with: selected)
+            setSelectedRange(NSRange(
+                location: range.location - markerLen,
+                length: range.length
+            ))
+        } else {
+            // Add markers
+            let wrapped = "\(marker)\(selected)\(marker)"
+            storage.replaceCharacters(in: range, with: wrapped)
+            setSelectedRange(NSRange(
+                location: range.location + markerLen,
+                length: range.length
+            ))
         }
     }
 
-    func toggleUnderline() {
-        let range = selectedRange()
-        guard range.length > 0, let storage = textStorage else { return }
+    func toggleUnderline() { toggleMarkdownWrap("__") }
 
-        var hasUnderline = false
-        storage.enumerateAttribute(.underlineStyle, in: range) { value, _, _ in
-            if let style = value as? Int, style != 0 { hasUnderline = true }
+    // MARK: - Shared Autocomplete Completion
+
+    struct AutocompleteResult {
+        let completedWikiLink: Bool
+        let completedPerson: Bool
+        let completedDate: Bool
+    }
+
+    func completeAutocomplete(title: String) -> AutocompleteResult {
+        guard let storage = textStorage else {
+            return AutocompleteResult(
+                completedWikiLink: false,
+                completedPerson: false,
+                completedDate: false
+            )
         }
-        storage.addAttribute(.underlineStyle, value: hasUnderline ? 0 : NSUnderlineStyle.single.rawValue, range: range)
+        let cursor = selectedRange().location
+        let previousState = wikiLinkState
+        var didCompletePerson = false
+        var didCompleteDate = false
+
+        switch wikiLinkState {
+        case .wikiLinkActive(let start):
+            let replaceStart = max(start - 2, 0)
+            let range = NSRange(
+                location: replaceStart,
+                length: cursor - replaceStart
+            )
+            let replacement = "[[\(title)]]"
+            storage.replaceCharacters(in: range, with: replacement)
+            setSelectedRange(NSRange(
+                location: replaceStart + replacement.count,
+                length: 0
+            ))
+
+        case .atActive(let start):
+            let replaceStart = max(start - 1, 0)
+            let range = NSRange(
+                location: replaceStart,
+                length: cursor - replaceStart
+            )
+            let isDateToken = DailyNoteResolver.resolveDate(
+                title
+            ) != nil
+            let isPerson = !isDateToken
+            let displayTitle = isPerson
+                ? title.titleCased : title
+            let replacement = isPerson
+                ? "@\(displayTitle) " : "@\(title) "
+            storage.replaceCharacters(
+                in: range, with: replacement
+            )
+            setSelectedRange(NSRange(
+                location: replaceStart + replacement.count,
+                length: 0
+            ))
+            didCompletePerson = isPerson
+            didCompleteDate = isDateToken
+
+        case .hashtagActive(let start):
+            let replaceStart = max(start - 1, 0)
+            let range = NSRange(
+                location: replaceStart,
+                length: cursor - replaceStart
+            )
+            let tagText = title.hasPrefix("#")
+                ? title : "#\(title)"
+            let replacement = "\(tagText) "
+            storage.replaceCharacters(
+                in: range, with: replacement
+            )
+            setSelectedRange(NSRange(
+                location: replaceStart + replacement.count,
+                length: 0
+            ))
+
+        default:
+            break
+        }
+
+        wikiLinkState = .idle
+
+        let wasWikiLink: Bool
+        if case .wikiLinkActive = previousState {
+            wasWikiLink = true
+        } else {
+            wasWikiLink = false
+        }
+
+        return AutocompleteResult(
+            completedWikiLink: wasWikiLink,
+            completedPerson: didCompletePerson,
+            completedDate: didCompleteDate
+        )
     }
 }
 
@@ -707,9 +1383,12 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
+        let typingParagraph = NSMutableParagraphStyle()
+        typingParagraph.lineHeightMultiple = 1.25
         textView.typingAttributes = [
             .font: NSFont.systemFont(ofSize: 16),
-            .foregroundColor: NSColor.textColor
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: typingParagraph
         ]
         textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
@@ -729,6 +1408,8 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.store = store
         context.coordinator.bindImagePasteHandler(to: textView)
+        context.coordinator.bindImageOverlay(to: textView)
+        textView.layoutManager?.delegate = context.coordinator
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
             forName: NSView.boundsDidChangeNotification,
@@ -738,13 +1419,17 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.updateScrollOffset()
         }
 
-        // MARK: Wiki link notification observers
-        context.coordinator.setupWikiLinkObservers()
+        // MARK: Autocomplete (wiki links, @mentions, #tags)
+        context.coordinator.setupAutocomplete()
 
-        // Initialize line positions for empty documents and set focus
+        // Initialize line positions and set focus
         DispatchQueue.main.async {
             context.coordinator.updateLinePositions()
             textView.window?.makeFirstResponder(textView)
+            // Place cursor after heading prefix for new notes
+            if textView.string.hasPrefix("# \n") {
+                textView.setSelectedRange(NSRange(location: 2, length: 0))
+            }
         }
 
         return scrollView
@@ -754,10 +1439,14 @@ struct MarkdownEditor: NSViewRepresentable {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.autocomplete.store = store
 
-        if !context.coordinator.isEditing && textView.string != text {
+        let restoredString = MarkdownFormat.restoreImageMarkup(
+            in: textView.string
+        )
+        if !context.coordinator.isEditing && restoredString != text {
             textView.textStorage?.setAttributedString(format.render(text))
-            context.coordinator.applyWikiLinkFormatting()
+            context.coordinator.applyFormatting()
             DispatchQueue.main.async {
                 context.coordinator.updateLinePositions()
             }
@@ -768,7 +1457,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+    class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
@@ -776,70 +1465,43 @@ struct MarkdownEditor: NSViewRepresentable {
         var isFormatting = false
         var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
-        var wikiLinkPopover = WikiLinkPopover()
-        var wikiLinkObservers: [NSObjectProtocol] = []
+        let autocomplete = AutocompleteCoordinator()
+        private var saveTimer: Timer?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
         deinit {
+            saveTimer?.invalidate()
             if let observer = boundsObserver {
                 NotificationCenter.default.removeObserver(observer)
             }
-            for observer in wikiLinkObservers {
-                NotificationCenter.default.removeObserver(observer)
-            }
         }
 
-        // MARK: - Wiki Link Observer Setup
+        // MARK: - Autocomplete Setup
 
-        func setupWikiLinkObservers() {
-            let center = NotificationCenter.default
-
-            let triggerObs = center.addObserver(
-                forName: .wikiLinkTrigger, object: nil, queue: .main
-            ) { [weak self] notification in
-                self?.handleWikiLinkTrigger(notification)
+        func setupAutocomplete() {
+            autocomplete.textView = textView
+            autocomplete.store = store
+            autocomplete.onTextChange = { [weak self] in
+                guard let self = self,
+                      let textView = self.textView
+                else { return }
+                self.parent.text = MarkdownFormat.restoreImageMarkup(
+                    in: textView.string
+                )
+                self.applyFormatting()
             }
-            wikiLinkObservers.append(triggerObs)
-
-            let dismissObs = center.addObserver(
-                forName: .wikiLinkDismiss, object: nil, queue: .main
-            ) { [weak self] _ in
-                self?.wikiLinkPopover.dismiss()
-            }
-            wikiLinkObservers.append(dismissObs)
-
-            let queryObs = center.addObserver(
-                forName: .wikiLinkQueryUpdate, object: nil, queue: .main
-            ) { [weak self] notification in
-                self?.handleWikiLinkQueryUpdate(notification)
-            }
-            wikiLinkObservers.append(queryObs)
-
-            let selectObs = center.addObserver(
-                forName: .wikiLinkSelect, object: nil, queue: .main
-            ) { [weak self] _ in
-                self?.handleWikiLinkSelect()
-            }
-            wikiLinkObservers.append(selectObs)
-
-            let navObs = center.addObserver(
-                forName: .wikiLinkNavigate, object: nil, queue: .main
-            ) { [weak self] notification in
-                self?.handleWikiLinkNavigate(notification)
-            }
-            wikiLinkObservers.append(navObs)
-
-            // Set up the selection callback on the popover
-            wikiLinkPopover.onSelect = { [weak self] title in
-                self?.completeWikiLink(title: title)
-            }
+            autocomplete.setupObservers()
         }
+
+        // MARK: - Image Paste
 
         func markdownForPastedImage(_ image: NSImage) -> String? {
             guard let store,
                   let noteURL = store.currentDocumentURL,
-                  let relativePath = store.savePastedImageToMedia(image, noteURL: noteURL) else { return nil }
+                  let relativePath = store.savePastedImageToMedia(
+                      image, noteURL: noteURL
+                  ) else { return nil }
             return "![Screenshot](\(relativePath))"
         }
 
@@ -849,220 +1511,89 @@ struct MarkdownEditor: NSViewRepresentable {
             }
         }
 
-        // MARK: - Wiki Link Trigger
+        // MARK: - Image Overlay
 
-        private func handleWikiLinkTrigger(_ notification: Notification) {
+        func bindImageOverlay(to textView: FormattingTextView) {
+            textView.onImageAction = { [weak self] action, imageURL in
+                self?.handleImageAction(action, imageURL: imageURL)
+            }
+            textView.onImageResize = { [weak self] markup, newWidth in
+                self?.handleImageResize(
+                    originalMarkup: markup, newWidth: newWidth
+                )
+            }
+        }
+
+        private func handleImageResize(
+            originalMarkup: String, newWidth: Int
+        ) {
             guard let textView = textView else { return }
-            let mode = notification.userInfo?["mode"] as? String ?? "wikilink"
-            let initialQuery = notification.userInfo?["query"] as? String ?? ""
-            let cursorPos = textView.selectedRange().location
-
-            // Position the popover at the trigger location
-            let triggerStart: Int
-            if mode == "wikilink" {
-                triggerStart = max(cursorPos - 2, 0)
-            } else if mode == "hashtag" {
-                // Popup anchored at the # character
-                triggerStart = max(cursorPos - 2, 0) // # + first letter
-            } else {
-                triggerStart = max(cursorPos - 1, 0)
-            }
-
-            wikiLinkPopover.show(at: triggerStart, in: textView, mode: mode)
-
-            // Initial results
-            let results: [NoteSearchResult]
-            if mode == "at" {
-                results = atAutocompleteResults(query: "")
-            } else if mode == "hashtag" {
-                results = tagAutocompleteResults(query: initialQuery)
-            } else {
-                results = store?.noteIndex.search("") ?? []
-            }
-            wikiLinkPopover.updateResults(query: initialQuery, results: results)
+            let text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            let updated = MarkdownFormat.markupWithWidth(
+                originalMarkup, width: newWidth
+            )
+            let newText = text.replacingOccurrences(
+                of: originalMarkup, with: updated
+            )
+            textView.string = newText
+            parent.text = newText
+            applyFormatting()
         }
 
-        // MARK: - Wiki Link Query Update
-
-        private func handleWikiLinkQueryUpdate(_ notification: Notification) {
-            let query = notification.userInfo?["query"] as? String ?? ""
-            guard let textView = textView else { return }
-
-            let results: [NoteSearchResult]
-            switch textView.wikiLinkState {
-            case .atActive:
-                results = atAutocompleteResults(query: query)
-            case .hashtagActive:
-                results = tagAutocompleteResults(query: query)
-            default:
-                results = store?.noteIndex.search(query) ?? []
-            }
-            wikiLinkPopover.updateResults(query: query, results: results)
-        }
-
-        // MARK: - Wiki Link Selection
-
-        private func handleWikiLinkSelect() {
-            guard let title = wikiLinkPopover.selectedTitle() else { return }
-            completeWikiLink(title: title)
-        }
-
-        // MARK: - Wiki Link Navigation
-
-        private func handleWikiLinkNavigate(_ notification: Notification) {
-            let direction = notification.userInfo?["direction"] as? String ?? ""
-            if direction == "up" {
-                wikiLinkPopover.moveSelectionUp()
-            } else {
-                wikiLinkPopover.moveSelectionDown()
-            }
-        }
-
-        // MARK: - Complete Wiki Link Insertion
-
-        func completeWikiLink(title: String) {
-            guard let textView = textView,
-                  let storage = textView.textStorage else { return }
-            let cursor = textView.selectedRange().location
-            var didCompletePerson = false
-
-            switch textView.wikiLinkState {
-            case .wikiLinkActive(let start):
-                // start points to after "[[", so replace from start-2 to cursor
-                let replaceStart = max(start - 2, 0)
-                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
-                let replacement = "[[\(title)]]"
-                storage.replaceCharacters(in: range, with: replacement)
-                textView.setSelectedRange(
-                    NSRange(location: replaceStart + replacement.count, length: 0)
-                )
-
-            case .atActive(let start):
-                // start points to after "@", so replace from start-1 to cursor
-                let replaceStart = max(start - 1, 0)
-                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
-                let dateTokens = ["today", "yesterday", "tomorrow"]
-                let isPerson = !dateTokens.contains(title.lowercased())
-                // Title Case person names so multi-word regex matches them
-                let displayTitle = isPerson ? title.titleCased : title
-                let replacement = isPerson ? "@\(displayTitle) " : "@\(title)"
-                storage.replaceCharacters(in: range, with: replacement)
-                textView.setSelectedRange(
-                    NSRange(location: replaceStart + replacement.count, length: 0)
-                )
-                didCompletePerson = isPerson
-
-            case .hashtagActive(let start):
-                // start points to after "#", so replace from start-1 to cursor
-                let replaceStart = max(start - 1, 0)
-                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
-                // title already includes "#" prefix from tagAutocompleteResults
-                let tagText = title.hasPrefix("#") ? title : "#\(title)"
-                let replacement = "\(tagText) "
-                storage.replaceCharacters(in: range, with: replacement)
-                textView.setSelectedRange(
-                    NSRange(location: replaceStart + replacement.count, length: 0)
-                )
-
-            default:
-                break
-            }
-
-            textView.wikiLinkState = .idle
-            wikiLinkPopover.dismiss()
-
-            // Trigger text update and apply formatting to hide brackets
-            parent.text = textView.string
-            applyWikiLinkFormatting()
-
-            // Auto-save after person mention so the people index updates immediately
-            if didCompletePerson {
-                DispatchQueue.main.async { [weak self] in
-                    self?.store?.save()
-                }
-            }
-        }
-
-        // MARK: - Date Autocomplete Results
-
-        private func dateAutocompleteResults(query: String) -> [NoteSearchResult] {
-            let tokens = ["Today", "Yesterday", "Tomorrow"]
-            let filtered: [String]
-            if query.isEmpty {
-                filtered = tokens
-            } else {
-                filtered = tokens.filter {
-                    $0.lowercased().hasPrefix(query.lowercased())
-                }
-            }
-            return filtered.map { token in
-                let dateStr = resolveDateLabel(token)
-                return NoteSearchResult(
-                    // swiftlint:disable:next force_unwrapping
-                    id: URL(string: "synth://daily/\(token.lowercased())")!,
-                    title: token,
-                    relativePath: dateStr,
-                    // swiftlint:disable:next force_unwrapping
-                    url: URL(string: "synth://daily/\(token.lowercased())")!
-                )
-            }
-        }
-
-        // MARK: - @ Autocomplete Results (Dates + People)
-
-        private func atAutocompleteResults(query: String) -> [NoteSearchResult] {
-            var results = dateAutocompleteResults(query: query)
-            if let peopleIndex = store?.peopleIndex {
-                let people = peopleIndex.search(query)
-                let peopleResults = people.map { person in
-                    let countLabel = person.count == 1 ? "1 note" : "\(person.count) notes"
-                    return NoteSearchResult(
-                        // swiftlint:disable:next force_unwrapping
-                        id: URL(string: "synth://person/\(person.name)")!,
-                        title: person.name,
-                        relativePath: countLabel,
-                        // swiftlint:disable:next force_unwrapping
-                        url: URL(string: "synth://person/\(person.name)")!
+        private func handleImageAction(
+            _ action: FormattingTextView.ImageOverlayAction,
+            imageURL: URL
+        ) {
+            switch action {
+            case .copy:
+                guard let image = NSImage(contentsOf: imageURL)
+                else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.writeObjects([image])
+            case .delete:
+                removeImageMarkup(for: imageURL)
+                applyFormatting()
+                // Save so disk content is up to date for the check
+                store?.saveAll()
+                let refs = store?.notesReferencing(
+                    mediaFilename: imageURL.lastPathComponent
+                ) ?? []
+                if refs.isEmpty {
+                    try? FileManager.default.trashItem(
+                        at: imageURL, resultingItemURL: nil
                     )
                 }
-                results.append(contentsOf: peopleResults)
-            }
-            return results
-        }
-
-        // MARK: - Tag Autocomplete Results
-
-        private func tagAutocompleteResults(query: String) -> [NoteSearchResult] {
-            guard let tagIndex = store?.tagIndex else { return [] }
-            let tags = tagIndex.search(query)
-            return tags.map { tag in
-                NoteSearchResult(
-                    // swiftlint:disable:next force_unwrapping
-                    id: URL(string: "synth://tag/\(tag.name)")!,
-                    title: "#\(tag.name)",
-                    relativePath: "\(tag.count) notes",
-                    // swiftlint:disable:next force_unwrapping
-                    url: URL(string: "synth://tag/\(tag.name)")!
-                )
+                store?.loadFileTree()
+                applyFormatting()
+            case .open:
+                self.store?.showImageDetailModal(imageURL)
             }
         }
 
-        private func resolveDateLabel(_ token: String) -> String {
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            let date: Date?
-            switch token.lowercased() {
-            case "today":
-                date = Date()
-            case "yesterday":
-                date = Calendar.current.date(byAdding: .day, value: -1, to: Date())
-            case "tomorrow":
-                date = Calendar.current.date(byAdding: .day, value: 1, to: Date())
-            default:
-                date = nil
-            }
-            guard let resolved = date else { return "" }
-            return formatter.string(from: resolved)
+        private func removeImageMarkup(for imageURL: URL) {
+            guard let textView = textView else { return }
+            let filename = imageURL.lastPathComponent
+            let text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            // swiftlint:disable:next force_try
+            let pattern = try! NSRegularExpression(
+                pattern: "!\\[[^\\]]*\\]\\([^)]*"
+                    + NSRegularExpression.escapedPattern(for: filename)
+                    + "(?:\\s+=\\d+x)?\\)\\n?"
+            )
+            // Only remove the first occurrence
+            guard let match = pattern.firstMatch(
+                in: text,
+                range: NSRange(location: 0, length: text.utf16.count)
+            ) else { return }
+            let cleaned = (text as NSString).replacingCharacters(
+                in: match.range, with: ""
+            )
+            textView.string = cleaned
+            parent.text = cleaned
         }
 
         // MARK: - Link Click Handling
@@ -1072,87 +1603,8 @@ struct MarkdownEditor: NSViewRepresentable {
             clickedOnLink link: Any,
             at charIndex: Int
         ) -> Bool {
-            guard let url = link as? URL, url.scheme == "synth" else { return false }
-
-            if url.host == "wiki" {
-                let noteTitle = url.pathComponents.dropFirst().joined(separator: "/")
-                    .removingPercentEncoding ?? ""
-                handleWikiLinkClick(noteTitle: noteTitle)
-                return true
-            }
-
-            if url.host == "daily" {
-                let token = url.pathComponents.dropFirst().joined(separator: "/")
-                handleDailyNoteClick(token: token)
-                return true
-            }
-
-            if url.host == "tag" {
-                let tagName = url.pathComponents.dropFirst().joined(separator: "/")
-                handleTagClick(tagName: tagName)
-                return true
-            }
-
-            if url.host == "person" {
-                let personName = url.pathComponents.dropFirst().joined(separator: "/")
-                handlePersonClick(personName: personName)
-                return true
-            }
-
-            return false
-        }
-
-        private func handleWikiLinkClick(noteTitle: String) {
-            guard let store = store else { return }
-
-            // Search for matching file in the workspace
-            if let exact = store.noteIndex.findExact(noteTitle) {
-                store.open(exact.url)
-            } else {
-                // Create new note
-                createAndOpenNote(title: noteTitle, store: store)
-            }
-        }
-
-        private func handleDailyNoteClick(token: String) {
-            guard let store = store, let workspace = store.workspace else { return }
-            guard let url = DailyNoteResolver.resolve(token, workspace: workspace) else { return }
-            DailyNoteResolver.ensureExists(at: url)
-            store.loadFileTree()
-            store.open(url)
-        }
-
-        private func createAndOpenNote(title: String, store: DocumentStore) {
-            guard let workspace = store.workspace else { return }
-            // Sanitize title: strip path traversal and invalid filename characters
-            let sanitized = title
-                .replacingOccurrences(of: "[/:\\x00-\\x1F\\x7F]", with: "-", options: .regularExpression)
-                .replacingOccurrences(of: "..", with: "-")
-                .trimmingCharacters(in: .whitespaces)
-            guard !sanitized.isEmpty else { return }
-            let url = workspace.appendingPathComponent("\(sanitized).md")
-            // Validate the resolved path stays within the workspace
-            guard url.standardizedFileURL.path.hasPrefix(workspace.standardizedFileURL.path) else { return }
-            let content = "# \(sanitized)\n\n"
-            try? content.write(to: url, atomically: true, encoding: .utf8)
-            store.loadFileTree()
-            store.open(url)
-        }
-
-        private func handleTagClick(tagName: String) {
-            NotificationCenter.default.post(
-                name: .showTagBrowser,
-                object: nil,
-                userInfo: ["initialTag": tagName]
-            )
-        }
-
-        private func handlePersonClick(personName: String) {
-            NotificationCenter.default.post(
-                name: .showPeopleBrowser,
-                object: nil,
-                userInfo: ["initialPerson": personName]
-            )
+            guard let url = link as? URL else { return false }
+            return autocomplete.handleLinkClick(url: url)
         }
 
         // MARK: - Scroll Offset
@@ -1171,34 +1623,47 @@ struct MarkdownEditor: NSViewRepresentable {
                   let layoutManager = textView.layoutManager,
                   let textContainer = textView.textContainer else { return }
 
-            // Force layout to complete
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
-            let font = textView.typingAttributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 16)
+            let baseFont = NSFont.systemFont(ofSize: 16)
             var positions: [CGFloat] = []
-            let string = textView.string
+            let nsString = textView.string as NSString
+            let length = nsString.length
 
-            // Empty document
-            if string.isEmpty {
-                positions.append(textInset + font.pointSize / 2)
+            if length == 0 {
+                positions.append(textInset + baseFont.pointSize / 2)
                 parent.linePositions = positions
                 return
             }
 
-            // Get default line height from first line fragment
-            var defaultLineHeight: CGFloat = font.pointSize * 1.4
-            if layoutManager.numberOfGlyphs > 0 {
-                let rect = layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
-                defaultLineHeight = rect.height
+            // Walk logical lines, use layout rect for accurate Y
+            var charIndex = 0
+            while charIndex < length {
+                let glyphIndex = layoutManager.glyphIndexForCharacter(
+                    at: charIndex
+                )
+                var lineRange = NSRange()
+                let rect = layoutManager.lineFragmentRect(
+                    forGlyphAt: glyphIndex,
+                    effectiveRange: &lineRange
+                )
+                positions.append(textInset + rect.midY)
+
+                // Advance to next line
+                let lineEnd = NSMaxRange(
+                    nsString.lineRange(for: NSRange(
+                        location: charIndex, length: 0
+                    ))
+                )
+                charIndex = lineEnd == charIndex ? charIndex + 1 : lineEnd
             }
 
-            // Count actual lines by newlines
-            let lines = string.components(separatedBy: "\n")
-            for lineIndex in 0..<lines.count {
-                let yPos = textInset + CGFloat(lineIndex) * defaultLineHeight
-                    + defaultLineHeight / 2
-                positions.append(yPos)
+            // Trailing newline produces an empty last line with no
+            // characters — use extraLineFragmentRect for its position
+            let extraRect = layoutManager.extraLineFragmentRect
+            if extraRect.height > 0 {
+                positions.append(textInset + extraRect.midY)
             }
 
             DispatchQueue.main.async {
@@ -1206,149 +1671,68 @@ struct MarkdownEditor: NSViewRepresentable {
             }
         }
 
+        // MARK: - Layout Delegate
+
+        func layoutManager(
+            _ layoutManager: NSLayoutManager,
+            didCompleteLayoutFor textContainer: NSTextContainer?,
+            atEnd layoutFinishedFlag: Bool
+        ) {
+            if layoutFinishedFlag && !isFormatting {
+                updateLinePositions()
+            }
+        }
+
         // MARK: - Text Delegate Methods
 
         func textDidBeginEditing(_ notification: Notification) { isEditing = true }
-        func textDidEndEditing(_ notification: Notification) { isEditing = false }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = textView, !isFormatting else { return }
-            parent.text = textView.string
-            applyWikiLinkFormatting()
-            updateLinePositions()
+        func textDidEndEditing(_ notification: Notification) {
+            isEditing = false
+            saveTimer?.invalidate()
+            store?.saveAll()
         }
 
-        // MARK: - Live Wiki Link Formatting
+        func textDidChange(_ notification: Notification) {
+            guard let textView = textView,
+                  !isFormatting,
+                  !textView.isResizing
+            else { return }
+            parent.text = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            applyFormatting()
+            updateLinePositions()
+            scheduleSave()
+        }
 
-        func applyWikiLinkFormatting() {
-            guard let textView = textView, let storage = textView.textStorage else { return }
+        private func scheduleSave() {
+            saveTimer?.invalidate()
+            saveTimer = Timer.scheduledTimer(
+                withTimeInterval: 1.0, repeats: false
+            ) { [weak self] _ in
+                self?.store?.saveAll()
+            }
+        }
+
+        // MARK: - Live Formatting
+
+        func applyFormatting() {
+            guard let textView = textView,
+                  let storage = textView.textStorage
+            else { return }
             isFormatting = true
             let cursor = textView.selectedRange()
+            let cleanText = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            let format = MarkdownFormat(noteIndex: store?.noteIndex)
+            storage.setAttributedString(
+                format.render(cleanText)
+            )
+
             let baseFont = NSFont.systemFont(ofSize: 16)
-            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
-            let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
-            // swiftlint:disable:next force_try
-            let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
-            let fullRange = NSRange(location: 0, length: storage.string.utf16.count)
-            storage.removeAttribute(.attachment, range: fullRange)
-            storage.removeAttribute(.toolTip, range: fullRange)
-
-            // First reset any previously hidden brackets back to normal
-            storage.enumerateAttribute(.font, in: fullRange) { value, range, _ in
-                if let font = value as? NSFont, font.pointSize < 1 {
-                    storage.addAttributes([
-                        .font: baseFont,
-                        .foregroundColor: NSColor.textColor
-                    ], range: range)
-                    storage.removeAttribute(.link, range: range)
-                }
-            }
-
-            // Also reset any previously styled wiki link text
-            storage.enumerateAttribute(.link, in: fullRange) { value, range, _ in
-                if let url = value as? URL, url.scheme == "synth", url.host == "wiki" {
-                    storage.addAttributes([
-                        .font: baseFont,
-                        .foregroundColor: NSColor.textColor
-                    ], range: range)
-                    storage.removeAttribute(.link, range: range)
-                    storage.removeAttribute(.cursor, range: range)
-                    storage.removeAttribute(.toolTip, range: range)
-                    storage.removeAttribute(.underlineStyle, range: range)
-                    storage.removeAttribute(.underlineColor, range: range)
-                }
-            }
-
-            // Reset previously styled @person links
-            storage.enumerateAttribute(.link, in: fullRange) { value, range, _ in
-                if let url = value as? URL, url.scheme == "synth", url.host == "person" {
-                    storage.addAttributes([
-                        .font: baseFont,
-                        .foregroundColor: NSColor.textColor
-                    ], range: range)
-                    storage.removeAttribute(.link, range: range)
-                    storage.removeAttribute(.cursor, range: range)
-                    storage.removeAttribute(.backgroundColor, range: range)
-                }
-            }
-
-            for match in wikiPattern.matches(in: storage.string, range: fullRange).reversed() {
-                let matchRange = match.range
-                let innerRange = match.range(at: 1)
-                guard let innerSwift = Range(innerRange, in: storage.string) else { continue }
-                let noteTitle = String(storage.string[innerSwift])
-                if noteTitle.trimmingCharacters(in: .whitespaces).isEmpty { continue }
-
-                let encoded = noteTitle.addingPercentEncoding(
-                    withAllowedCharacters: .urlPathAllowed
-                ) ?? noteTitle
-                // swiftlint:disable:next force_unwrapping
-                let linkURL = URL(string: "synth://wiki/\(encoded)")!
-
-                let noteExists: Bool
-                if let index = store?.noteIndex, index.isPopulated {
-                    noteExists = index.findExact(noteTitle) != nil
-                } else {
-                    noteExists = true
-                }
-
-                var linkAttrs: [NSAttributedString.Key: Any] = [
-                    .font: mediumFont,
-                    .link: linkURL,
-                    .cursor: NSCursor.pointingHand
-                ]
-                if noteExists {
-                    linkAttrs[.foregroundColor] = NSColor.controlAccentColor
-                } else {
-                    linkAttrs[.foregroundColor] = NSColor.systemOrange
-                    linkAttrs[.underlineStyle] = NSUnderlineStyle.patternDash.rawValue
-                        | NSUnderlineStyle.single.rawValue
-                    linkAttrs[.underlineColor] = NSColor.systemOrange.withAlphaComponent(0.6)
-                    linkAttrs[.toolTip] = "Note not found -- click to create"
-                }
-
-                // Style inner text as clickable link
-                storage.addAttributes(linkAttrs, range: innerRange)
-
-                // Hide [[ and ]] brackets
-                let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear,
-                    .link: linkURL
-                ]
-                let openRange = NSRange(location: matchRange.location, length: 2)
-                let closeRange = NSRange(
-                    location: matchRange.location + matchRange.length - 2,
-                    length: 2
-                )
-                storage.addAttributes(hiddenAttrs, range: openRange)
-                storage.addAttributes(hiddenAttrs, range: closeRange)
-            }
-
-            // Re-apply @person mention styling
-            let personDateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
-            for match in PeopleIndex.personPattern.matches(
-                in: storage.string, range: fullRange
-            ).reversed() {
-                let matchRange = match.range
-                let innerRange = match.range(at: 1)
-                guard let innerSwift = Range(innerRange, in: storage.string) else { continue }
-                let personName = String(storage.string[innerSwift])
-                guard !personDateTokens.contains(personName.lowercased()) else { continue }
-                guard personName.count >= 2 else { continue }
-                let personLower = personName.lowercased()
-                // swiftlint:disable:next force_unwrapping
-                let personURL = URL(string: "synth://person/\(personLower)")!
-                let personAttrs: [NSAttributedString.Key: Any] = [
-                    .font: mediumFont,
-                    .foregroundColor: NSColor.systemPurple,
-                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10),
-                    .link: personURL,
-                    .cursor: NSCursor.pointingHand
-                ]
-                storage.addAttributes(personAttrs, range: matchRange)
-            }
-
+            let baseDirectory = store?.currentDocumentURL?
+                .deletingLastPathComponent()
             let pendingRenders = MarkdownFormat.applyImageRendering(
                 in: storage,
                 baseFont: baseFont,
@@ -1359,7 +1743,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage: storage,
                 baseFont: baseFont
             )
-
             textView.setSelectedRange(cursor)
             isFormatting = false
         }
@@ -1384,18 +1767,52 @@ struct MarkdownEditor: NSViewRepresentable {
 
                     let storageString = currentStorage.string as NSString
                     let storageLength = storageString.length
-                    let markupEnd = request.markupRange.location + request.markupRange.length
+                    let markupEnd = request.markupRange.location
+                        + request.markupRange.length
                     guard markupEnd <= storageLength else { return }
 
-                    let currentMarkup = storageString.substring(with: request.markupRange)
-                    guard currentMarkup == request.markupText else { return }
+                    let currentMarkup = storageString.substring(
+                        with: request.markupRange
+                    )
+                    let expectedMarkup = MarkdownFormat.attachmentCharacter
+                        + request.markupText.dropFirst()
+                    guard currentMarkup == expectedMarkup
+                    else { return }
 
                     let attachment = NSTextAttachment()
                     attachment.image = loadedImage
-                    currentStorage.addAttribute(
-                        .attachment,
-                        value: attachment,
-                        range: request.attachmentRange
+
+                    // Apply persisted width if present
+                    if let width = MarkdownFormat.parseImageWidth(
+                        from: request.markupText
+                    ), loadedImage.size.width > 0 {
+                        let scale = width / loadedImage.size.width
+                        attachment.bounds = CGRect(
+                            x: 0, y: 0,
+                            width: width,
+                            height: loadedImage.size.height * scale
+                        )
+                    }
+
+                    let attachStr = NSMutableAttributedString(
+                        attributedString: NSAttributedString(
+                            attachment: attachment
+                        )
+                    )
+                    let attrRange = NSRange(location: 0, length: 1)
+                    attachStr.addAttribute(
+                        MarkdownFormat.imageURLKey,
+                        value: request.imageURL,
+                        range: attrRange
+                    )
+                    attachStr.addAttribute(
+                        MarkdownFormat.imageMarkupKey,
+                        value: request.markupText,
+                        range: attrRange
+                    )
+                    currentStorage.replaceCharacters(
+                        in: request.attachmentRange,
+                        with: attachStr
                     )
                 }
             }

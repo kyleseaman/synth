@@ -2,12 +2,7 @@ import SwiftUI
 import AppKit
 
 extension Notification.Name {
-    static let toggleSidebar = Notification.Name("toggleSidebar")
-    static let toggleChat = Notification.Name("toggleChat")
-    static let showFileLauncher = Notification.Name("showFileLauncher")
-    static let showLinkCapture = Notification.Name("showLinkCapture")
     static let reloadEditor = Notification.Name("reloadEditor")
-    static let showMeetingNote = Notification.Name("showMeetingNote")
 
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
@@ -16,40 +11,13 @@ extension Notification.Name {
     static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
 
-    // MARK: - Tag Browser
-    static let showTagBrowser = Notification.Name("showTagBrowser")
-
-    // MARK: - People Browser
-    static let showPeopleBrowser = Notification.Name("showPeopleBrowser")
-
-    // MARK: - Backlinks Sidebar
-    static let toggleBacklinks = Notification.Name("toggleBacklinks")
-}
-
-enum ActiveModal: Equatable {
-    case fileLauncher
-    case linkCapture
-    case meetingNote
+    // MARK: - Daily Notes
+    static let showDailyDate = Notification.Name("showDailyDate")
 }
 
 struct ContentView: View {
-    @EnvironmentObject var store: DocumentStore
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var activeModal: ActiveModal?
-    @State private var showTagBrowser = false
-    @State private var initialTagFilter: String?
-    @State private var showPeopleBrowser = false
-    @State private var initialPersonFilter: String?
+    @Environment(DocumentStore.self) var store
     @State private var dismissedSetup = false
-
-    private func modalBinding(_ modal: ActiveModal) -> Binding<Bool> {
-        Binding(
-            get: { activeModal == modal },
-            set: { newValue in
-                activeModal = newValue ? modal : nil
-            }
-        )
-    }
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -74,26 +42,13 @@ struct ContentView: View {
                         onClose: { store.closeTab(at: index) }
                     )
                 }
-                TabButton(
-                    title: "Links",
-                    isSelected: store.isLinksTabSelected,
-                    isDirty: false,
-                    onSelect: { store.selectLinksTab() },
-                    onClose: nil
-                )
-                TabButton(
-                    title: "Media",
-                    isSelected: store.isMediaTabSelected,
-                    isDirty: false,
-                    onSelect: { store.selectMediaTab() },
-                    onClose: nil
-                )
             }
         }
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        @Bindable var store = store
+        NavigationSplitView(columnVisibility: $store.columnVisibility) {
             VStack {
                 if store.workspace == nil {
                     VStack(spacing: 12) {
@@ -108,6 +63,63 @@ struct ContentView: View {
                     .frame(maxHeight: .infinity)
                 } else {
                     List {
+                        // MARK: - Daily Notes sidebar button
+                        Button {
+                            store.activateDailyNotes()
+                        } label: {
+                            Label("Daily Notes", systemImage: "square.and.pencil")
+                                .fontWeight(
+                                    store.detailMode == .dailyNotes ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.detailMode == .dailyNotes
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
+                        // MARK: - Links sidebar button
+                        Button {
+                            store.selectLinksTab()
+                        } label: {
+                            Label("Links", systemImage: "link")
+                                .fontWeight(
+                                    store.detailMode == .links ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.detailMode == .links
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
+                        // MARK: - Media sidebar button
+                        Button {
+                            store.selectMediaTab()
+                        } label: {
+                            Label("Media", systemImage: "photo.on.rectangle")
+                                .fontWeight(
+                                    store.detailMode == .media ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            store.detailMode == .media
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+
                         FileTreeView(nodes: store.fileTree, store: store)
                     }
                     .listStyle(.sidebar)
@@ -131,9 +143,11 @@ struct ContentView: View {
                     }
                 }
 
-                if store.isLinksTabSelected {
+                if store.detailMode == .dailyNotes {
+                    DailyNotesView()
+                } else if store.detailMode == .links {
                     LinksView()
-                } else if store.isMediaTabSelected {
+                } else if store.detailMode == .media {
                     MediaGridView()
                 } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
                     let currentDoc = store.openFiles[store.currentIndex]
@@ -154,7 +168,6 @@ struct ContentView: View {
                                             string: snapshot.content
                                         )
                                         store.openFiles[idx].isDirty = true
-                                        store.objectWillChange.send()
                                     }
                                     chatState.dismissUndo()
                                 }
@@ -184,8 +197,7 @@ struct ContentView: View {
             .overlay(alignment: .bottomTrailing) {
                 if !store.isChatVisibleForCurrentTab
                     && !store.openFiles.isEmpty
-                    && !store.isLinksTabSelected
-                    && !store.isMediaTabSelected {
+                    && store.detailMode == .editor {
                     Button {
                         store.toggleChatForCurrentTab()
                     } label: {
@@ -205,81 +217,106 @@ struct ContentView: View {
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {
-            if activeModal != nil || showTagBrowser || showPeopleBrowser {
+            if store.activeModal != nil {
                 Color.primary.opacity(0.05)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        activeModal = nil
-                        showTagBrowser = false
-                        showPeopleBrowser = false
+                        store.activeModal = nil
                     }
 
                 ZStack {
-                    if activeModal == .fileLauncher {
-                        FileLauncher(isPresented: modalBinding(.fileLauncher))
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    if store.activeModal == .fileLauncher {
+                        FileLauncher(isPresented: Binding(
+                            get: { store.activeModal == .fileLauncher },
+                            set: { if !$0 { store.activeModal = nil } }
+                        ))
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if activeModal == .linkCapture {
-                        LinkCaptureView(isPresented: modalBinding(.linkCapture))
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    if store.activeModal == .linkCapture {
+                        LinkCaptureView(isPresented: Binding(
+                            get: { store.activeModal == .linkCapture },
+                            set: { if !$0 { store.activeModal = nil } }
+                        ))
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if activeModal == .meetingNote {
-                        MeetingNoteView(isPresented: modalBinding(.meetingNote))
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    if store.activeModal == .meetingNote {
+                        MeetingNoteView(isPresented: Binding(
+                            get: { store.activeModal == .meetingNote },
+                            set: { if !$0 { store.activeModal = nil } }
+                        ))
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if showTagBrowser {
+                    if case .tagBrowser(let tag) = store.activeModal {
                         TagBrowserView(
-                            isPresented: $showTagBrowser,
-                            initialTag: initialTagFilter
+                            isPresented: Binding(
+                                get: { store.activeModal != nil },
+                                set: { if !$0 { store.activeModal = nil } }
+                            ),
+                            initialTag: tag
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
 
-                    if showPeopleBrowser {
+                    if case .peopleBrowser(let person) = store.activeModal {
                         PeopleBrowserView(
-                            isPresented: $showPeopleBrowser,
-                            initialPerson: initialPersonFilter
+                            isPresented: Binding(
+                                get: { store.activeModal != nil },
+                                set: { if !$0 { store.activeModal = nil } }
+                            ),
+                            initialPerson: person
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
             }
         }
-        .animation(.easeOut(duration: 0.15), value: activeModal)
-        .animation(.easeOut(duration: 0.15), value: showTagBrowser)
-        .animation(.easeOut(duration: 0.15), value: showPeopleBrowser)
+        .animation(.easeOut(duration: 0.15), value: store.activeModal)
         .animation(.easeOut(duration: 0.2), value: store.isChatVisibleForCurrentTab)
-        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-            withAnimation {
-                columnVisibility = columnVisibility == .all ? .detailOnly : .all
+        .alert("Rename", isPresented: Binding(
+            get: { store.renameTarget != nil },
+            set: { if !$0 { store.renameTarget = nil } }
+        )) {
+            TextField("Name", text: $store.renameText)
+            Button("Cancel", role: .cancel) { store.renameTarget = nil }
+            Button("Rename") { store.confirmRename() }
+        } message: {
+            Text("Enter a new name")
+        }
+        .fileImporter(
+            isPresented: $store.showWorkspacePicker,
+            allowedContentTypes: [.folder]
+        ) { result in
+            if case .success(let url) = result {
+                store.setWorkspace(url)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleChat)) { _ in
-            withAnimation {
-                store.toggleChatForCurrentTab()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showFileLauncher)) { _ in
-            activeModal = .fileLauncher
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showLinkCapture)) { _ in
-            activeModal = .linkCapture
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showMeetingNote)) { _ in
-            activeModal = .meetingNote
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showTagBrowser)) { notification in
-            initialTagFilter = notification.userInfo?["initialTag"] as? String
-            activeModal = nil
-            showTagBrowser = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showPeopleBrowser)) { notification in
-            initialPersonFilter = notification.userInfo?["initialPerson"] as? String
-            activeModal = nil
-            showPeopleBrowser = true
+        .sheet(item: $store.imageDetailURL) { mediaURL in
+            MediaDetailView(
+                mediaURL: mediaURL,
+                referencingNotes: store.notesReferencing(
+                    mediaFilename: mediaURL.lastPathComponent
+                ),
+                onCopy: {
+                    if let img = NSImage(contentsOf: mediaURL) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.writeObjects([img])
+                    }
+                },
+                onDelete: {
+                    store.imageDetailURL = nil
+                    try? FileManager.default.trashItem(
+                        at: mediaURL, resultingItemURL: nil
+                    )
+                    store.loadFileTree()
+                },
+                onNavigate: { noteURL in
+                    store.imageDetailURL = nil
+                    store.open(noteURL)
+                }
+            )
         }
     }
 }
@@ -310,7 +347,7 @@ struct FileRow: View {
 
 struct FileTreeView: View {
     let nodes: [FileTreeNode]
-    @ObservedObject var store: DocumentStore
+    var store: DocumentStore
 
     var body: some View {
         ForEach(nodes) { node in
@@ -321,31 +358,34 @@ struct FileTreeView: View {
 
 struct FileNodeView: View {
     let node: FileTreeNode
-    @ObservedObject var store: DocumentStore
-
-    private var isExpanded: Binding<Bool> {
-        Binding(
-            get: { store.expandedFolders.contains(node.url) },
-            set: { newValue in
-                if newValue {
-                    store.expandedFolders.insert(node.url)
-                } else {
-                    store.expandedFolders.remove(node.url)
-                }
-            }
-        )
-    }
+    var store: DocumentStore
 
     var body: some View {
+        @Bindable var store = store
         if node.isDirectory {
-            DisclosureGroup(isExpanded: isExpanded) {
+            DisclosureGroup(isExpanded: Binding(
+                get: { store.expandedFolders.contains(node.url) },
+                set: { newValue in
+                    if newValue {
+                        store.expandedFolders.insert(node.url)
+                    } else {
+                        store.expandedFolders.remove(node.url)
+                    }
+                }
+            )) {
                 if let children = node.children {
                     FileTreeView(nodes: children, store: store)
                 }
             } label: {
                 FileRow(node: node, isOpen: false)
                     .contentShape(Rectangle())
-                    .onTapGesture { isExpanded.wrappedValue.toggle() }
+                    .onTapGesture {
+                        if store.expandedFolders.contains(node.url) {
+                            store.expandedFolders.remove(node.url)
+                        } else {
+                            store.expandedFolders.insert(node.url)
+                        }
+                    }
                     .contextMenu {
                         Button("Rename...") { store.promptRename(node.url) }
                     }
@@ -441,13 +481,12 @@ struct KiroSetupBanner: View {
 // MARK: - Editor View
 
 struct EditorViewSimple: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
-    @State private var showBacklinks = false
 
     private var currentNoteTitle: String {
         guard store.currentIndex >= 0,
@@ -468,7 +507,7 @@ struct EditorViewSimple: View {
             HStack(spacing: 0) {
                 LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
                     .frame(width: 44)
-                    .background(Color(nsColor: .textBackgroundColor))
+                    .background(Color(.textBackgroundColor))
 
                 MarkdownEditor(
                     text: $text,
@@ -478,11 +517,11 @@ struct EditorViewSimple: View {
                     selectedLineRange: $selectedLineRange,
                     store: store
                 )
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Color(.textBackgroundColor))
             }
 
             // Backlinks right sidebar
-            if showBacklinks {
+            if store.showBacklinks {
                 Divider()
 
                 ScrollView {
@@ -503,29 +542,24 @@ struct EditorViewSimple: View {
                     }
                 }
                 .frame(width: 260)
-                .background(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                .background(Color(.textBackgroundColor).opacity(0.5))
             }
         }
         .overlay(alignment: .topTrailing) {
             Button {
                 withAnimation(.easeOut(duration: 0.15)) {
-                    showBacklinks.toggle()
+                    store.toggleBacklinks()
                 }
             } label: {
                 Image(systemName: "link")
                     .font(.system(size: 12))
-                    .foregroundStyle(showBacklinks ? .primary : .tertiary)
+                    .foregroundStyle(store.showBacklinks ? .primary : .tertiary)
                     .padding(6)
             }
             .buttonStyle(.plain)
             .help("Toggle Backlinks (⌘⇧B)")
             .padding(.top, 4)
             .padding(.trailing, 4)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleBacklinks)) { _ in
-            withAnimation(.easeOut(duration: 0.15)) {
-                showBacklinks.toggle()
-            }
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
         .onChange(of: text) { _, _ in saveText() }
@@ -558,7 +592,7 @@ struct LineNumberGutter: View {
                     if yOffset > -20 && yOffset < size.height + 20 {
                         let text = Text("\(lineIndex + 1)")
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color(nsColor: .tertiaryLabelColor))
+                            .foregroundColor(Color(.tertiaryLabelColor))
                         context.draw(
                             text,
                             at: CGPoint(x: size.width - 8, y: yOffset),
@@ -573,7 +607,8 @@ struct LineNumberGutter: View {
 }
 
 struct MediaGridView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
+    @State private var selectedMedia: URL?
     private let gridColumns = [
         GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)
     ]
@@ -593,40 +628,229 @@ struct MediaGridView: View {
 
                     LazyVGrid(columns: gridColumns, spacing: 12) {
                         ForEach(store.mediaFiles, id: \.self) { mediaURL in
-                            MediaTile(mediaURL: mediaURL)
+                            MediaTile(
+                                mediaURL: mediaURL,
+                                onCopy: { copyImage(at: mediaURL) },
+                                onDelete: { deleteMedia(mediaURL) },
+                                onTap: { selectedMedia = mediaURL }
+                            )
                         }
                     }
                 }
             }
             .padding(16)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(.textBackgroundColor))
+        .sheet(item: $selectedMedia) { mediaURL in
+            MediaDetailView(
+                mediaURL: mediaURL,
+                referencingNotes: store.notesReferencing(
+                    mediaFilename: mediaURL.lastPathComponent
+                ),
+                onCopy: { copyImage(at: mediaURL) },
+                onDelete: {
+                    selectedMedia = nil
+                    deleteMedia(mediaURL)
+                },
+                onNavigate: { noteURL in
+                    selectedMedia = nil
+                    store.open(noteURL)
+                }
+            )
+        }
+    }
+
+    private func copyImage(at mediaURL: URL) {
+        guard let image = NSImage(contentsOf: mediaURL) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects([image])
+    }
+
+    private func deleteMedia(_ mediaURL: URL) {
+        try? FileManager.default.trashItem(
+            at: mediaURL, resultingItemURL: nil
+        )
+        store.loadFileTree()
     }
 }
 
+extension URL: @retroactive Identifiable {
+    public var id: String { absoluteString }
+}
+
+// MARK: - Media Detail (fullscreen sheet)
+
+struct MediaDetailView: View {
+    let mediaURL: URL
+    let referencingNotes: [(title: String, url: URL)]
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let onNavigate: (URL) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var fullImage: NSImage?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Toolbar
+            HStack {
+                Text(mediaURL.lastPathComponent)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Button {
+                    onCopy()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+
+            Divider()
+
+            // Image
+            if let fullImage {
+                ScrollView([.horizontal, .vertical]) {
+                    Image(nsImage: fullImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(
+                            maxWidth: .infinity,
+                            maxHeight: .infinity
+                        )
+                        .padding(20)
+                }
+            } else {
+                Spacer()
+                ProgressView()
+                Spacer()
+            }
+
+            // Referencing notes
+            if !referencingNotes.isEmpty {
+                Divider()
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+                    ForEach(
+                        referencingNotes,
+                        id: \.url
+                    ) { note in
+                        Button(note.title) {
+                            onNavigate(note.url)
+                        }
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+        }
+        .frame(minWidth: 600, minHeight: 450)
+        .background(Color(.windowBackgroundColor))
+        .onAppear { loadFullImage() }
+    }
+
+    private func loadFullImage() {
+        let maxSize = NSSize(width: 1600, height: 1200)
+        WorkspaceImageLoader.shared.loadImage(
+            at: mediaURL, maxSize: maxSize
+        ) { loaded in
+            fullImage = loaded
+        }
+    }
+}
+
+// MARK: - Media Tile with hover controls
+
 struct MediaTile: View {
     let mediaURL: URL
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+    let onTap: () -> Void
     @State private var image: NSImage?
     @State private var isLoadingImage = false
+    @State private var isHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(height: 140)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.12))
-                    .frame(height: 140)
-                    .overlay {
-                        Image(systemName: "photo")
-                            .foregroundStyle(.secondary)
+            ZStack(alignment: .topTrailing) {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 140)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.12))
+                        .frame(height: 140)
+                        .overlay {
+                            Image(systemName: "photo")
+                                .foregroundStyle(.secondary)
+                        }
+                }
+
+                if isHovering {
+                    HStack(spacing: 4) {
+                        Button {
+                            onCopy()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 11))
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThickMaterial)
+                        .clipShape(Circle())
+                        .help("Copy image")
+
+                        Button {
+                            onDelete()
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThickMaterial)
+                        .clipShape(Circle())
+                        .help("Delete image")
                     }
+                    .padding(6)
+                    .transition(.opacity)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isHovering = hovering
+                }
             }
 
             Text(mediaURL.lastPathComponent)
@@ -638,7 +862,7 @@ struct MediaTile: View {
                 .lineLimit(1)
         }
         .padding(10)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(.windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .onAppear {
             loadImageIfNeeded()
