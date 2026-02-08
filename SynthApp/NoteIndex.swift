@@ -133,11 +133,8 @@ struct NoteSearchResult: Identifiable {
                 guard matchesFilters(indexed, query: parsedQuery) else { return nil }
                 let rank = score(
                     indexed,
-                    query: parsedQuery.displayQuery,
-                    normalizedQuery: parsedQuery.normalizedQuery,
-                    normalizedPhrases: parsedQuery.normalizedPhrases,
-                    queryTokens: expandedTokens,
-                    hasSearchTerms: parsedQuery.hasSearchTerms
+                    parsedQuery: parsedQuery,
+                    queryTokens: expandedTokens
                 )
                 guard rank > 0 else { return nil }
                 let preview = Self.preview(
@@ -183,12 +180,13 @@ struct NoteSearchResult: Identifiable {
 
     private func score(
         _ indexed: IndexedNote,
-        query: String,
-        normalizedQuery: String,
-        normalizedPhrases: [String],
-        queryTokens: Set<String>,
-        hasSearchTerms: Bool
+        parsedQuery: ParsedQuery,
+        queryTokens: Set<String>
     ) -> Int {
+        let query = parsedQuery.displayQuery
+        let normalizedQuery = parsedQuery.normalizedQuery
+        let normalizedPhrases = parsedQuery.normalizedPhrases
+        let hasSearchTerms = parsedQuery.hasSearchTerms
         var total = recencyBoost(for: indexed.modifiedAt)
         var relevanceSignals = 0
         let lowerQuery = query.lowercased()
