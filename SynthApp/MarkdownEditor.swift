@@ -486,6 +486,56 @@ struct RichTextFormat: DocumentFormat {
     }
 }
 
+// MARK: - Resize Grip View
+
+class ResizeGripView: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 3
+        layer?.backgroundColor = NSColor.windowBackgroundColor
+            .withAlphaComponent(0.8).cgColor
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let context = NSGraphicsContext.current?.cgContext
+        else { return }
+        let inset: CGFloat = 4
+        let lineWidth: CGFloat = 1.5
+        context.setStrokeColor(
+            NSColor.secondaryLabelColor.cgColor
+        )
+        context.setLineWidth(lineWidth)
+        context.setLineCap(.round)
+        // Draw two diagonal lines (bottom-right grip)
+        // Line 1: shorter
+        context.move(to: CGPoint(
+            x: bounds.maxX - inset,
+            y: bounds.minY + inset + 4
+        ))
+        context.addLine(to: CGPoint(
+            x: bounds.maxX - inset - 4,
+            y: bounds.minY + inset
+        ))
+        // Line 2: longer
+        context.move(to: CGPoint(
+            x: bounds.maxX - inset,
+            y: bounds.minY + inset + 8
+        ))
+        context.addLine(to: CGPoint(
+            x: bounds.maxX - inset - 8,
+            y: bounds.minY + inset
+        ))
+        context.strokePath()
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+}
+
 // MARK: - Image Attachment Overlay
 
 class ImageAttachmentOverlay: NSView {
@@ -589,17 +639,17 @@ class FormattingTextView: NSTextView {
     private var hoveredImageURL: URL?
     private var hoveredImageMarkup: String?
     private var hoveredImageRect: CGRect?
+    private var hoveredImageCharIndex: Int?
     private var imageTrackingArea: NSTrackingArea?
     private var isResizeDragging = false
     private var resizeDragStartX: CGFloat = 0
     private var resizeDragStartWidth: CGFloat = 0
+    private var resizeDragAspectRatio: CGFloat = 1
 
-    private lazy var resizeHandle: NSView = {
-        let handle = NSView(frame: CGRect(x: 0, y: 0, width: 14, height: 14))
-        handle.wantsLayer = true
-        handle.layer?.cornerRadius = 3
-        handle.layer?.backgroundColor = NSColor.controlAccentColor
-            .withAlphaComponent(0.7).cgColor
+    private lazy var resizeHandle: ResizeGripView = {
+        let handle = ResizeGripView(
+            frame: CGRect(x: 0, y: 0, width: 16, height: 16)
+        )
         handle.isHidden = true
         addSubview(handle)
         return handle
@@ -644,6 +694,8 @@ class FormattingTextView: NSTextView {
                 isResizeDragging = true
                 resizeDragStartX = point.x
                 resizeDragStartWidth = rect.width
+                resizeDragAspectRatio = rect.height > 0
+                    ? rect.width / rect.height : 1
                 return
             }
         }
@@ -656,17 +708,45 @@ class FormattingTextView: NSTextView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard isResizeDragging else {
-            super.mouseDragged(with: event)
+        guard isResizeDragging,
+              let charIndex = hoveredImageCharIndex,
+              let storage = textStorage,
+              charIndex < storage.length
+        else {
+            if !isResizeDragging {
+                super.mouseDragged(with: event)
+            }
             return
         }
         let point = convert(event.locationInWindow, from: nil)
         let delta = point.x - resizeDragStartX
         let newWidth = max(80, resizeDragStartWidth + delta)
-        // Live preview: update the overlay position hint
-        if var rect = hoveredImageRect {
-            rect.size.width = newWidth
-            hoveredImageRect = rect
+        let newHeight = newWidth / resizeDragAspectRatio
+
+        // Update attachment bounds live
+        if let attachment = storage.attribute(
+            .attachment, at: charIndex, effectiveRange: nil
+        ) as? NSTextAttachment {
+            attachment.bounds = CGRect(
+                x: 0, y: 0, width: newWidth, height: newHeight
+            )
+            // Force layout invalidation for the glyph
+            let glyphRange = layoutManager?.glyphRange(
+                forCharacterRange: NSRange(
+                    location: charIndex, length: 1
+                ),
+                actualCharacterRange: nil
+            ) ?? NSRange(location: charIndex, length: 1)
+            layoutManager?.invalidateLayout(
+                forCharacterRange: NSRange(
+                    location: charIndex, length: 1
+                ),
+                actualCharacterRange: nil
+            )
+            layoutManager?.invalidateDisplay(
+                forGlyphRange: glyphRange
+            )
+            needsDisplay = true
         }
     }
 
@@ -695,12 +775,14 @@ class FormattingTextView: NSTextView {
                 hoveredImageURL = nil
                 hoveredImageMarkup = nil
                 hoveredImageRect = nil
+                hoveredImageCharIndex = nil
             }
             return
         }
         hoveredImageURL = imageURL
         hoveredImageRect = attachRect
         hoveredImageMarkup = imageMarkup(at: point)
+        hoveredImageCharIndex = charIndex(at: point)
 
         let overlaySize = CGSize(width: 64, height: 28)
         imageOverlay.frame = CGRect(
@@ -718,31 +800,20 @@ class FormattingTextView: NSTextView {
 
     private func resizeHandleRect(for imageRect: CGRect) -> CGRect {
         CGRect(
-            x: imageRect.maxX - 14,
+            x: imageRect.maxX - 16,
             y: imageRect.minY,
-            width: 14,
-            height: 14
+            width: 16,
+            height: 16
         )
     }
 
     private func imageMarkup(at point: CGPoint) -> String? {
-        guard let textStorage = textStorage,
-              let layoutManager = layoutManager,
-              let textContainer = textContainer
-        else { return nil }
-        let textPoint = CGPoint(
-            x: point.x - textContainerInset.width,
-            y: point.y - textContainerInset.height
-        )
-        let charIndex = layoutManager.characterIndex(
-            for: textPoint,
-            in: textContainer,
-            fractionOfDistanceBetweenInsertionPoints: nil
-        )
-        guard charIndex < textStorage.length else { return nil }
+        guard let textStorage = textStorage else { return nil }
+        guard let idx = charIndex(at: point),
+              idx < textStorage.length else { return nil }
         return textStorage.attribute(
             MarkdownFormat.imageMarkupKey,
-            at: charIndex,
+            at: idx,
             effectiveRange: nil
         ) as? String
     }
@@ -752,21 +823,31 @@ class FormattingTextView: NSTextView {
               let layoutManager = layoutManager,
               let textContainer = textContainer
         else { return nil }
+        let idx = charIndex(at: point)
+        guard let idx, idx < textStorage.length else { return nil }
+        return textStorage.attribute(
+            MarkdownFormat.imageURLKey,
+            at: idx,
+            effectiveRange: nil
+        ) as? URL
+    }
+
+    private func charIndex(at point: CGPoint) -> Int? {
+        guard let textStorage = textStorage,
+              let layoutManager = layoutManager,
+              let textContainer = textContainer
+        else { return nil }
         let textPoint = CGPoint(
             x: point.x - textContainerInset.width,
             y: point.y - textContainerInset.height
         )
-        let charIndex = layoutManager.characterIndex(
+        let idx = layoutManager.characterIndex(
             for: textPoint,
             in: textContainer,
             fractionOfDistanceBetweenInsertionPoints: nil
         )
-        guard charIndex < textStorage.length else { return nil }
-        return textStorage.attribute(
-            MarkdownFormat.imageURLKey,
-            at: charIndex,
-            effectiveRange: nil
-        ) as? URL
+        guard idx < textStorage.length else { return nil }
+        return idx
     }
 
     private func attachmentRect(at point: CGPoint) -> CGRect? {
@@ -1526,6 +1607,13 @@ struct MarkdownEditor: NSViewRepresentable {
                     ))
                 )
                 charIndex = lineEnd == charIndex ? charIndex + 1 : lineEnd
+            }
+
+            // Trailing newline produces an empty last line with no
+            // characters — use extraLineFragmentRect for its position
+            let extraRect = layoutManager.extraLineFragmentRect
+            if extraRect.height > 0 {
+                positions.append(textInset + extraRect.midY)
             }
 
             DispatchQueue.main.async {
