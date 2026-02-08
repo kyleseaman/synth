@@ -1,5 +1,15 @@
 import SwiftUI
 
+@ViewBuilder
+private func roleBadge(symbolName: String, tintColor: Color) -> some View {
+    Image(systemName: symbolName)
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(tintColor)
+        .frame(width: 18, height: 18)
+        .background(tintColor.opacity(0.13))
+        .clipShape(Circle())
+}
+
 // MARK: - Chat Bubble
 
 struct ChatBubble: View {
@@ -51,15 +61,6 @@ struct ChatBubble: View {
         }
     }
 
-    @ViewBuilder
-    private func roleBadge(symbolName: String, tintColor: Color) -> some View {
-        Image(systemName: symbolName)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(tintColor)
-            .frame(width: 18, height: 18)
-            .background(tintColor.opacity(0.13))
-            .clipShape(Circle())
-    }
 }
 
 // MARK: - Streaming Bubble
@@ -70,12 +71,7 @@ struct StreamingBubble: View {
 
     var body: some View {
         HStack {
-            Image(systemName: "sparkles")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 18, height: 18)
-                .background(Color.accentColor.opacity(0.13))
-                .clipShape(Circle())
+            roleBadge(symbolName: "sparkles", tintColor: .accentColor)
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
                     MarkdownText(text)

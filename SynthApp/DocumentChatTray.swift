@@ -407,15 +407,29 @@ struct DocumentChatTray: View {
     private func wireFileCallbacks() {
         chatState.acpClient?.onFileRead = { [weak store] path in
             guard let store else { return nil }
-            if let fileIndex = store.openFiles.firstIndex(where: { $0.url.path == path }) {
+            let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
+            guard let requestedURL = Self.scopedWorkspaceURL(path: path, root: rootURL) else {
+                return nil
+            }
+
+            if let fileIndex = store.openFiles.firstIndex(
+                where: { Self.canonicalURL($0.url) == requestedURL }
+            ) {
                 return store.openFiles[fileIndex].content.string
             }
-            return try? String(contentsOfFile: path, encoding: .utf8)
+            return try? String(contentsOf: requestedURL, encoding: .utf8)
         }
 
         chatState.acpClient?.onFileWrite = { [weak store, weak chatState] path, content in
             guard let store, let chatState else { return }
-            if let fileIndex = store.openFiles.firstIndex(where: { $0.url.path == path }) {
+            let rootURL = store.workspace ?? documentURL.deletingLastPathComponent()
+            guard let requestedURL = Self.scopedWorkspaceURL(path: path, root: rootURL) else {
+                return
+            }
+
+            if let fileIndex = store.openFiles.firstIndex(
+                where: { Self.canonicalURL($0.url) == requestedURL }
+            ) {
                 let snapshot = UndoSnapshot(
                     url: store.openFiles[fileIndex].url,
                     content: store.openFiles[fileIndex].content.string,
@@ -432,6 +446,19 @@ struct DocumentChatTray: View {
                 }
             }
         }
+    }
+
+    private static func scopedWorkspaceURL(path: String, root: URL) -> URL? {
+        let requestedURL = canonicalURL(URL(fileURLWithPath: path))
+        let rootURL = canonicalURL(root)
+        let rootPath = rootURL.path
+        let isRoot = requestedURL.path == rootPath
+        let isDescendant = requestedURL.path.hasPrefix(rootPath + "/")
+        return (isRoot || isDescendant) ? requestedURL : nil
+    }
+
+    private static func canonicalURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
     }
 
     private func sendMessage() {
