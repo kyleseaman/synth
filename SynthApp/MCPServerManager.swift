@@ -332,16 +332,22 @@ struct MCPRuntimeLease: Codable, Equatable {
         let timeoutSeconds: TimeInterval = 2
         let pollInterval: TimeInterval = 0.2
         let deadline = Date().addingTimeInterval(timeoutSeconds)
+        var healthyChecks = 0
 
         while Date() < deadline {
             guard process.isRunning else { return false }
             if isHealthy(port: port) {
-                return true
+                healthyChecks += 1
+                if healthyChecks >= 2 {
+                    return true
+                }
+            } else {
+                healthyChecks = 0
             }
             Thread.sleep(forTimeInterval: pollInterval)
         }
 
-        return process.isRunning && isHealthy(port: port)
+        return false
     }
 
     private func startHeartbeat() {
@@ -446,15 +452,6 @@ struct MCPRuntimeLease: Codable, Equatable {
         let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard socketDescriptor >= 0 else { return false }
         defer { close(socketDescriptor) }
-
-        var reuseAddress: Int32 = 1
-        setsockopt(
-            socketDescriptor,
-            SOL_SOCKET,
-            SO_REUSEADDR,
-            &reuseAddress,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
 
         var socketAddress = sockaddr_in()
         socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)

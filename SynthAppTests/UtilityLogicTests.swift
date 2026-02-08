@@ -1,4 +1,5 @@
 import XCTest
+import Darwin
 @testable import Synth
 
 final class UtilityLogicTests: XCTestCase {
@@ -72,6 +73,31 @@ final class UtilityLogicTests: XCTestCase {
         let flattened = FileLauncher.flattenFiles([firstFile, folderNode])
 
         XCTAssertEqual(flattened.map { $0.url.path }, [firstFile.url.path, nestedFile.url.path])
+    }
+
+    func testFileTreeNodeEqualityReflectsChildTreeChanges() {
+        let firstChild = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder/first.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let secondChild = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder/second.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let firstParent = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder"),
+            isDirectory: true,
+            children: [firstChild]
+        )
+        let secondParent = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder"),
+            isDirectory: true,
+            children: [secondChild]
+        )
+
+        XCTAssertNotEqual(firstParent, secondParent)
     }
 
     @MainActor
@@ -392,6 +418,27 @@ final class UtilityLogicTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testDocumentChatTrayDisplayedQuickPromptsCapsAtThree() {
+        let prompts = [
+            "one",
+            "two",
+            "three",
+            "four"
+        ]
+
+        let displayed = DocumentChatTray.displayedQuickPrompts(from: prompts)
+
+        XCTAssertEqual(displayed, ["one", "two", "three"])
+    }
+
+    @MainActor
+    func testDocumentChatTrayAgentSymbolFallsBackWhenPreferredUnavailable() {
+        let fallbackSymbol = DocumentChatTray.agentSymbolName { _ in false }
+
+        XCTAssertEqual(fallbackSymbol, "person")
+    }
+
     func testShortcutHintRulesUsesOneSecondDelay() {
         XCTAssertEqual(ShortcutHintRules.revealDelaySeconds, 1.0)
     }
@@ -411,6 +458,111 @@ final class UtilityLogicTests: XCTestCase {
             ShortcutHintRules.shouldRevealHint(
                 hoverStartDate: hoverStartDate,
                 currentDate: afterDelayDate
+            )
+        )
+    }
+
+    func testSidebarSectionHoverRulesBackgroundOpacity() {
+        XCTAssertEqual(
+            SidebarSectionHoverRules.backgroundOpacity(isSelected: true, isHovering: false),
+            0.15
+        )
+        XCTAssertEqual(
+            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: true),
+            0.08
+        )
+        XCTAssertEqual(
+            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: false),
+            0.0
+        )
+    }
+
+    @MainActor
+    func testDocumentStoreShouldRefreshSidebarIgnoresHiddenKiroAndSpecialFolders() {
+        let workspacePath = "/tmp/workspace"
+
+        XCTAssertFalse(
+            DocumentStore.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: "/tmp/workspace/.kiro/settings/mcp.json"
+            )
+        )
+        XCTAssertFalse(
+            DocumentStore.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: "/tmp/workspace/daily/2026-02-08.md"
+            )
+        )
+        XCTAssertFalse(
+            DocumentStore.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: "/tmp/workspace/media/screenshot.png"
+            )
+        )
+    }
+
+    @MainActor
+    func testDocumentStoreShouldRefreshSidebarForVisibleWorkspaceFiles() {
+        let workspacePath = "/tmp/workspace"
+
+        XCTAssertTrue(
+            DocumentStore.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: "/tmp/workspace/drafts/Untitled.md"
+            )
+        )
+        XCTAssertFalse(
+            DocumentStore.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: "/tmp/other-workspace/drafts/Untitled.md"
+            )
+        )
+    }
+
+    @MainActor
+    func testDocumentStoreShouldApplyFileTreeScanResultRejectsStaleIdentifier() {
+        let activeID = UUID()
+        let staleID = UUID()
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+
+        XCTAssertFalse(
+            DocumentStore.shouldApplyFileTreeScanResult(
+                activeScanID: activeID,
+                scanID: staleID,
+                currentWorkspace: workspace,
+                scanWorkspace: workspace
+            )
+        )
+    }
+
+    @MainActor
+    func testDocumentStoreShouldApplyFileTreeScanResultRequiresMatchingWorkspaceAndIdentifier() {
+        let activeID = UUID()
+        let workspace = URL(fileURLWithPath: "/tmp/workspace", isDirectory: true)
+        let otherWorkspace = URL(fileURLWithPath: "/tmp/other-workspace", isDirectory: true)
+
+        XCTAssertFalse(
+            DocumentStore.shouldApplyFileTreeScanResult(
+                activeScanID: activeID,
+                scanID: activeID,
+                currentWorkspace: nil,
+                scanWorkspace: workspace
+            )
+        )
+        XCTAssertFalse(
+            DocumentStore.shouldApplyFileTreeScanResult(
+                activeScanID: activeID,
+                scanID: activeID,
+                currentWorkspace: workspace,
+                scanWorkspace: otherWorkspace
+            )
+        )
+        XCTAssertTrue(
+            DocumentStore.shouldApplyFileTreeScanResult(
+                activeScanID: activeID,
+                scanID: activeID,
+                currentWorkspace: workspace,
+                scanWorkspace: workspace
             )
         )
     }
@@ -781,5 +933,39 @@ final class MCPServerManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(selectedPort, 9724)
+    }
+
+    func testSelectAvailablePortSkipsOccupiedPreferredPort() {
+        let preferredPort: UInt16 = 9732
+        let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
+        XCTAssertTrue(socketDescriptor >= 0)
+        defer { close(socketDescriptor) }
+
+        var socketAddress = sockaddr_in()
+        socketAddress.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        socketAddress.sin_family = sa_family_t(AF_INET)
+        socketAddress.sin_port = preferredPort.bigEndian
+        socketAddress.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+
+        let bindResult = withUnsafePointer(to: &socketAddress) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+                Darwin.bind(
+                    socketDescriptor,
+                    reboundPointer,
+                    socklen_t(MemoryLayout<sockaddr_in>.size)
+                )
+            }
+        }
+        XCTAssertEqual(bindResult, 0)
+        XCTAssertEqual(Darwin.listen(socketDescriptor, 8), 0)
+
+        let manager = MCPServerManager()
+        let selected = manager.selectAvailablePort(
+            preferredPort: preferredPort,
+            searchWindow: 3
+        )
+
+        XCTAssertNotNil(selected)
+        XCTAssertNotEqual(selected, preferredPort)
     }
 }

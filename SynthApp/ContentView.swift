@@ -25,6 +25,13 @@ enum ShortcutHintRules {
     }
 }
 
+enum SidebarSectionHoverRules {
+    static func backgroundOpacity(isSelected: Bool, isHovering: Bool) -> Double {
+        if isSelected { return 0.15 }
+        return isHovering ? 0.08 : 0.0
+    }
+}
+
 private struct DelayedShortcutHintModifier: ViewModifier {
     let shortcutText: String
     @State private var isPointerHovering = false
@@ -89,6 +96,20 @@ struct ContentView: View {
     @Environment(DocumentStore.self) var store
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
+    @State private var hoveredSidebarMode: DetailViewMode?
+
+    private func showSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    private var settingsToolbarButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "openSettings", placement: .automatic) {
+            Button(action: showSettingsWindow) {
+                Image(systemName: "gearshape")
+            }
+            .keyboardShortcutHint("⌘,")
+        }
+    }
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -114,6 +135,23 @@ struct ContentView: View {
                     )
                 }
             }
+        }
+    }
+
+    private var backlinksToolbarButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "toggleBacklinks", placement: .primaryAction) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    store.toggleBacklinks()
+                }
+            } label: {
+                Image(systemName: "link")
+                    .foregroundStyle(
+                        store.showBacklinks && store.detailMode == .editor ? .primary : .secondary
+                    )
+            }
+            .disabled(store.detailMode != .editor || store.openFiles.isEmpty)
+            .keyboardShortcutHint("⌘⇧B")
         }
     }
 
@@ -148,11 +186,17 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .dailyNotes
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .dailyNotes,
+                                    isHovering: hoveredSidebarMode == .dailyNotes
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .dailyNotes : nil
+                        }
 
                         // MARK: - Links sidebar button
                         Button {
@@ -167,11 +211,17 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .links
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .links,
+                                    isHovering: hoveredSidebarMode == .links
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .links : nil
+                        }
 
                         // MARK: - Media sidebar button
                         Button {
@@ -186,13 +236,20 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .media
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .media,
+                                    isHovering: hoveredSidebarMode == .media
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .media : nil
+                        }
 
                         FileTreeView(nodes: store.fileTree, store: store)
+                            .id(store.fileTreeVersion)
                     }
                     .listStyle(.sidebar)
                     .contentTransition(.identity)
@@ -202,6 +259,7 @@ struct ContentView: View {
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
             .toolbar(id: "sidebar") {
+                settingsToolbarButton
                 openWorkspaceButton
             }
         } detail: {
@@ -296,6 +354,7 @@ struct ContentView: View {
             }
             .toolbar(id: "tabs") {
                 tabBar
+                backlinksToolbarButton
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
@@ -369,6 +428,30 @@ struct ContentView: View {
         } message: {
             Text("Enter a new name")
         }
+        .alert(
+            "Delete Folder",
+            isPresented: Binding(
+                get: {
+                    store.pendingDeleteTarget != nil && store.pendingDeleteIsDirectory
+                },
+                set: { shouldShow in
+                    if !shouldShow {
+                        store.cancelPendingDelete()
+                    }
+                }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                store.cancelPendingDelete()
+            }
+            Button("Delete Folder", role: .destructive) {
+                _ = store.confirmPendingDelete()
+            }
+        } message: {
+            Text(
+                "Delete \"\(store.pendingDeleteName)\" and all of its contents? This cannot be undone."
+            )
+        }
         .fileImporter(
             isPresented: $store.showWorkspacePicker,
             allowedContentTypes: [.folder]
@@ -391,10 +474,7 @@ struct ContentView: View {
                 },
                 onDelete: {
                     store.imageDetailURL = nil
-                    try? FileManager.default.trashItem(
-                        at: mediaURL, resultingItemURL: nil
-                    )
-                    store.loadFileTree()
+                    _ = store.deleteMedia(mediaURL)
                 },
                 onNavigate: { noteURL in
                     store.imageDetailURL = nil
@@ -471,7 +551,17 @@ struct FileNodeView: View {
                         }
                     }
                     .contextMenu {
-                        Button("Rename...") { store.promptRename(node.url) }
+                        Button {
+                            store.promptRename(node.url)
+                        } label: {
+                            Label("Rename Folder...", systemImage: "pencil")
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            store.requestDelete(node.url, isDirectory: true)
+                        } label: {
+                            Label("Delete Folder...", systemImage: "trash")
+                        }
                     }
             }
         } else {
@@ -479,9 +569,17 @@ struct FileNodeView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { store.open(node.url) }
                 .contextMenu {
-                    Button("Rename...") { store.promptRename(node.url) }
+                    Button {
+                        store.promptRename(node.url)
+                    } label: {
+                        Label("Rename File...", systemImage: "pencil")
+                    }
                     Divider()
-                    Button("Delete", role: .destructive) { store.delete(node.url) }
+                    Button(role: .destructive) {
+                        store.requestDelete(node.url, isDirectory: false)
+                    } label: {
+                        Label("Delete File", systemImage: "trash")
+                    }
                 }
         }
     }
@@ -587,10 +685,6 @@ struct EditorViewSimple: View {
         return store.openFiles[store.currentIndex].url
     }
 
-    private func showSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
     var body: some View {
         HStack(spacing: 0) {
             // Editor
@@ -635,38 +729,6 @@ struct EditorViewSimple: View {
                 .frame(width: 260)
                 .background(Color(.textBackgroundColor).opacity(0.5))
             }
-        }
-        .overlay(alignment: .top) {
-            HStack(spacing: 8) {
-                Button(action: showSettingsWindow) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .padding(7)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(",", modifiers: .command)
-                .keyboardShortcutHint("⌘,")
-
-                Spacer()
-
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        store.toggleBacklinks()
-                    }
-                } label: {
-                    Image(systemName: "link")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(store.showBacklinks ? .primary : .tertiary)
-                        .padding(7)
-                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcutHint("⌘⇧B")
-            }
-            .padding(.top, 4)
-            .padding(.horizontal, 4)
         }
         .onChange(of: selectedText) { _, _ in
             publishSelectionContext()
@@ -785,10 +847,7 @@ struct MediaGridView: View {
     }
 
     private func deleteMedia(_ mediaURL: URL) {
-        try? FileManager.default.trashItem(
-            at: mediaURL, resultingItemURL: nil
-        )
-        store.loadFileTree()
+        _ = store.deleteMedia(mediaURL)
     }
 }
 

@@ -1632,11 +1632,8 @@ struct MarkdownEditor: NSViewRepresentable {
                     mediaFilename: imageURL.lastPathComponent
                 ) ?? []
                 if refs.isEmpty {
-                    try? FileManager.default.trashItem(
-                        at: imageURL, resultingItemURL: nil
-                    )
+                    _ = store?.deleteMedia(imageURL)
                 }
-                store?.loadFileTree()
                 applyFormatting()
             case .open:
                 self.store?.showImageDetailModal(imageURL)

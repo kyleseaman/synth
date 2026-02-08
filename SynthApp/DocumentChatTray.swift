@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct DocumentChatTray: View {
     var chatState: DocumentChatState
@@ -16,6 +17,9 @@ struct DocumentChatTray: View {
     private let minHeight: CGFloat = 180
     private let maxHeight: CGFloat = 720
     private static let preferredAgentIdentifier = "synth-writer"
+    private static let preferredAgentSymbolName = "person.crop.circle"
+    private static let fallbackAgentSymbolName = "person"
+    private static let maxQuickPromptCount = 3
     private let quickPrompts = [
         "Summarize this document into key points",
         "Rewrite this section for clarity and flow",
@@ -36,6 +40,21 @@ struct DocumentChatTray: View {
         isLoading: Bool
     ) -> Bool {
         messageCount == 0 && currentResponse.isEmpty && !isLoading
+    }
+
+    static func agentSymbolName(
+        symbolExists: (String) -> Bool = { symbolName in
+            NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil
+        }
+    ) -> String {
+        if symbolExists(preferredAgentSymbolName) {
+            return preferredAgentSymbolName
+        }
+        return fallbackAgentSymbolName
+    }
+
+    static func displayedQuickPrompts(from prompts: [String]) -> [String] {
+        Array(prompts.prefix(maxQuickPromptCount))
     }
 
     var body: some View {
@@ -109,7 +128,7 @@ struct DocumentChatTray: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "person.crop.circle.badge.sparkles")
+                    Image(systemName: Self.agentSymbolName())
                         .font(.system(size: 11))
                     Text(selectedAgent ?? "Auto Agent")
                         .font(.system(size: 11, weight: .medium))
@@ -295,26 +314,27 @@ struct DocumentChatTray: View {
                 currentResponse: chatState.currentResponse,
                 isLoading: chatState.isLoading
             ) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(quickPrompts, id: \.self) { prompt in
-                            Button(prompt) {
-                                input = prompt
-                                sendMessage()
-                            }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 10.5))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color.primary.opacity(0.06))
-                            .clipShape(Capsule())
-                            .disabled(chatState.isLoading)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Self.displayedQuickPrompts(from: quickPrompts), id: \.self) { prompt in
+                        Button(prompt) {
+                            input = prompt
+                            sendMessage()
                         }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10.5))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                        .disabled(chatState.isLoading)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 6)
                 }
-                .scrollIndicators(.hidden)
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

@@ -15,10 +15,6 @@ struct FileTreeNode: Identifiable, Equatable {
         self.children = children
     }
 
-    static func == (lhs: FileTreeNode, rhs: FileTreeNode) -> Bool {
-        lhs.id == rhs.id
-    }
-
     static func scan(_ url: URL) -> [FileTreeNode] {
         let keys: [URLResourceKey] = [.isDirectoryKey]
         guard let contents = try? FileManager.default.contentsOfDirectory(
