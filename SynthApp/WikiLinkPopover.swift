@@ -3,6 +3,7 @@ import AppKit
 
 // MARK: - Wiki Link Popover
 
+@MainActor
 class WikiLinkPopover {
     private var popover: NSPopover?
     private var hostingController: NSHostingController<WikiLinkPopupView>
@@ -81,10 +82,13 @@ class WikiLinkPopover {
 
     func selectedTitle() -> String? {
         // Check if the "Create" option is selected (past end of results)
-        if currentResults.isEmpty && !currentQuery.isEmpty {
+        if mode != "template", currentResults.isEmpty && !currentQuery.isEmpty {
             return currentQuery
         }
         guard selectedIndex >= 0, selectedIndex < currentResults.count else {
+            if mode == "template" {
+                return nil
+            }
             return currentQuery.isEmpty ? nil : currentQuery
         }
         return currentResults[selectedIndex].title
@@ -149,7 +153,7 @@ struct WikiLinkPopupView: View {
                         }
                     }
 
-                    if !query.isEmpty {
+                    if !query.isEmpty && mode != "template" {
                         Divider()
                         HStack {
                             Image(systemName: "plus")
@@ -192,6 +196,7 @@ struct WikiLinkPopupView: View {
         switch mode {
         case "at": return "at"
         case "hashtag": return "number"
+        case "template": return "text.badge.plus"
         default: return "magnifyingglass"
         }
     }
@@ -200,6 +205,7 @@ struct WikiLinkPopupView: View {
         switch mode {
         case "at": return "Search dates & people..."
         case "hashtag": return "Search tags..."
+        case "template": return "Search templates..."
         default: return "Search notes..."
         }
     }
@@ -209,29 +215,34 @@ struct WikiLinkPopupView: View {
             return result.url.host == "person" ? "person.fill" : "calendar"
         }
         if mode == "hashtag" { return "number" }
+        if mode == "template" { return "doc.badge.plus" }
         return "doc.text"
     }
 
     private func colorForResult(_ result: NoteSearchResult) -> Color {
         if result.url.host == "person" { return .purple }
         if mode == "hashtag" { return .teal }
+        if mode == "template" { return .brown }
         return .primary
     }
 
     private var displayQuery: String {
         if mode == "hashtag" { return "#\(query)" }
+        if mode == "template" { return "/\(query)" }
         return query
     }
 
     private var createLabel: String {
         if mode == "hashtag" { return "Create #\(query)" }
         if mode == "at" { return "Add @\(query)" }
+        if mode == "template" { return "Insert /\(query)" }
         return "Create \"\(query)\""
     }
 
     private var emptyText: String {
         switch mode {
         case "hashtag": return "No tags in workspace"
+        case "template": return "No templates saved"
         default: return "No notes in workspace"
         }
     }

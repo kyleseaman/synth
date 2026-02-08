@@ -30,7 +30,6 @@ final class GlobalHotkeyMonitor {
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return }
-            guard !NSApp.isActive else { return }
             if self.matches(event) {
                 self.trigger()
             }

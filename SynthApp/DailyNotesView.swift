@@ -257,6 +257,7 @@ struct DailyNoteEditor: NSViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: DailyNoteEditor
         var textView: FormattingTextView?

@@ -131,7 +131,7 @@ private extension NSImage {
     }
 }
 
-final class WorkspaceImageLoader {
+final class WorkspaceImageLoader: @unchecked Sendable {
     static let shared = WorkspaceImageLoader()
 
     private let decodeQueue = DispatchQueue(
@@ -141,14 +141,14 @@ final class WorkspaceImageLoader {
     )
     private let stateQueue = DispatchQueue(label: "synth.workspace-image-loader.state")
     private let imageCache = NSCache<NSString, NSImage>()
-    private var inFlight: [NSString: [(NSImage?) -> Void]] = [:]
+    private var inFlight: [String: [(NSImage?) -> Void]] = [:]
 
     private init() {}
 
     func cachedImage(at imageURL: URL, maxSize: NSSize) -> NSImage? {
         let cacheKey = key(for: imageURL, maxSize: maxSize)
         return stateQueue.sync {
-            imageCache.object(forKey: cacheKey)
+            imageCache.object(forKey: cacheKey as NSString)
         }
     }
 
@@ -178,7 +178,7 @@ final class WorkspaceImageLoader {
 
             let callbacks: [(NSImage?) -> Void] = self.stateQueue.sync {
                 if let decoded {
-                    self.imageCache.setObject(decoded, forKey: cacheKey)
+                    self.imageCache.setObject(decoded, forKey: cacheKey as NSString)
                 }
                 return self.inFlight.removeValue(forKey: cacheKey) ?? []
             }
@@ -191,10 +191,10 @@ final class WorkspaceImageLoader {
         }
     }
 
-    private func key(for imageURL: URL, maxSize: NSSize) -> NSString {
+    private func key(for imageURL: URL, maxSize: NSSize) -> String {
         let width = Int(maxSize.width.rounded())
         let height = Int(maxSize.height.rounded())
-        return "\(imageURL.path)#\(width)x\(height)" as NSString
+        return "\(imageURL.path)#\(width)x\(height)"
     }
 
     private static func decodeImage(at imageURL: URL, maxSize: NSSize) -> NSImage? {
@@ -234,7 +234,7 @@ enum ActiveModal: Equatable {
     case peopleBrowser(String?)
 }
 
-// swiftlint:disable:next type_body_length
+@MainActor
 @Observable
 final class DocumentStore {
     var workspace: URL?
@@ -301,7 +301,8 @@ final class DocumentStore {
 
     deinit {
         fileTreeLoadTask?.cancel()
-        stopWatching()
+        fileWatcher?.cancel()
+        fileWatcher = nil
     }
 
     private func startWatching() {

@@ -68,6 +68,50 @@ final class LinkStoreTests: XCTestCase {
         XCTAssertEqual(store.links.first?.urlString, "https://example.com")
         XCTAssertEqual(store.links.first?.identifier, first?.identifier)
     }
+
+    func testRemoveLinkPersistsAfterReload() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+        _ = store.addLink("https://first.example")
+        guard let secondLink = store.addLink("https://second.example") else {
+            XCTFail("Second link was not created")
+            return
+        }
+
+        store.removeLink(identifier: secondLink.identifier)
+        XCTAssertEqual(store.links.count, 1)
+        XCTAssertEqual(store.links.first?.urlString, "https://first.example")
+
+        let reloaded = LinkStore(storage: storage, storageKey: storageKey)
+        XCTAssertEqual(reloaded.links.count, 1)
+        XCTAssertEqual(reloaded.links.first?.urlString, "https://first.example")
+    }
+
+    func testNormalizeSupportsHttpAndRejectsInvalidHosts() {
+        XCTAssertEqual(
+            LinkStore.normalize("http://example.com/path"),
+            "http://example.com/path"
+        )
+        XCTAssertNil(LinkStore.normalize("mailto:test@example.com"))
+        XCTAssertNil(LinkStore.normalize("https:///missing-host"))
+        XCTAssertNil(LinkStore.normalize("   "))
+    }
+
+    func testLoadIgnoresCorruptStoredData() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        storage.set(Data("invalid json".utf8), forKey: storageKey)
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+
+        XCTAssertTrue(store.links.isEmpty)
+    }
 }
 
 final class MediaManagerTests: XCTestCase {

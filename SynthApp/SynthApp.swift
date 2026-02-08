@@ -24,10 +24,43 @@ struct SynthApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var store = DocumentStore()
     @State private var linkStore = LinkStore()
+    @State private var templateStore = TemplateStore()
 
     init() {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
         signal(SIGPIPE, SIG_IGN)
+    }
+
+    private var templatesSortedForMenu: [SavedTemplate] {
+        templateStore.templates.sorted { firstTemplate, secondTemplate in
+            switch (firstTemplate.shortcutSlot, secondTemplate.shortcutSlot) {
+            case let (firstSlot?, secondSlot?):
+                if firstSlot != secondSlot { return firstSlot < secondSlot }
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                break
+            }
+            return firstTemplate.name.localizedCaseInsensitiveCompare(
+                secondTemplate.name
+            ) == .orderedAscending
+        }
+    }
+
+    private func postTemplateInsertion(for template: SavedTemplate) {
+        NotificationCenter.default.post(
+            name: .insertTemplate,
+            object: nil,
+            userInfo: ["templateIdentifier": template.identifier.uuidString]
+        )
+    }
+
+    private func templateInsertButton(for template: SavedTemplate) -> some View {
+        Button("Insert \(template.name)") {
+            postTemplateInsertion(for: template)
+        }
     }
 
     var body: some Scene {
@@ -35,6 +68,7 @@ struct SynthApp: App {
             ContentView()
                 .environment(store)
                 .environment(linkStore)
+                .environment(templateStore)
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1200, height: 800)
@@ -107,11 +141,31 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("d")
             }
+
+            CommandMenu("Templates") {
+                if templatesSortedForMenu.isEmpty {
+                    Button("Add templates in Settings") {}
+                        .disabled(true)
+                } else {
+                    ForEach(templatesSortedForMenu) { template in
+                        if let shortcutSlot = template.shortcutSlot {
+                            templateInsertButton(for: template)
+                            .keyboardShortcut(
+                                KeyEquivalent(Character("\(shortcutSlot)")),
+                                modifiers: [.command, .option]
+                            )
+                        } else {
+                            templateInsertButton(for: template)
+                        }
+                    }
+                }
+            }
         }
 
         Settings {
             SettingsView()
                 .environment(store)
+                .environment(templateStore)
         }
     }
 }

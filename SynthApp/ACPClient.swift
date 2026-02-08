@@ -1,9 +1,8 @@
-// swiftlint:disable file_length
 import Foundation
 import Observation
 
-// swiftlint:disable:next type_body_length
-@Observable class ACPClient {
+@MainActor
+@Observable final class ACPClient: @unchecked Sendable {
     @ObservationIgnored private var process: Process?
     @ObservationIgnored private var stdin: FileHandle?
     @ObservationIgnored private var requestId = 0
@@ -31,13 +30,10 @@ import Observation
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
 
-    // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
         self.agent = agent
-        DispatchQueue.main.async {
-            self.connectionFailed = false
-        }
+        connectionFailed = false
         let proc = Process()
 
         if let path = KiroCliResolver.resolve() {
@@ -68,7 +64,9 @@ import Observation
             if let str = String(data: data, encoding: .utf8) {
                 print("[ACP] stdout: \(str.prefix(500))")
             }
-            self?.handleData(data)
+            Task { @MainActor [weak self] in
+                self?.handleData(data)
+            }
         }
 
         stderrPipe.fileHandleForReading.readabilityHandler = { handle in
@@ -92,7 +90,7 @@ import Observation
             }
         } catch {
             print("[ACP] Failed to launch process: \(error)")
-            DispatchQueue.main.async { self.connectionFailed = true }
+            connectionFailed = true
         }
     }
 
@@ -100,10 +98,8 @@ import Observation
         process?.terminate()
         process = nil
         stdin = nil
-        DispatchQueue.main.async {
-            self.isConnected = false
-            self.sessionId = nil
-        }
+        isConnected = false
+        sessionId = nil
     }
 
     // MARK: - Data Handling
@@ -154,9 +150,9 @@ import Observation
                         domain: "ACP", code: error.code,
                         userInfo: [NSLocalizedDescriptionKey: error.message]
                     )
-                    DispatchQueue.main.async { handler(.failure(nsError)) }
+                    handler(.failure(nsError))
                 } else {
-                    DispatchQueue.main.async { handler(.success(response.result)) }
+                    handler(.success(response.result))
                 }
             }
         }
@@ -174,7 +170,7 @@ import Observation
         case "fs/write_text_file":
             let path = params?["path"] as? String ?? ""
             let content = params?["content"] as? String ?? ""
-            DispatchQueue.main.async { self.onFileWrite?(path, content) }
+            onFileWrite?(path, content)
             sendResponse(id: id, result: nil)
 
         case "session/request_permission":
@@ -197,10 +193,8 @@ import Observation
             )
             request.diffContent = self.lastToolCallDiff[toolCallId]
             print("[ACP] Setting pendingPermission: \(title), hasDiff=\(request.diffContent != nil)")
-            DispatchQueue.main.async {
-                self.pendingPermission = request
-                self.onPermissionRequest?(request)
-            }
+            pendingPermission = request
+            onPermissionRequest?(request)
 
         default:
             // Unknown method — respond with error
@@ -216,7 +210,7 @@ import Observation
                 "optionId": AnyCodable(optionId)
             ])
         ]))
-        DispatchQueue.main.async { self.pendingPermission = nil }
+        pendingPermission = nil
     }
 
     // MARK: - Session Update Handling
@@ -230,9 +224,9 @@ import Observation
         case .agentMessageChunk:
             if let content = update["content"]?.dictValue,
                let text = content["text"]?.stringValue {
-                DispatchQueue.main.async { self.onUpdate?(text) }
+                onUpdate?(text)
             } else if let text = update["text"]?.stringValue {
-                DispatchQueue.main.async { self.onUpdate?(text) }
+                onUpdate?(text)
             }
 
         case .toolCall:
@@ -250,28 +244,21 @@ import Observation
                    let newText = first["newText"]?.stringValue {
                     self.lastToolCallDiff[toolCallId] = DiffContent(oldText: oldText, newText: newText, path: path)
                 }
-                DispatchQueue.main.async {
-                    self.toolCalls.append(call)
-                    self.onToolCall?(call)
-                }
+                toolCalls.append(call)
+                onToolCall?(call)
             }
 
         case .toolCallUpdate:
             if let toolCallId = update["toolCallId"]?.stringValue {
                 let status = update["status"]?.stringValue ?? "in_progress"
-                DispatchQueue.main.async {
-                    if let idx = self.toolCalls.firstIndex(where: { $0.id == toolCallId }) {
-                        self.toolCalls[idx].status = status
-                    }
-                    self.onToolCallUpdate?(toolCallId, status)
+                if let idx = toolCalls.firstIndex(where: { $0.id == toolCallId }) {
+                    toolCalls[idx].status = status
                 }
+                onToolCallUpdate?(toolCallId, status)
             }
 
         case .turnEnd:
             finishTurnIfNeeded()
-
-        default:
-            break
         }
     }
 
@@ -288,15 +275,16 @@ import Observation
             return requestId
         }
 
-        queue.asyncAfter(deadline: .now() + 60) { [weak self] in
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
             guard let self = self else { return }
-            let handler = self.pendingRequests.removeValue(forKey: currentId)
+            let handler = self.queue.sync { self.pendingRequests.removeValue(forKey: currentId) }
             if let handler = handler {
                 let err = NSError(
                     domain: "ACP", code: -2,
                     userInfo: [NSLocalizedDescriptionKey: "Request timed out"]
                 )
-                DispatchQueue.main.async { handler(.failure(err)) }
+                handler(.failure(err))
             }
         }
 
@@ -383,11 +371,11 @@ import Observation
             switch result {
             case .success(let response):
                 print("[ACP] Initialize succeeded: \(String(describing: response))")
-                DispatchQueue.main.async { self?.isConnected = true }
+                self?.isConnected = true
                 self?.createSession()
             case .failure(let error):
                 print("[ACP] Initialize failed: \(error)")
-                DispatchQueue.main.async { self?.connectionFailed = true }
+                self?.connectionFailed = true
             }
         }
     }
@@ -407,13 +395,11 @@ import Observation
                let dict = response?.dictValue,
                let sid = dict["sessionId"]?.stringValue {
                 print("[ACP] Session created: \(sid)")
-                DispatchQueue.main.async { self?.sessionId = sid }
+                self?.sessionId = sid
             } else {
                 print("[ACP] session/new response: \(result)")
-                DispatchQueue.main.async {
-                    self?.connectionFailed = true
-                    self?.onError?("Failed to create session with kiro-cli.")
-                }
+                self?.connectionFailed = true
+                self?.onError?("Failed to create session with kiro-cli.")
             }
         }
     }
@@ -424,9 +410,7 @@ import Observation
 
     func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {
         guard let sid = sessionId else {
-            DispatchQueue.main.async {
-                self.onError?("Kiro session is not ready yet.")
-            }
+            onError?("Kiro session is not ready yet.")
             return
         }
 
@@ -443,9 +427,7 @@ import Observation
             case .success:
                 self.finishTurnIfNeeded()
             case .failure(let error):
-                DispatchQueue.main.async {
-                    self.onError?("Kiro request failed: \(error.localizedDescription)")
-                }
+                self.onError?("Kiro request failed: \(error.localizedDescription)")
                 self.finishTurnIfNeeded()
             }
         }
@@ -466,8 +448,6 @@ import Observation
             return true
         }
         guard shouldFinish else { return }
-        DispatchQueue.main.async {
-            self.onTurnComplete?()
-        }
+        onTurnComplete?()
     }
 }

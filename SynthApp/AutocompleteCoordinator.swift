@@ -3,19 +3,17 @@ import AppKit
 // MARK: - Shared autocomplete logic for wiki links, @mentions, #tags
 // Used by both MarkdownEditor.Coordinator and DailyNoteEditor.Coordinator
 
+@MainActor
 class AutocompleteCoordinator {
     weak var textView: FormattingTextView?
     weak var store: DocumentStore?
+    weak var templateStore: TemplateStore?
     let wikiLinkPopover = WikiLinkPopover()
     private var observers: [NSObjectProtocol] = []
 
     /// Called after autocomplete text replacement finishes.
     /// The parent coordinator should update its binding and re-format.
     var onTextChange: (() -> Void)?
-
-    deinit {
-        removeObservers()
-    }
 
     // MARK: - Observer Setup
 
@@ -26,7 +24,15 @@ class AutocompleteCoordinator {
             forName: .wikiLinkTrigger,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleTrigger(notification)
+            let mode = notification.userInfo?["mode"] as? String ?? "wikilink"
+            let query = notification.userInfo?["query"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleTrigger(mode: mode, query: query)
+            }
         }
         observers.append(triggerObs)
 
@@ -34,7 +40,9 @@ class AutocompleteCoordinator {
             forName: .wikiLinkDismiss,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.wikiLinkPopover.dismiss()
+            Task { @MainActor [weak self] in
+                self?.wikiLinkPopover.dismiss()
+            }
         }
         observers.append(dismissObs)
 
@@ -42,7 +50,14 @@ class AutocompleteCoordinator {
             forName: .wikiLinkQueryUpdate,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleQueryUpdate(notification)
+            let query = notification.userInfo?["query"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleQueryUpdate(query: query)
+            }
         }
         observers.append(queryObs)
 
@@ -50,7 +65,9 @@ class AutocompleteCoordinator {
             forName: .wikiLinkSelect,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.handleSelect()
+            Task { @MainActor [weak self] in
+                self?.handleSelect()
+            }
         }
         observers.append(selectObs)
 
@@ -58,9 +75,27 @@ class AutocompleteCoordinator {
             forName: .wikiLinkNavigate,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleNavigate(notification)
+            let direction = notification.userInfo?["direction"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleNavigate(direction: direction)
+            }
         }
         observers.append(navObs)
+
+        let insertTemplateObs = center.addObserver(
+            forName: .insertTemplate,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            let templateIdentifierText = notification.userInfo?["templateIdentifier"] as? String
+            Task { @MainActor [weak self] in
+                self?.handleTemplateInsertion(templateIdentifierText: templateIdentifierText)
+            }
+        }
+        observers.append(insertTemplateObs)
 
         wikiLinkPopover.onSelect = { [weak self] title in
             self?.completeWikiLink(title: title)
@@ -76,14 +111,14 @@ class AutocompleteCoordinator {
 
     // MARK: - Handlers
 
-    private func handleTrigger(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let mode = notification.userInfo?["mode"]
-            as? String ?? "wikilink"
-        let query = notification.userInfo?["query"]
-            as? String ?? ""
+    private func matchesCurrentTextView(_ sourceIdentifier: ObjectIdentifier?) -> Bool {
+        guard let sourceIdentifier,
+              let textView else { return false }
+        return ObjectIdentifier(textView) == sourceIdentifier
+    }
+
+    private func handleTrigger(mode: String, query: String) {
+        guard let textView = textView else { return }
         let cursor = textView.selectedRange().location
 
         let triggerStart: Int
@@ -104,6 +139,8 @@ class AutocompleteCoordinator {
             results = atResults(query: "")
         } else if mode == "hashtag" {
             results = tagResults(query: query)
+        } else if mode == "template" {
+            results = templateResults(query: query)
         } else {
             results = store?.noteIndex.search("") ?? []
         }
@@ -112,12 +149,8 @@ class AutocompleteCoordinator {
         )
     }
 
-    private func handleQueryUpdate(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let query = notification.userInfo?["query"]
-            as? String ?? ""
+    private func handleQueryUpdate(query: String) {
+        guard let textView = textView else { return }
 
         let results: [NoteSearchResult]
         switch textView.wikiLinkState {
@@ -125,6 +158,8 @@ class AutocompleteCoordinator {
             results = atResults(query: query)
         case .hashtagActive:
             results = tagResults(query: query)
+        case .slashActive:
+            results = templateResults(query: query)
         default:
             results = store?.noteIndex.search(query) ?? []
         }
@@ -142,17 +177,24 @@ class AutocompleteCoordinator {
         completeWikiLink(title: title)
     }
 
-    private func handleNavigate(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let direction = notification.userInfo?["direction"]
-            as? String ?? ""
+    private func handleNavigate(direction: String) {
         if direction == "up" {
             wikiLinkPopover.moveSelectionUp()
         } else {
             wikiLinkPopover.moveSelectionDown()
         }
+    }
+
+    private func handleTemplateInsertion(templateIdentifierText: String?) {
+        guard let textView = textView,
+              textView.window?.firstResponder === textView,
+              let identifierText = templateIdentifierText,
+              let templateIdentifier = UUID(uuidString: identifierText),
+              let template = templateStore?.templates.first(
+                  where: { $0.identifier == templateIdentifier }
+              ) else { return }
+
+        insertTemplateContent(template.content)
     }
 
     // MARK: - Completion
@@ -166,24 +208,32 @@ class AutocompleteCoordinator {
 
     func completeWikiLink(title: String) {
         guard let textView = textView else { return }
+        let previousState = textView.wikiLinkState
 
         // Unfurl ALL date tokens to concrete yyyy-MM-dd filenames
         // e.g. "Today" → "2026-02-07", "Next Monday" → "2026-02-10"
         // The rendering layer displays them relatively (@Today, etc.)
         var completionTitle = title
-        if let resolved = DailyNoteResolver.resolveDate(title),
-           title.range(
-               of: "^\\d{4}-\\d{2}-\\d{2}$",
-               options: .regularExpression
-           ) == nil {
-            completionTitle = Self.dateFileFormatter
-                .string(from: resolved)
+        if case .slashActive = previousState {
+            guard let template = templateStore?.template(named: title) else { return }
+            completionTitle = template.content
+        } else if let resolved = DailyNoteResolver.resolveDate(title),
+                  title.range(
+                      of: "^\\d{4}-\\d{2}-\\d{2}$",
+                      options: .regularExpression
+                  ) == nil {
+            completionTitle = Self.dateFileFormatter.string(from: resolved)
         }
 
         let result = textView.completeAutocomplete(
             title: completionTitle
         )
         wikiLinkPopover.dismiss()
+
+        if case .slashActive = previousState {
+            onTextChange?()
+            return
+        }
 
         // Auto-create the note file so the link renders immediately
         if result.completedWikiLink, let store = store {
@@ -216,10 +266,18 @@ class AutocompleteCoordinator {
         // Auto-save after person mention so the people
         // index updates immediately
         if result.completedPerson {
-            DispatchQueue.main.async { [weak self] in
-                self?.store?.save()
-            }
+            store?.save()
         }
+    }
+
+    private func insertTemplateContent(_ content: String) {
+        guard let textView = textView,
+              let storage = textView.textStorage else { return }
+        let selectionRange = textView.selectedRange()
+        storage.replaceCharacters(in: selectionRange, with: content)
+        let nextCursor = selectionRange.location + content.count
+        textView.setSelectedRange(NSRange(location: nextCursor, length: 0))
+        onTextChange?()
     }
 
     // MARK: - Autocomplete Results
@@ -245,7 +303,6 @@ class AutocompleteCoordinator {
         return results
     }
 
-    // swiftlint:disable:next function_body_length
     func dateResults(query: String) -> [NoteSearchResult] {
         let basicTokens = ["Today", "Yesterday", "Tomorrow"]
         let extendedTokens = [
@@ -295,6 +352,27 @@ class AutocompleteCoordinator {
                 relativePath: "\(tag.count) notes",
                 // swiftlint:disable:next force_unwrapping
                 url: URL(string: "synth://tag/\(tag.name)")!
+            )
+        }
+    }
+
+    func templateResults(query: String) -> [NoteSearchResult] {
+        guard let templateStore else { return [] }
+        return templateStore.search(query).prefix(20).compactMap { template in
+            guard let templateURL = URL(
+                string: "synth://template/\(template.identifier.uuidString)"
+            ) else { return nil }
+            let shortcutLabel: String
+            if let shortcutSlot = template.shortcutSlot {
+                shortcutLabel = "Shortcut ⌥⌘\(shortcutSlot)"
+            } else {
+                shortcutLabel = "Template"
+            }
+            return NoteSearchResult(
+                id: templateURL,
+                title: template.name,
+                relativePath: shortcutLabel,
+                url: templateURL
             )
         }
     }

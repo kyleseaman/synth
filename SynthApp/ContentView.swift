@@ -8,7 +8,8 @@ extension Notification.Name {
     static let wikiLinkQueryUpdate = Notification.Name("wikiLinkQueryUpdate")
     static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
-
+    static let showDailyDate = Notification.Name("showDailyDate")
+    static let insertTemplate = Notification.Name("insertTemplate")
 }
 
 struct EditorSelectionContext {
@@ -495,12 +496,13 @@ struct KiroSetupBanner: View {
 
 struct EditorViewSimple: View {
     @Environment(DocumentStore.self) var store
+    @Environment(TemplateStore.self) var templateStore
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
-    var onSelectionChange: ((URL, String, String) -> Void)? = nil
+    var onSelectionChange: ((URL, String, String) -> Void)?
 
     private var currentNoteTitle: String {
         guard store.currentIndex >= 0,
@@ -529,7 +531,8 @@ struct EditorViewSimple: View {
                     linePositions: $linePositions,
                     selectedText: $selectedText,
                     selectedLineRange: $selectedLineRange,
-                    store: store
+                    store: store,
+                    templateStore: templateStore
                 )
                 .background(Color(.textBackgroundColor))
             }
