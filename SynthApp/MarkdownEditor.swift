@@ -362,9 +362,6 @@ struct MarkdownFormat: DocumentFormat {
                 )
             )
         }
-
-
-
         // MARK: @People mentions
         let personPattern = PeopleIndex.personPattern
         let personRange = NSRange(location: 0, length: str.string.utf16.count)

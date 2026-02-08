@@ -59,7 +59,7 @@ class HTTPTransport {
         connection.receive(
             minimumIncompleteLength: 1,
             maximumLength: 65536
-        ) { [weak self] content, _, isComplete, error in
+        ) { [weak self] content, _, isComplete, _ in
             guard let self = self, let data = content else {
                 connection.cancel()
                 return

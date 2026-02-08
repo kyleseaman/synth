@@ -1,6 +1,5 @@
 import SwiftUI
 
-// swiftlint:disable:next type_body_length
 struct DocumentChatTray: View {
     var chatState: DocumentChatState
     @Environment(DocumentStore.self) var store

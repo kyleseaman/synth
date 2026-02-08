@@ -83,15 +83,13 @@ enum GetBacklinks {
             let lines = content.components(separatedBy: "\n")
             for (index, line) in lines.enumerated() {
                 let nsRange = NSRange(line.startIndex..., in: line)
-                for regex in regexes {
-                    if regex.firstMatch(in: line, range: nsRange) != nil {
-                        backlinks.append(Backlink(
-                            file: relativePath,
-                            lineNumber: index + 1,
-                            line: line.trimmingCharacters(in: .whitespaces)
-                        ))
-                        break // Don't double-count same line
-                    }
+                for regex in regexes where regex.firstMatch(in: line, range: nsRange) != nil {
+                    backlinks.append(Backlink(
+                        file: relativePath,
+                        lineNumber: index + 1,
+                        line: line.trimmingCharacters(in: .whitespaces)
+                    ))
+                    break // Don't double-count same line
                 }
             }
         }

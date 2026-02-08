@@ -1,8 +1,6 @@
-// swiftlint:disable file_length
 import Foundation
 import Observation
 
-// swiftlint:disable:next type_body_length
 @MainActor
 @Observable final class ACPClient: @unchecked Sendable {
     @ObservationIgnored private var process: Process?
@@ -32,7 +30,6 @@ import Observation
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
 
-    // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
         self.agent = agent

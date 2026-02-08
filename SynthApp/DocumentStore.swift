@@ -234,7 +234,6 @@ enum ActiveModal: Equatable {
     case peopleBrowser(String?)
 }
 
-// swiftlint:disable:next type_body_length
 @MainActor
 @Observable
 final class DocumentStore {

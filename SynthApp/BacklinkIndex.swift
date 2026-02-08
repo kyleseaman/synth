@@ -13,14 +13,10 @@ import Observation
     /// Map from source URL -> (note title -> context snippet)
     private(set) var contextSnippets: [URL: [String: String]] = [:]
 
-    // swiftlint:disable:next force_try
-    @ObservationIgnored private let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    @ObservationIgnored private let wikiPattern = BacklinkIndex.makeRegex("\\[\\[(.+?)\\]\\]")
 
     /// Matches unfurled date mentions like @2026-02-07
-    // swiftlint:disable:next force_try
-    @ObservationIgnored private let atDatePattern = try! NSRegularExpression(
-        pattern: "@(\\d{4}-\\d{2}-\\d{2})"
-    )
+    @ObservationIgnored private let atDatePattern = BacklinkIndex.makeRegex("@(\\d{4}-\\d{2}-\\d{2})")
 
     // MARK: - Full Rebuild
 
@@ -159,5 +155,13 @@ import Observation
             }
         }
         return result
+    }
+
+    private static func makeRegex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            fatalError("Invalid regex pattern: \(pattern)")
+        }
     }
 }

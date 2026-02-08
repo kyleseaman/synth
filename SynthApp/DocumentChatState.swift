@@ -31,7 +31,6 @@ struct UndoSnapshot: Equatable {
     @ObservationIgnored private(set) var acpClient: ACPClient?
     @ObservationIgnored private(set) var isStarted = false
 
-    // swiftlint:disable:next function_parameter_count
     func startIfNeeded(
         cwd: String,
         filePath: String,

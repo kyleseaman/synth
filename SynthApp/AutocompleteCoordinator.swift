@@ -303,7 +303,6 @@ class AutocompleteCoordinator {
         return results
     }
 
-    // swiftlint:disable:next function_body_length
     func dateResults(query: String) -> [NoteSearchResult] {
         let basicTokens = ["Today", "Yesterday", "Tomorrow"]
         let extendedTokens = [

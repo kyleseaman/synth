@@ -502,7 +502,7 @@ struct EditorViewSimple: View {
     @State private var scrollOffset: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
-    var onSelectionChange: ((URL, String, String) -> Void)? = nil
+    var onSelectionChange: ((URL, String, String) -> Void)?
 
     private var currentNoteTitle: String {
         guard store.currentIndex >= 0,
