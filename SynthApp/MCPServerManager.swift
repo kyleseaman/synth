@@ -3,7 +3,7 @@ import Observation
 
 /// Manages the lifecycle of the synth-mcp-server process.
 /// Starts the server when a workspace opens and stops it on workspace change/close.
-@Observable class MCPServerManager {
+@Observable final class MCPServerManager: @unchecked Sendable {
     var isRunning = false
     var httpPort: UInt16 = 9712
 
@@ -32,7 +32,7 @@ import Observation
         proc.standardOutput = FileHandle.nullDevice
 
         proc.terminationHandler = { [weak self] process in
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.isRunning = false
                 print("[MCP] Server exited with code \(process.terminationStatus)")
             }
@@ -41,9 +41,7 @@ import Observation
         do {
             try proc.run()
             process = proc
-            DispatchQueue.main.async {
-                self.isRunning = true
-            }
+            isRunning = true
             print("[MCP] Server started on localhost:\(httpPort) for \(workspace.path)")
         } catch {
             print("[MCP] Failed to start server: \(error)")
@@ -99,9 +97,7 @@ import Observation
         guard let proc = process, proc.isRunning else { return }
         proc.terminate()
         process = nil
-        DispatchQueue.main.async {
-            self.isRunning = false
-        }
+        isRunning = false
         print("[MCP] Server stopped")
     }
 
@@ -124,7 +120,4 @@ import Observation
         ]]
     }
 
-    deinit {
-        stop()
-    }
 }

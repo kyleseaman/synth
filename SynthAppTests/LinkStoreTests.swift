@@ -68,6 +68,50 @@ final class LinkStoreTests: XCTestCase {
         XCTAssertEqual(store.links.first?.urlString, "https://example.com")
         XCTAssertEqual(store.links.first?.identifier, first?.identifier)
     }
+
+    func testRemoveLinkPersistsAfterReload() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+        _ = store.addLink("https://first.example")
+        guard let secondLink = store.addLink("https://second.example") else {
+            XCTFail("Second link was not created")
+            return
+        }
+
+        store.removeLink(identifier: secondLink.identifier)
+        XCTAssertEqual(store.links.count, 1)
+        XCTAssertEqual(store.links.first?.urlString, "https://first.example")
+
+        let reloaded = LinkStore(storage: storage, storageKey: storageKey)
+        XCTAssertEqual(reloaded.links.count, 1)
+        XCTAssertEqual(reloaded.links.first?.urlString, "https://first.example")
+    }
+
+    func testNormalizeSupportsHttpAndRejectsInvalidHosts() {
+        XCTAssertEqual(
+            LinkStore.normalize("http://example.com/path"),
+            "http://example.com/path"
+        )
+        XCTAssertNil(LinkStore.normalize("mailto:test@example.com"))
+        XCTAssertNil(LinkStore.normalize("https:///missing-host"))
+        XCTAssertNil(LinkStore.normalize("   "))
+    }
+
+    func testLoadIgnoresCorruptStoredData() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        storage.set(Data("invalid json".utf8), forKey: storageKey)
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+
+        XCTAssertTrue(store.links.isEmpty)
+    }
 }
 
 final class MediaManagerTests: XCTestCase {
@@ -278,7 +322,7 @@ final class NoteIndexSearchTests: XCTestCase {
 
         let noteIndex = NoteIndex()
         noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
-        let results = noteIndex.search("followup person:alex")
+        let results = noteIndex.search("person:alex")
 
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results.first?.title, "Standup")
@@ -363,5 +407,38 @@ final class NoteIndexSearchTests: XCTestCase {
     private func write(_ name: String, content: String, at folderURL: URL) throws {
         let fileURL = folderURL.appendingPathComponent(name)
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+}
+
+final class ACPProtocolAdapterTests: XCTestCase {
+    func testSessionUpdateMethodDetectionSupportsLegacyAndKiro() {
+        XCTAssertTrue(ACPProtocolAdapter.isSessionUpdateMethod("session/update"))
+        XCTAssertTrue(ACPProtocolAdapter.isSessionUpdateMethod("session/notification"))
+        XCTAssertFalse(ACPProtocolAdapter.isSessionUpdateMethod("session/new"))
+    }
+
+    func testUpdateKindParsingSupportsSnakeAndPascalCase() {
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("agent_message_chunk"), .agentMessageChunk)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("AgentMessageChunk"), .agentMessageChunk)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("tool_call"), .toolCall)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCall"), .toolCall)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("tool_call_update"), .toolCallUpdate)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCallUpdate"), .toolCallUpdate)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("turn_end"), .turnEnd)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("TurnEnd"), .turnEnd)
+        XCTAssertNil(ACPProtocolAdapter.parseUpdateKind("unknown_update"))
+    }
+
+    func testPromptRequestUsesContentField() {
+        let contentBlocks: [[String: AnyCodable]] = [[
+            "type": AnyCodable("text"),
+            "text": AnyCodable("Explain this file")
+        ]]
+
+        let params = ACPProtocolAdapter.promptParams(sessionId: "sess_test", contentBlocks: contentBlocks)
+
+        XCTAssertEqual(params["sessionId"]?.stringValue, "sess_test")
+        XCTAssertNotNil(params["content"]?.arrayValue)
+        XCTAssertNil(params["prompt"])
     }
 }

@@ -362,9 +362,6 @@ struct MarkdownFormat: DocumentFormat {
                 )
             )
         }
-
-
-
         // MARK: @People mentions
         let personPattern = PeopleIndex.personPattern
         let personRange = NSRange(location: 0, length: str.string.utf16.count)
@@ -609,6 +606,7 @@ enum WikiLinkState {
     case wikiLinkActive(start: Int)
     case atActive(start: Int)
     case hashtagActive(start: Int)
+    case slashActive(start: Int)
 }
 
 class FormattingTextView: NSTextView {
@@ -954,7 +952,7 @@ class FormattingTextView: NSTextView {
     override func insertNewline(_ sender: Any?) {
         // Dismiss wiki link popup on newline
         switch wikiLinkState {
-        case .wikiLinkActive, .atActive, .hashtagActive:
+        case .wikiLinkActive, .atActive, .hashtagActive, .slashActive:
             wikiLinkState = .idle
             NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
         default:
@@ -1005,6 +1003,8 @@ class FormattingTextView: NSTextView {
             handleLinkActiveState(for: str)
         case .hashtagActive(let start):
             handleHashtagActiveState(for: str, start: start)
+        case .slashActive(let start):
+            handleSlashActiveState(for: str, start: start)
         }
     }
 
@@ -1020,21 +1020,37 @@ class FormattingTextView: NSTextView {
                 userInfo: ["mode": "at", "query": ""]
             )
         } else if str == "#" {
-            let cursor = selectedRange().location
-            let isAtStart = cursor <= 1
-            var precededBySpace = isAtStart
-            if !isAtStart, let storage = textStorage {
-                let charBefore = (storage.string as NSString).substring(
-                    with: NSRange(location: cursor - 2, length: 1)
-                )
-                precededBySpace = charBefore.rangeOfCharacter(
-                    from: .whitespacesAndNewlines
-                ) != nil
-            }
-            if precededBySpace {
+            if isAutocompleteTriggerAllowed() {
                 wikiLinkState = .hashtagActive(start: cursor)
             }
+        } else if str == "/" {
+            if isAutocompleteTriggerAllowed() {
+                wikiLinkState = .slashActive(start: cursor)
+                NotificationCenter.default.post(
+                    name: .wikiLinkTrigger,
+                    object: self,
+                    userInfo: ["mode": "template", "query": ""]
+                )
+            }
         }
+    }
+
+    private var cursor: Int {
+        selectedRange().location
+    }
+
+    private func isAutocompleteTriggerAllowed() -> Bool {
+        if cursor <= 1 {
+            return true
+        }
+        guard let storage = textStorage else {
+            return false
+        }
+        let textValue = storage.string as NSString
+        let previousChar = textValue.substring(
+            with: NSRange(location: cursor - 2, length: 1)
+        )
+        return previousChar.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
     }
 
     private func handleSingleBracketState(for str: String) {
@@ -1091,6 +1107,22 @@ class FormattingTextView: NSTextView {
         }
     }
 
+    private func handleSlashActiveState(for str: String, start: Int) {
+        if str == " " || str == "\n" || str == "\t" {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+            return
+        }
+
+        let cursor = selectedRange().location
+        if cursor <= start {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        } else {
+            postQueryUpdate()
+        }
+    }
+
     private func postQueryUpdate() {
         let query = extractCurrentQuery()
         NotificationCenter.default.post(
@@ -1123,7 +1155,7 @@ class FormattingTextView: NSTextView {
     override func deleteBackward(_ sender: Any?) {
         super.deleteBackward(sender)
         switch wikiLinkState {
-        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             if selectedRange().location <= start {
                 wikiLinkState = .idle
                 NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
@@ -1147,7 +1179,7 @@ class FormattingTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         let isPopupActive: Bool
         switch wikiLinkState {
-        case .wikiLinkActive, .atActive, .hashtagActive:
+        case .wikiLinkActive, .atActive, .hashtagActive, .slashActive:
             isPopupActive = true
         default:
             isPopupActive = false
@@ -1187,7 +1219,7 @@ class FormattingTextView: NSTextView {
         guard let storage = textStorage else { return "" }
         let cursor = selectedRange().location
         switch wikiLinkState {
-        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             guard cursor > start else { return "" }
             let range = NSRange(location: start, length: cursor - start)
             return (storage.string as NSString).substring(with: range)
@@ -1340,6 +1372,18 @@ class FormattingTextView: NSTextView {
                 length: 0
             ))
 
+        case .slashActive(let start):
+            let replaceStart = max(start - 1, 0)
+            let range = NSRange(
+                location: replaceStart,
+                length: cursor - replaceStart
+            )
+            storage.replaceCharacters(in: range, with: title)
+            setSelectedRange(NSRange(
+                location: replaceStart + title.count,
+                length: 0
+            ))
+
         default:
             break
         }
@@ -1368,6 +1412,7 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
     weak var store: DocumentStore?
+    weak var templateStore: TemplateStore?
 
     var format: DocumentFormat {
         let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
@@ -1407,17 +1452,18 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.templateStore = templateStore
+        context.coordinator.autocomplete.templateStore = templateStore
         context.coordinator.bindImagePasteHandler(to: textView)
         context.coordinator.bindImageOverlay(to: textView)
         textView.layoutManager?.delegate = context.coordinator
 
-        context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { _ in
-            context.coordinator.updateScrollOffset()
-        }
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleBoundsDidChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
 
         // MARK: Autocomplete (wiki links, @mentions, #tags)
         context.coordinator.setupAutocomplete()
@@ -1439,6 +1485,8 @@ struct MarkdownEditor: NSViewRepresentable {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.templateStore = templateStore
+        context.coordinator.autocomplete.templateStore = templateStore
         context.coordinator.autocomplete.store = store
 
         let restoredString = MarkdownFormat.restoreImageMarkup(
@@ -1455,26 +1503,48 @@ struct MarkdownEditor: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    static func dismantleNSView(
+        _ scrollView: NSScrollView,
+        coordinator: Coordinator
+    ) {
+        Task { @MainActor in
+            coordinator.tearDown()
+        }
+    }
+
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
+    @MainActor
+    class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
         var isFormatting = false
-        var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
+        weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
-        deinit {
+        deinit {}
+
+        func tearDown() {
             saveTimer?.invalidate()
-            if let observer = boundsObserver {
-                NotificationCenter.default.removeObserver(observer)
+            if let clipView = scrollView?.contentView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: clipView
+                )
             }
+            autocomplete.removeObservers()
+        }
+
+        @objc
+        func handleBoundsDidChange(_ notification: Notification) {
+            updateScrollOffset()
         }
 
         // MARK: - Autocomplete Setup
@@ -1482,6 +1552,7 @@ struct MarkdownEditor: NSViewRepresentable {
         func setupAutocomplete() {
             autocomplete.textView = textView
             autocomplete.store = store
+            autocomplete.templateStore = templateStore
             autocomplete.onTextChange = { [weak self] in
                 guard let self = self,
                       let textView = self.textView
@@ -1710,7 +1781,9 @@ struct MarkdownEditor: NSViewRepresentable {
             saveTimer = Timer.scheduledTimer(
                 withTimeInterval: 1.0, repeats: false
             ) { [weak self] _ in
-                self?.store?.saveAll()
+                Task { @MainActor [weak self] in
+                    self?.store?.saveAll()
+                }
             }
         }
 

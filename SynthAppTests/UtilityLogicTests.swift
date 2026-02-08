@@ -1,0 +1,401 @@
+import XCTest
+@testable import Synth
+
+final class UtilityLogicTests: XCTestCase {
+    func testAnyCodableEncodesAndDecodesNestedValues() throws {
+        let payload: [String: AnyCodable] = [
+            "text": AnyCodable("value"),
+            "count": AnyCodable(12),
+            "enabled": AnyCodable(true),
+            "items": AnyCodable([AnyCodable("first"), AnyCodable(2)]),
+            "dict": AnyCodable(["inner": AnyCodable(99)])
+        ]
+
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode([String: AnyCodable].self, from: data)
+
+        XCTAssertEqual(decoded["text"]?.stringValue, "value")
+        XCTAssertEqual(decoded["count"]?.intValue, 12)
+        XCTAssertEqual(decoded["enabled"]?.value as? Bool, true)
+        XCTAssertEqual(decoded["items"]?.arrayValue?.count, 2)
+        XCTAssertEqual(decoded["dict"]?.dictValue?["inner"]?.intValue, 99)
+    }
+
+    func testAnyCodableDecodesNullAsNSNull() throws {
+        let data = Data("{\"value\":null}".utf8)
+
+        let decoded = try JSONDecoder().decode([String: AnyCodable].self, from: data)
+
+        XCTAssertTrue(decoded["value"]?.value is NSNull)
+    }
+
+    func testJsonRpcRequestInitializerSetsDefaultProtocol() {
+        let request = JsonRpcRequest(id: 7, method: "session/new")
+
+        XCTAssertEqual(request.jsonrpc, "2.0")
+        XCTAssertEqual(request.id, 7)
+        XCTAssertEqual(request.method, "session/new")
+        XCTAssertNil(request.params)
+    }
+
+    func testStringFuzzyScoreAndTitleCase() {
+        XCTAssertEqual("hello world".titleCased, "Hello World")
+        XCTAssertEqual("Alpha".fuzzyScore("alpha"), 10000)
+
+        let prefixScore = "alphabet".fuzzyScore("alp")
+        let containsScore = "my alphabet".fuzzyScore("alp")
+
+        XCTAssertNotNil(prefixScore)
+        XCTAssertNotNil(containsScore)
+        XCTAssertTrue((prefixScore ?? 0) > (containsScore ?? 0))
+        XCTAssertNil("swift".fuzzyScore("xyz"))
+    }
+
+    @MainActor
+    func testFlattenFilesReturnsAllNestedFileNodes() {
+        let firstFile = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/first.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let nestedFile = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder/nested.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let folderNode = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/folder"),
+            isDirectory: true,
+            children: [nestedFile]
+        )
+
+        let flattened = FileLauncher.flattenFiles([firstFile, folderNode])
+
+        XCTAssertEqual(flattened.map { $0.url.path }, [firstFile.url.path, nestedFile.url.path])
+    }
+
+    func testMediaManagerRelativePathAndResolvedURL() {
+        let baseDirectory = URL(fileURLWithPath: "/tmp/project/notes/", isDirectory: true)
+        let destinationURL = URL(fileURLWithPath: "/tmp/project/media/image.png")
+
+        let relativePath = MediaManager.relativePath(from: baseDirectory, to: destinationURL)
+
+        XCTAssertEqual(relativePath, "../media/image.png")
+
+        let resolvedRelative = MediaManager.resolvedImageURL(
+            from: "../media/image.png",
+            baseDirectoryURL: baseDirectory
+        )
+        let resolvedAbsolute = MediaManager.resolvedImageURL(
+            from: "https://example.com/image.png",
+            baseDirectoryURL: baseDirectory
+        )
+
+        XCTAssertEqual(resolvedRelative?.standardizedFileURL.path, destinationURL.standardizedFileURL.path)
+        XCTAssertEqual(resolvedAbsolute?.absoluteString, "https://example.com/image.png")
+    }
+
+    func testMediaManagerScreenshotURLsFiltersAndSortsByModifiedDate() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+
+        let mediaDirectory = rootDirectory.appendingPathComponent("media", isDirectory: true)
+        try FileManager.default.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
+
+        let oldFileURL = mediaDirectory.appendingPathComponent("screenshot-old.png")
+        let newFileURL = mediaDirectory.appendingPathComponent("screenshot-new.jpg")
+        let ignoredFileURL = mediaDirectory.appendingPathComponent("other.png")
+        let unsupportedURL = mediaDirectory.appendingPathComponent("screenshot-note.txt")
+
+        try Data("old".utf8).write(to: oldFileURL)
+        try Data("new".utf8).write(to: newFileURL)
+        try Data("skip".utf8).write(to: ignoredFileURL)
+        try Data("text".utf8).write(to: unsupportedURL)
+
+        let oldDate = Date(timeIntervalSince1970: 100)
+        let newDate = Date(timeIntervalSince1970: 200)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: oldFileURL.path)
+        try FileManager.default.setAttributes([.modificationDate: newDate], ofItemAtPath: newFileURL.path)
+
+        let screenshotURLs = MediaManager.screenshotURLs(in: rootDirectory)
+
+        XCTAssertEqual(
+            screenshotURLs.map { $0.standardizedFileURL.path },
+            [newFileURL, oldFileURL].map { $0.standardizedFileURL.path }
+        )
+        XCTAssertTrue(MediaManager.isSupportedImageFile(newFileURL))
+        XCTAssertFalse(MediaManager.isSupportedImageFile(unsupportedURL))
+    }
+
+    func testKiroCliResolverPrefersConfiguredExecutablePath() throws {
+        let keyName = "kiroCliPath"
+        let originalPath = UserDefaults.standard.string(forKey: keyName)
+        defer {
+            if let originalPath {
+                UserDefaults.standard.set(originalPath, forKey: keyName)
+            } else {
+                UserDefaults.standard.removeObject(forKey: keyName)
+            }
+        }
+
+        let executableURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: false
+        )
+        defer { try? FileManager.default.removeItem(at: executableURL) }
+
+        try "#!/bin/sh\nexit 0\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executableURL.path
+        )
+
+        UserDefaults.standard.set(executableURL.path, forKey: keyName)
+
+        XCTAssertEqual(KiroCliResolver.resolve(), executableURL.path)
+    }
+}
+
+final class NoteIndexTests: XCTestCase {
+    func testRebuildSearchAndFindExactBehavior() {
+        let workspaceURL = URL(fileURLWithPath: "/tmp/workspace-notes", isDirectory: true)
+        let firstNote = FileTreeNode(
+            url: workspaceURL.appendingPathComponent("First Note.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let secondNote = FileTreeNode(
+            url: workspaceURL.appendingPathComponent("folder/Meeting Notes.txt"),
+            isDirectory: false,
+            children: nil
+        )
+        let imageFile = FileTreeNode(
+            url: workspaceURL.appendingPathComponent("diagram.png"),
+            isDirectory: false,
+            children: nil
+        )
+        let nestedFolder = FileTreeNode(
+            url: workspaceURL.appendingPathComponent("folder"),
+            isDirectory: true,
+            children: [secondNote, imageFile]
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: [firstNote, nestedFolder], workspace: workspaceURL)
+
+        XCTAssertTrue(noteIndex.isPopulated)
+        XCTAssertEqual(noteIndex.notes.count, 2)
+        XCTAssertEqual(noteIndex.search("").count, 2)
+        XCTAssertNotNil(noteIndex.findExact("first note"))
+        XCTAssertNil(noteIndex.findExact("missing note"))
+
+        let queryResults = noteIndex.search("meeting")
+        XCTAssertTrue(queryResults.contains { $0.title == "Meeting Notes" })
+        XCTAssertFalse(queryResults.contains { $0.title == "diagram" })
+    }
+
+    func testEmptyQueryReturnsAtMostTwentyNotes() {
+        let workspaceURL = URL(fileURLWithPath: "/tmp/workspace-limit", isDirectory: true)
+        let allNodes = (1...25).map { number in
+            FileTreeNode(
+                url: workspaceURL.appendingPathComponent("Note \(number).md"),
+                isDirectory: false,
+                children: nil
+            )
+        }
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: allNodes, workspace: workspaceURL)
+
+        XCTAssertEqual(noteIndex.notes.count, 25)
+        XCTAssertEqual(noteIndex.search("").count, 20)
+    }
+}
+
+final class DocumentModelTests: XCTestCase {
+    func testLoadAndSavePlainTextDocument() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let textFileURL = rootDirectory.appendingPathComponent("sample.txt")
+        try "Hello".write(to: textFileURL, atomically: true, encoding: .utf8)
+
+        guard let loadedDocument = Document.load(from: textFileURL) else {
+            XCTFail("Failed to load text document")
+            return
+        }
+        XCTAssertEqual(loadedDocument.content.string, "Hello")
+
+        let updatedContent = NSAttributedString(string: "Updated")
+        try loadedDocument.save(updatedContent)
+        let savedText = try String(contentsOf: textFileURL, encoding: .utf8)
+        XCTAssertEqual(savedText, "Updated")
+    }
+
+    func testLoadMarkdownDocumentContainsRenderedText() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let markdownFileURL = rootDirectory.appendingPathComponent("sample.md")
+        try "# Heading\n\nBody content".write(to: markdownFileURL, atomically: true, encoding: .utf8)
+
+        guard let loadedDocument = Document.load(from: markdownFileURL) else {
+            XCTFail("Failed to load markdown document")
+            return
+        }
+
+        XCTAssertTrue(loadedDocument.content.string.contains("Heading"))
+        XCTAssertTrue(loadedDocument.content.string.contains("Body content"))
+    }
+
+    func testLoadReturnsNilForOversizedFile() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let largeFileURL = rootDirectory.appendingPathComponent("large.txt")
+        FileManager.default.createFile(atPath: largeFileURL.path, contents: nil)
+        let fileHandle = try FileHandle(forWritingTo: largeFileURL)
+        defer { try? fileHandle.close() }
+        try fileHandle.truncate(atOffset: 51 * 1024 * 1024)
+
+        XCTAssertNil(Document.load(from: largeFileURL))
+    }
+}
+
+final class MCPServerManagerTests: XCTestCase {
+    func testStartWritesConfigAndStopTerminates() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let binaryDirectory = rootDirectory.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binaryDirectory, withIntermediateDirectories: true)
+
+        let executableURL = binaryDirectory.appendingPathComponent("synth-mcp-server")
+        let scriptContents = """
+        #!/bin/sh
+        trap 'exit 0' TERM INT
+        while true; do
+          sleep 1
+        done
+        """
+        try scriptContents.write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executableURL.path
+        )
+
+        let originalPathEnv = getenv("PATH").map { String(cString: $0) } ?? ""
+        setenv("PATH", "\(binaryDirectory.path):\(originalPathEnv)", 1)
+        defer { setenv("PATH", originalPathEnv, 1) }
+
+        let manager = MCPServerManager()
+        manager.httpPort = 9823
+        manager.start(workspace: workspaceURL)
+        defer { manager.stop() }
+
+        XCTAssertTrue(manager.isRunning)
+
+        let configURL = workspaceURL
+            .appendingPathComponent(".kiro")
+            .appendingPathComponent("settings")
+            .appendingPathComponent("mcp.json")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: configURL.path))
+
+        let configData = try Data(contentsOf: configURL)
+        let configJSON = try JSONSerialization.jsonObject(with: configData) as? [String: Any]
+        let servers = configJSON?["mcpServers"] as? [String: Any]
+        let synthServer = servers?["synth-mcp"] as? [String: Any]
+        let synthArgs = synthServer?["args"] as? [String]
+
+        XCTAssertEqual(synthServer?["command"] as? String, executableURL.path)
+        XCTAssertEqual(synthArgs ?? [], ["--workspace", workspaceURL.path, "--stdio"])
+        XCTAssertEqual(synthServer?["disabled"] as? Bool, false)
+
+        let runtimeConfig = manager.mcpServerConfig(workspace: workspaceURL.path)
+        let runtimeEntry = runtimeConfig?.first
+        let runtimeArgs = runtimeEntry?["args"]?.arrayValue?.compactMap { $0.stringValue }
+        XCTAssertEqual(runtimeEntry?["name"]?.stringValue, "synth-mcp")
+        XCTAssertEqual(runtimeEntry?["command"]?.stringValue, executableURL.path)
+        XCTAssertEqual(runtimeArgs ?? [], ["--workspace", workspaceURL.path, "--stdio"])
+        XCTAssertEqual(runtimeEntry?["transport"]?.stringValue, "stdio")
+
+        manager.stop()
+        XCTAssertFalse(manager.isRunning)
+    }
+
+    func testStartPreservesExistingMcpServerEntries() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let settingsDirectory = workspaceURL
+            .appendingPathComponent(".kiro")
+            .appendingPathComponent("settings", isDirectory: true)
+        try FileManager.default.createDirectory(at: settingsDirectory, withIntermediateDirectories: true)
+
+        let configURL = settingsDirectory.appendingPathComponent("mcp.json")
+        let existingConfig: [String: Any] = [
+            "mcpServers": [
+                "custom-server": [
+                    "command": "/tmp/custom-binary",
+                    "args": ["--flag"],
+                    "disabled": false
+                ]
+            ]
+        ]
+        let existingData = try JSONSerialization.data(withJSONObject: existingConfig, options: [.prettyPrinted])
+        try existingData.write(to: configURL)
+
+        let binaryDirectory = rootDirectory.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binaryDirectory, withIntermediateDirectories: true)
+        let executableURL = binaryDirectory.appendingPathComponent("synth-mcp-server")
+        try "#!/bin/sh\nsleep 10\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executableURL.path
+        )
+
+        let originalPathEnv = getenv("PATH").map { String(cString: $0) } ?? ""
+        setenv("PATH", "\(binaryDirectory.path):\(originalPathEnv)", 1)
+        defer { setenv("PATH", originalPathEnv, 1) }
+
+        let manager = MCPServerManager()
+        manager.start(workspace: workspaceURL)
+        defer { manager.stop() }
+
+        let mergedData = try Data(contentsOf: configURL)
+        let mergedJSON = try JSONSerialization.jsonObject(with: mergedData) as? [String: Any]
+        let mergedServers = mergedJSON?["mcpServers"] as? [String: Any]
+
+        XCTAssertNotNil(mergedServers?["custom-server"])
+        XCTAssertNotNil(mergedServers?["synth-mcp"])
+    }
+}

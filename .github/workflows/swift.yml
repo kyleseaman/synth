@@ -10,15 +10,26 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-and-test:
 
     runs-on: macos-26
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install SwiftLint
+      run: |
+        brew update
+        brew install swiftlint
+        swiftlint version
+    - name: Lint Swift
+      run: swiftlint lint --strict
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
     - name: Build Rust core
       run: cd synth-core && cargo build --release
-    - name: Build
+    - name: Test Rust core
+      run: cd synth-core && cargo test
+    - name: Build app
       run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug build CODE_SIGNING_ALLOWED=NO
+    - name: Test app
+      run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug test CODE_SIGNING_ALLOWED=NO

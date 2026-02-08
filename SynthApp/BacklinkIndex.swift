@@ -13,14 +13,10 @@ import Observation
     /// Map from source URL -> (note title -> context snippet)
     private(set) var contextSnippets: [URL: [String: String]] = [:]
 
-    // swiftlint:disable:next force_try
-    @ObservationIgnored private let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    @ObservationIgnored private let wikiPattern = BacklinkIndex.makeRegex("\\[\\[(.+?)\\]\\]")
 
     /// Matches unfurled date mentions like @2026-02-07
-    // swiftlint:disable:next force_try
-    @ObservationIgnored private let atDatePattern = try! NSRegularExpression(
-        pattern: "@(\\d{4}-\\d{2}-\\d{2})"
-    )
+    @ObservationIgnored private let atDatePattern = BacklinkIndex.makeRegex("@(\\d{4}-\\d{2}-\\d{2})")
 
     // MARK: - Full Rebuild
 
@@ -41,11 +37,9 @@ import Observation
             }
         }
 
-        DispatchQueue.main.async {
-            self.incomingLinks = newIncoming
-            self.outgoingLinks = newOutgoing
-            self.contextSnippets = newSnippets
-        }
+        incomingLinks = newIncoming
+        outgoingLinks = newOutgoing
+        contextSnippets = newSnippets
     }
 
     // MARK: - Incremental Update
@@ -53,23 +47,21 @@ import Observation
     /// Incremental update for a single file on save. Must dispatch to main thread.
     func updateFile(_ url: URL, content: String) {
         let (targets, snippets) = scanFile(content: content)
-        DispatchQueue.main.async {
-            // Remove old outgoing links for this file
-            if let oldTargets = self.outgoingLinks[url] {
-                for target in oldTargets {
-                    self.incomingLinks[target]?.remove(url)
-                    if self.incomingLinks[target]?.isEmpty == true {
-                        self.incomingLinks.removeValue(forKey: target)
-                    }
+        // Remove old outgoing links for this file
+        if let oldTargets = outgoingLinks[url] {
+            for target in oldTargets {
+                incomingLinks[target]?.remove(url)
+                if incomingLinks[target]?.isEmpty == true {
+                    incomingLinks.removeValue(forKey: target)
                 }
             }
+        }
 
-            // Apply new scan results
-            self.outgoingLinks[url] = targets
-            self.contextSnippets[url] = snippets
-            for target in targets {
-                self.incomingLinks[target, default: []].insert(url)
-            }
+        // Apply new scan results
+        outgoingLinks[url] = targets
+        contextSnippets[url] = snippets
+        for target in targets {
+            incomingLinks[target, default: []].insert(url)
         }
     }
 
@@ -163,5 +155,13 @@ import Observation
             }
         }
         return result
+    }
+
+    private static func makeRegex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            fatalError("Invalid regex pattern: \(pattern)")
+        }
     }
 }
