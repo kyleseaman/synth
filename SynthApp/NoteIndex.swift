@@ -66,6 +66,27 @@ struct NoteSearchResult: Identifiable {
     )
 
     @ObservationIgnored private static let semanticMap: [String: Set<String>] = buildSemanticMap()
+    private enum ScoreWeights {
+        static let exactTitleMatch = 24_000
+        static let partialTitleMatch = 9_000
+        static let exactContentMatch = 2_400
+        static let titleFuzzyMultiplier = 4
+        static let titlePhraseMatch = 5_000
+        static let contentPhraseMatch = 2_800
+        static let titleTokenMatch = 1_600
+        static let titlePrefixTokenMatch = 500
+        static let maxContentFrequencyCount = 6
+        static let contentTokenMatch = 220
+        static let allTokensMatchBonus = 1_600
+        static let partialTokenMatchBonus = 200
+        static let filterOnlyQueryBonus = 800
+    }
+
+    private enum RecencyWeights {
+        static let lastDay = 700
+        static let lastWeek = 450
+        static let lastMonth = 220
+    }
 
     private static func buildSemanticMap() -> [String: Set<String>] {
         let groups: [[String]] = [
@@ -104,6 +125,7 @@ struct NoteSearchResult: Identifiable {
 
     func updateFile(_ url: URL, content: String) {
         guard let noteIndex = allNotes.firstIndex(where: { $0.result.url == url }) else { return }
+        let previous = allNotes[noteIndex]
         let existing = allNotes[noteIndex].result
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
         let modifiedAt = values?.contentModificationDate ?? Date()
@@ -115,7 +137,7 @@ struct NoteSearchResult: Identifiable {
             modifiedAt: modifiedAt
         )
         allNotes[noteIndex] = updated
-        rebuildDocumentFrequency()
+        updateDocumentFrequency(previous: previous, updated: updated)
         notes = allNotes.map(\.result)
     }
 
@@ -170,12 +192,36 @@ struct NoteSearchResult: Identifiable {
     private func rebuildDocumentFrequency() {
         var frequency: [String: Int] = [:]
         for note in allNotes {
-            let uniqueTokens = Set(note.titleTokens).union(note.contentTokenCounts.keys)
+            let uniqueTokens = uniqueTokens(for: note)
             for token in uniqueTokens {
                 frequency[token, default: 0] += 1
             }
         }
         documentFrequency = frequency
+    }
+
+    private func updateDocumentFrequency(previous: IndexedNote, updated: IndexedNote) {
+        let previousTokens = uniqueTokens(for: previous)
+        let updatedTokens = uniqueTokens(for: updated)
+        let removedTokens = previousTokens.subtracting(updatedTokens)
+        let addedTokens = updatedTokens.subtracting(previousTokens)
+
+        for token in removedTokens {
+            let currentCount = documentFrequency[token] ?? 0
+            if currentCount <= 1 {
+                documentFrequency.removeValue(forKey: token)
+            } else {
+                documentFrequency[token] = currentCount - 1
+            }
+        }
+
+        for token in addedTokens {
+            documentFrequency[token, default: 0] += 1
+        }
+    }
+
+    private func uniqueTokens(for note: IndexedNote) -> Set<String> {
+        Set(note.titleTokens).union(note.contentTokenCounts.keys)
     }
 
     private func score(
@@ -192,30 +238,30 @@ struct NoteSearchResult: Identifiable {
         let lowerQuery = query.lowercased()
 
         if !normalizedQuery.isEmpty && indexed.normalizedTitle == normalizedQuery {
-            total += 24_000
+            total += Self.ScoreWeights.exactTitleMatch
             relevanceSignals += 1
         } else if !normalizedQuery.isEmpty && indexed.normalizedTitle.contains(normalizedQuery) {
-            total += 9_000
+            total += Self.ScoreWeights.partialTitleMatch
             relevanceSignals += 1
         }
 
         if !normalizedQuery.isEmpty && indexed.normalizedContent.contains(normalizedQuery) {
-            total += 2_400
+            total += Self.ScoreWeights.exactContentMatch
             relevanceSignals += 1
         }
 
         if !lowerQuery.isEmpty, let titleFuzzy = indexed.result.title.fuzzyScore(lowerQuery) {
-            total += titleFuzzy * 4
+            total += titleFuzzy * Self.ScoreWeights.titleFuzzyMultiplier
             relevanceSignals += 1
         }
 
         for phrase in normalizedPhrases where !phrase.isEmpty {
             if indexed.normalizedTitle.contains(phrase) {
-                total += 5_000
+                total += Self.ScoreWeights.titlePhraseMatch
                 relevanceSignals += 1
             }
             if indexed.normalizedContent.contains(phrase) {
-                total += 2_800
+                total += Self.ScoreWeights.contentPhraseMatch
                 relevanceSignals += 1
             }
         }
@@ -224,16 +270,18 @@ struct NoteSearchResult: Identifiable {
             let inverseDocumentWeight = inverseDocumentFrequency(for: token)
             let tokenWeight = max(inverseDocumentWeight, 1)
             if indexed.titleTokens.contains(token) {
-                total += 1_600 * tokenWeight
+                total += Self.ScoreWeights.titleTokenMatch * tokenWeight
                 relevanceSignals += 1
             } else if indexed.titleTokens.contains(where: { $0.hasPrefix(token) || token.hasPrefix($0) }) {
-                total += 500 * tokenWeight
+                total += Self.ScoreWeights.titlePrefixTokenMatch * tokenWeight
                 relevanceSignals += 1
             }
 
             let frequency = indexed.contentTokenCounts[token] ?? 0
             if frequency > 0 {
-                total += min(frequency, 6) * 220 * tokenWeight
+                total += min(frequency, Self.ScoreWeights.maxContentFrequencyCount)
+                    * Self.ScoreWeights.contentTokenMatch
+                    * tokenWeight
                 relevanceSignals += 1
             }
         }
@@ -243,13 +291,13 @@ struct NoteSearchResult: Identifiable {
         }.count
 
         if matchedTokenCount == queryTokens.count && !queryTokens.isEmpty {
-            total += 1_600
+            total += Self.ScoreWeights.allTokensMatchBonus
         } else if matchedTokenCount > 0 {
-            total += matchedTokenCount * 200
+            total += matchedTokenCount * Self.ScoreWeights.partialTokenMatchBonus
         }
 
         if !hasSearchTerms {
-            total += 800
+            total += Self.ScoreWeights.filterOnlyQueryBonus
         }
 
         if hasSearchTerms && relevanceSignals == 0 {
@@ -304,11 +352,11 @@ struct NoteSearchResult: Identifiable {
         let daysAgo = Date().timeIntervalSince(modifiedAt) / 86_400
         switch daysAgo {
         case ..<1:
-            return 700
+            return Self.RecencyWeights.lastDay
         case ..<7:
-            return 450
+            return Self.RecencyWeights.lastWeek
         case ..<30:
-            return 220
+            return Self.RecencyWeights.lastMonth
         default:
             return 0
         }
@@ -559,11 +607,7 @@ struct NoteSearchResult: Identifiable {
         }
 
         if !current.isEmpty {
-            if inQuote {
-                fragments.append(contentsOf: splitWords(current))
-            } else {
-                fragments.append(contentsOf: splitWords(current))
-            }
+            fragments.append(contentsOf: splitWords(current))
         }
 
         return (fragments, phrases)

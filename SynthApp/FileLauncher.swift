@@ -97,14 +97,12 @@ struct FileLauncher: View {
         let semanticResults: [LauncherResult] = noteResults.map { .note(result: $0) }
 
         // Fallback for non-note files by file name.
-        let fileResults: [LauncherResult] = cachedFiles
-            .filter { !noteURLs.contains($0.url) }
-            .compactMap { file -> LauncherResult? in
-                guard !Self.isSearchableNote(file.url),
-                      let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
-                let recentBonus = store.recentFiles.contains(file.url) ? 2000 : 0
-                return .file(node: file, score: nameScore + recentBonus)
-            }
+        let fileResults = Self.fallbackFileResults(
+            from: cachedFiles,
+            query: trimmed,
+            noteURLs: noteURLs,
+            recentFiles: Set(store.recentFiles)
+        )
 
         return (semanticResults + fileResults + peopleResults)
             .sorted { $0.sortScore > $1.sortScore }
@@ -277,9 +275,19 @@ struct FileLauncher: View {
         return result
     }
 
-    static func isSearchableNote(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        return ext == "md" || ext == "txt"
+    static func fallbackFileResults(
+        from files: [FileTreeNode],
+        query: String,
+        noteURLs: Set<URL>,
+        recentFiles: Set<URL>
+    ) -> [LauncherResult] {
+        files
+            .filter { !noteURLs.contains($0.url) }
+            .compactMap { fileNode -> LauncherResult? in
+                guard let nameScore = fileNode.name.fuzzyScore(query) else { return nil }
+                let recentBonus = recentFiles.contains(fileNode.url) ? 2000 : 0
+                return .file(node: fileNode, score: nameScore + recentBonus)
+            }
     }
 
     @ViewBuilder
