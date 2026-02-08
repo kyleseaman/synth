@@ -12,6 +12,7 @@ class ACPClient: ObservableObject {
     private var cwd: String = ""
     private var agent: String?
     private var lastToolCallDiff: [String: DiffContent] = [:]
+    private var pendingPromptRequest = false
     var mcpServerManager: MCPServerManager?
 
     @Published var isConnected = false
@@ -27,11 +28,15 @@ class ACPClient: ObservableObject {
     var onToolCall: ((ACPToolCall) -> Void)?
     var onToolCallUpdate: ((String, String) -> Void)?
     var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
+    var onError: ((String) -> Void)?
 
     // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
         self.agent = agent
+        DispatchQueue.main.async {
+            self.connectionFailed = false
+        }
         let proc = Process()
 
         if let path = KiroCliResolver.resolve() {
@@ -133,7 +138,7 @@ class ACPClient: ObservableObject {
 
         // Try as notification (has method, no id)
         if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data),
-           notification.method == "session/update" {
+           ACPProtocolAdapter.isSessionUpdateMethod(notification.method) {
             handleSessionUpdate(notification.params)
             return
         }
@@ -217,16 +222,19 @@ class ACPClient: ObservableObject {
 
     private func handleSessionUpdate(_ params: [String: AnyCodable]?) {
         guard let update = params?["update"]?.dictValue,
-              let kind = update["sessionUpdate"]?.stringValue else { return }
+              let rawKind = update["sessionUpdate"]?.stringValue ?? update["type"]?.stringValue,
+              let kind = ACPProtocolAdapter.parseUpdateKind(rawKind) else { return }
 
         switch kind {
-        case "agent_message_chunk":
+        case .agentMessageChunk:
             if let content = update["content"]?.dictValue,
                let text = content["text"]?.stringValue {
                 DispatchQueue.main.async { self.onUpdate?(text) }
+            } else if let text = update["text"]?.stringValue {
+                DispatchQueue.main.async { self.onUpdate?(text) }
             }
 
-        case "tool_call":
+        case .toolCall:
             if let toolCallId = update["toolCallId"]?.stringValue,
                let title = update["title"]?.stringValue {
                 let toolKind = update["kind"]?.stringValue ?? "other"
@@ -247,7 +255,7 @@ class ACPClient: ObservableObject {
                 }
             }
 
-        case "tool_call_update":
+        case .toolCallUpdate:
             if let toolCallId = update["toolCallId"]?.stringValue {
                 let status = update["status"]?.stringValue ?? "in_progress"
                 DispatchQueue.main.async {
@@ -257,6 +265,9 @@ class ACPClient: ObservableObject {
                     self.onToolCallUpdate?(toolCallId, status)
                 }
             }
+
+        case .turnEnd:
+            finishTurnIfNeeded()
 
         default:
             break
@@ -398,6 +409,10 @@ class ACPClient: ObservableObject {
                 DispatchQueue.main.async { self?.sessionId = sid }
             } else {
                 print("[ACP] session/new response: \(result)")
+                DispatchQueue.main.async {
+                    self?.connectionFailed = true
+                    self?.onError?("Failed to create session with kiro-cli.")
+                }
             }
         }
     }
@@ -407,24 +422,51 @@ class ACPClient: ObservableObject {
     }
 
     func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {
-        guard let sid = sessionId else { return }
+        guard let sid = sessionId else {
+            DispatchQueue.main.async {
+                self.onError?("Kiro session is not ready yet.")
+            }
+            return
+        }
 
-        let params: [String: AnyCodable] = [
-            "sessionId": AnyCodable(sid),
-            "prompt": AnyCodable(contentBlocks.map { AnyCodable($0) })
-        ]
-
+        let params = ACPProtocolAdapter.promptParams(
+            sessionId: sid,
+            contentBlocks: contentBlocks
+        )
+        queue.sync { pendingPromptRequest = true }
         toolCalls.removeAll()
 
-        sendRequest(method: "session/prompt", params: params) { [weak self] _ in
-            DispatchQueue.main.async { self?.onTurnComplete?() }
+        sendRequest(method: "session/prompt", params: params) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success:
+                self.finishTurnIfNeeded()
+            case .failure(let error):
+                DispatchQueue.main.async {
+                    self.onError?("Kiro request failed: \(error.localizedDescription)")
+                }
+                self.finishTurnIfNeeded()
+            }
         }
     }
 
     func sendCancel() {
         guard let sid = sessionId else { return }
+        queue.sync { pendingPromptRequest = false }
         sendNotification(method: "session/cancel", params: [
             "sessionId": AnyCodable(sid)
         ])
+    }
+
+    private func finishTurnIfNeeded() {
+        let shouldFinish = queue.sync { () -> Bool in
+            guard pendingPromptRequest else { return false }
+            pendingPromptRequest = false
+            return true
+        }
+        guard shouldFinish else { return }
+        DispatchQueue.main.async {
+            self.onTurnComplete?()
+        }
     }
 }

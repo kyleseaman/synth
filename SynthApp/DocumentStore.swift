@@ -257,9 +257,13 @@ class DocumentStore: ObservableObject {
         loadRecentFiles()
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
-            workspace = URL(fileURLWithPath: path)
+            let restoredWorkspace = URL(fileURLWithPath: path)
+            workspace = restoredWorkspace
             loadFileTree()
             startWatching()
+            loadKiroConfig()
+            checkKiroSetup()
+            mcpServer.start(workspace: restoredWorkspace)
         }
     }
 

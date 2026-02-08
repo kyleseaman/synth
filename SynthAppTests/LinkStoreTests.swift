@@ -137,3 +137,36 @@ final class MediaManagerTests: XCTestCase {
         return image
     }
 }
+
+final class ACPProtocolAdapterTests: XCTestCase {
+    func testSessionUpdateMethodDetectionSupportsLegacyAndKiro() {
+        XCTAssertTrue(ACPProtocolAdapter.isSessionUpdateMethod("session/update"))
+        XCTAssertTrue(ACPProtocolAdapter.isSessionUpdateMethod("session/notification"))
+        XCTAssertFalse(ACPProtocolAdapter.isSessionUpdateMethod("session/new"))
+    }
+
+    func testUpdateKindParsingSupportsSnakeAndPascalCase() {
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("agent_message_chunk"), .agentMessageChunk)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("AgentMessageChunk"), .agentMessageChunk)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("tool_call"), .toolCall)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCall"), .toolCall)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("tool_call_update"), .toolCallUpdate)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCallUpdate"), .toolCallUpdate)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("turn_end"), .turnEnd)
+        XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("TurnEnd"), .turnEnd)
+        XCTAssertNil(ACPProtocolAdapter.parseUpdateKind("unknown_update"))
+    }
+
+    func testPromptRequestUsesContentField() {
+        let contentBlocks: [[String: AnyCodable]] = [[
+            "type": AnyCodable("text"),
+            "text": AnyCodable("Explain this file")
+        ]]
+
+        let params = ACPProtocolAdapter.promptParams(sessionId: "sess_test", contentBlocks: contentBlocks)
+
+        XCTAssertEqual(params["sessionId"]?.stringValue, "sess_test")
+        XCTAssertNotNil(params["content"]?.arrayValue)
+        XCTAssertNil(params["prompt"])
+    }
+}
