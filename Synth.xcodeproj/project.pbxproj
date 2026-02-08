@@ -28,6 +28,12 @@
 		1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */; };
 		1A0000000000000000000205 /* LinkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* LinkStoreTests.swift */; };
 		1A0000000000000000000206 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* XCTest.framework */; };
+		1A0000000000000000000211 /* DailyNoteResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000141 /* DailyNoteResolverTests.swift */; };
+		1A0000000000000000000212 /* DailyNoteManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000142 /* DailyNoteManagerTests.swift */; };
+		1A0000000000000000000213 /* TagAndPeopleIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000143 /* TagAndPeopleIndexTests.swift */; };
+		1A0000000000000000000214 /* BacklinkIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000144 /* BacklinkIndexTests.swift */; };
+		1A0000000000000000000215 /* UtilityLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000145 /* UtilityLogicTests.swift */; };
+		1A0000000000000000000216 /* DocumentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000146 /* DocumentStoreTests.swift */; };
 		2A0000000000000000000701 /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* NoteIndex.swift */; };
 		2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* WikiLinkPopover.swift */; };
 		2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000113 /* DailyNoteResolver.swift */; };
@@ -85,6 +91,12 @@
 		1A0000000000000000000106 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A0000000000000000000107 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		1A0000000000000000000108 /* SynthTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SynthTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A0000000000000000000141 /* DailyNoteResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteResolverTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000142 /* DailyNoteManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteManagerTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000143 /* TagAndPeopleIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAndPeopleIndexTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000144 /* BacklinkIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacklinkIndexTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000145 /* UtilityLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityLogicTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000146 /* DocumentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStoreTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000111 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000112 /* WikiLinkPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinkPopover.swift; sourceTree = "<group>"; };
 		1A0000000000000000000113 /* DailyNoteResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteResolver.swift; sourceTree = "<group>"; };
@@ -184,6 +196,12 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000105 /* LinkStoreTests.swift */,
+				1A0000000000000000000141 /* DailyNoteResolverTests.swift */,
+				1A0000000000000000000142 /* DailyNoteManagerTests.swift */,
+				1A0000000000000000000143 /* TagAndPeopleIndexTests.swift */,
+				1A0000000000000000000144 /* BacklinkIndexTests.swift */,
+				1A0000000000000000000145 /* UtilityLogicTests.swift */,
+				1A0000000000000000000146 /* DocumentStoreTests.swift */,
 				1A0000000000000000000106 /* Info.plist */,
 			);
 			path = SynthAppTests;
@@ -352,6 +370,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000205 /* LinkStoreTests.swift in Sources */,
+				1A0000000000000000000211 /* DailyNoteResolverTests.swift in Sources */,
+				1A0000000000000000000212 /* DailyNoteManagerTests.swift in Sources */,
+				1A0000000000000000000213 /* TagAndPeopleIndexTests.swift in Sources */,
+				1A0000000000000000000214 /* BacklinkIndexTests.swift in Sources */,
+				1A0000000000000000000215 /* UtilityLogicTests.swift in Sources */,
+				1A0000000000000000000216 /* DocumentStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

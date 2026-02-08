@@ -68,6 +68,50 @@ final class LinkStoreTests: XCTestCase {
         XCTAssertEqual(store.links.first?.urlString, "https://example.com")
         XCTAssertEqual(store.links.first?.identifier, first?.identifier)
     }
+
+    func testRemoveLinkPersistsAfterReload() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+        _ = store.addLink("https://first.example")
+        guard let secondLink = store.addLink("https://second.example") else {
+            XCTFail("Second link was not created")
+            return
+        }
+
+        store.removeLink(identifier: secondLink.identifier)
+        XCTAssertEqual(store.links.count, 1)
+        XCTAssertEqual(store.links.first?.urlString, "https://first.example")
+
+        let reloaded = LinkStore(storage: storage, storageKey: storageKey)
+        XCTAssertEqual(reloaded.links.count, 1)
+        XCTAssertEqual(reloaded.links.first?.urlString, "https://first.example")
+    }
+
+    func testNormalizeSupportsHttpAndRejectsInvalidHosts() {
+        XCTAssertEqual(
+            LinkStore.normalize("http://example.com/path"),
+            "http://example.com/path"
+        )
+        XCTAssertNil(LinkStore.normalize("mailto:test@example.com"))
+        XCTAssertNil(LinkStore.normalize("https:///missing-host"))
+        XCTAssertNil(LinkStore.normalize("   "))
+    }
+
+    func testLoadIgnoresCorruptStoredData() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        storage.set(Data("invalid json".utf8), forKey: storageKey)
+        let store = LinkStore(storage: storage, storageKey: storageKey)
+
+        XCTAssertTrue(store.links.isEmpty)
+    }
 }
 
 final class MediaManagerTests: XCTestCase {
@@ -220,6 +264,86 @@ final class TemplateStoreTests: XCTestCase {
 
         XCTAssertTrue(didUpdate)
         XCTAssertEqual(store.templateForShortcut(3)?.content, "## Agenda\n-")
+    }
+
+    func testAddTemplateRejectsBlankValuesAndNormalizesInvalidShortcut() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+
+        XCTAssertNil(store.addTemplate(name: "  ", content: "body", shortcutSlot: 1))
+        XCTAssertNil(store.addTemplate(name: "Name", content: "   ", shortcutSlot: 1))
+
+        let created = store.addTemplate(name: "Quick Note", content: "body", shortcutSlot: 99)
+        XCTAssertNotNil(created)
+        XCTAssertNil(created?.shortcutSlot)
+    }
+
+    func testUpdateTemplateRejectsMissingIdentifierAndInvalidValues() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+        let missingIdentifier = UUID()
+
+        XCTAssertFalse(store.updateTemplate(
+            identifier: missingIdentifier,
+            name: "Name",
+            content: "Body",
+            shortcutSlot: 1
+        ))
+
+        guard let created = store.addTemplate(name: "Keep", content: "Body", shortcutSlot: nil) else {
+            XCTFail("Template creation failed")
+            return
+        }
+
+        XCTAssertFalse(store.updateTemplate(
+            identifier: created.identifier,
+            name: "   ",
+            content: "Body",
+            shortcutSlot: 1
+        ))
+        XCTAssertFalse(store.updateTemplate(
+            identifier: created.identifier,
+            name: "Keep",
+            content: "   ",
+            shortcutSlot: 1
+        ))
+    }
+
+    func testRemoveTemplateTemplateNamedAndSearchByContent() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+        let firstTemplate = store.addTemplate(
+            name: "Retro",
+            content: "Team retrospective notes",
+            shortcutSlot: nil
+        )
+        _ = store.addTemplate(name: "Daily", content: "standup", shortcutSlot: 2)
+
+        XCTAssertEqual(store.template(named: "retro")?.name, "Retro")
+        XCTAssertEqual(store.search("retrospective").first?.name, "Retro")
+
+        guard let firstIdentifier = firstTemplate?.identifier else {
+            XCTFail("Missing template identifier")
+            return
+        }
+        store.removeTemplate(identifier: firstIdentifier)
+        XCTAssertNil(store.template(named: "Retro"))
+
+        let reloaded = TemplateStore(storage: storage, storageKey: storageKey)
+        XCTAssertEqual(reloaded.templates.count, 1)
+        XCTAssertEqual(reloaded.templates.first?.name, "Daily")
     }
 }
 

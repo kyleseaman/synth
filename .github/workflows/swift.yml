@@ -10,7 +10,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
+  build-and-test:
 
     runs-on: macos-26
 
@@ -20,5 +20,9 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
     - name: Build Rust core
       run: cd synth-core && cargo build --release
-    - name: Build
+    - name: Test Rust core
+      run: cd synth-core && cargo test
+    - name: Build app
       run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug build CODE_SIGNING_ALLOWED=NO
+    - name: Test app
+      run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug test CODE_SIGNING_ALLOWED=NO
