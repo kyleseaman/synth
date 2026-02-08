@@ -74,6 +74,54 @@ final class UtilityLogicTests: XCTestCase {
         XCTAssertEqual(flattened.map { $0.url.path }, [firstFile.url.path, nestedFile.url.path])
     }
 
+    @MainActor
+    func testFallbackFileResultsIncludesSearchableNoteWhenSemanticMisses() {
+        let noteNode = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/Project Roadmap.md"),
+            isDirectory: false,
+            children: nil
+        )
+        let imageNode = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/diagram.png"),
+            isDirectory: false,
+            children: nil
+        )
+        let recentURLs: Set<URL> = [noteNode.url]
+
+        let results = FileLauncher.fallbackFileResults(
+            from: [noteNode, imageNode],
+            query: "road",
+            noteURLs: [],
+            recentFiles: recentURLs
+        )
+
+        XCTAssertEqual(results.count, 1)
+        guard case .file(let matchedNode, let scoreValue) = results[0] else {
+            XCTFail("Expected a file result")
+            return
+        }
+        XCTAssertEqual(matchedNode.url.path, noteNode.url.path)
+        XCTAssertGreaterThan(scoreValue, 2000)
+    }
+
+    @MainActor
+    func testFallbackFileResultsSkipsSemanticNoteURLs() {
+        let noteNode = FileTreeNode(
+            url: URL(fileURLWithPath: "/tmp/Project Roadmap.md"),
+            isDirectory: false,
+            children: nil
+        )
+
+        let results = FileLauncher.fallbackFileResults(
+            from: [noteNode],
+            query: "road",
+            noteURLs: [noteNode.url],
+            recentFiles: []
+        )
+
+        XCTAssertTrue(results.isEmpty)
+    }
+
     func testMediaManagerRelativePathAndResolvedURL() {
         let baseDirectory = URL(fileURLWithPath: "/tmp/project/notes/", isDirectory: true)
         let destinationURL = URL(fileURLWithPath: "/tmp/project/media/image.png")
@@ -212,6 +260,39 @@ final class NoteIndexTests: XCTestCase {
 
         XCTAssertEqual(noteIndex.notes.count, 25)
         XCTAssertEqual(noteIndex.search("").count, 20)
+    }
+
+    func testUpdateFileReindexesUpdatedTokenMatches() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let firstNoteURL = workspaceURL.appendingPathComponent("First.md")
+        let secondNoteURL = workspaceURL.appendingPathComponent("Second.md")
+        try "alpha alpha signal".write(to: firstNoteURL, atomically: true, encoding: .utf8)
+        try "alpha report".write(to: secondNoteURL, atomically: true, encoding: .utf8)
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        guard let indexedFirstURL = noteIndex.findExact("First")?.url else {
+            XCTFail("Missing indexed first note")
+            return
+        }
+
+        XCTAssertEqual(noteIndex.search("alpha").count, 2)
+
+        let updatedText = "beta planning memo"
+        try updatedText.write(to: firstNoteURL, atomically: true, encoding: .utf8)
+        noteIndex.updateFile(indexedFirstURL, content: updatedText)
+
+        let alphaResults = noteIndex.search("alpha")
+        XCTAssertEqual(alphaResults.count, 1)
+        XCTAssertEqual(alphaResults.first?.title, "Second")
+
+        let betaResults = noteIndex.search("beta")
+        XCTAssertEqual(betaResults.count, 1)
+        XCTAssertEqual(betaResults.first?.title, "First")
     }
 }
 

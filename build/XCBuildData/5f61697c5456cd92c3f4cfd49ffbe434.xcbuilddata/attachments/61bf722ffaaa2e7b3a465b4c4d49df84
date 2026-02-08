@@ -1,0 +1,19 @@
+{
+  "" : {
+    "diagnostics" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/SynthTests-primary.dia",
+    "emit-module-dependencies" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/SynthTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/SynthTests-primary-emit-module.dia",
+    "pch" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/SynthTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/SynthTests-primary.swiftdeps"
+  },
+  "/Users/kyle/.codex/worktrees/2eaa/synth/SynthAppTests/LinkStoreTests.swift" : {
+    "const-values" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.swiftconstvalues",
+    "dependencies" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.d",
+    "diagnostics" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.dia",
+    "index-unit-output-path" : "/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.o",
+    "llvm-bc" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.bc",
+    "object" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.o",
+    "swift-dependencies" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests.swiftdeps",
+    "swiftmodule" : "/Users/kyle/.codex/worktrees/2eaa/synth/build/Synth.build/Debug/SynthTests.build/Objects-normal/arm64/LinkStoreTests~partial.swiftmodule"
+  }
+}
