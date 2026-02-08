@@ -645,6 +645,8 @@ class FormattingTextView: NSTextView {
     private var resizeDragStartX: CGFloat = 0
     private var resizeDragStartWidth: CGFloat = 0
     private var resizeDragAspectRatio: CGFloat = 1
+    /// Set during live resize to suppress textDidChange reformatting.
+    var isResizing = false
 
     private lazy var resizeHandle: ResizeGripView = {
         let handle = ResizeGripView(
@@ -692,6 +694,7 @@ class FormattingTextView: NSTextView {
             let handleRect = resizeHandleRect(for: rect)
             if handleRect.contains(point) {
                 isResizeDragging = true
+                isResizing = true
                 resizeDragStartX = point.x
                 resizeDragStartWidth = rect.width
                 resizeDragAspectRatio = rect.height > 0
@@ -723,31 +726,38 @@ class FormattingTextView: NSTextView {
         let newWidth = max(80, resizeDragStartWidth + delta)
         let newHeight = newWidth / resizeDragAspectRatio
 
-        // Update attachment bounds live
-        if let attachment = storage.attribute(
+        // Rebuild the attachment with new bounds and replace in storage
+        // to force NSLayoutManager to pick up the size change.
+        guard let oldAttachment = storage.attribute(
             .attachment, at: charIndex, effectiveRange: nil
-        ) as? NSTextAttachment {
-            attachment.bounds = CGRect(
-                x: 0, y: 0, width: newWidth, height: newHeight
+        ) as? NSTextAttachment else { return }
+
+        let newAttachment = NSTextAttachment()
+        newAttachment.image = oldAttachment.image
+        newAttachment.bounds = CGRect(
+            x: 0, y: 0, width: newWidth, height: newHeight
+        )
+        let replacement = NSMutableAttributedString(
+            attributedString: NSAttributedString(
+                attachment: newAttachment
             )
-            // Force layout invalidation for the glyph
-            let glyphRange = layoutManager?.glyphRange(
-                forCharacterRange: NSRange(
-                    location: charIndex, length: 1
-                ),
-                actualCharacterRange: nil
-            ) ?? NSRange(location: charIndex, length: 1)
-            layoutManager?.invalidateLayout(
-                forCharacterRange: NSRange(
-                    location: charIndex, length: 1
-                ),
-                actualCharacterRange: nil
+        )
+        // Preserve custom attributes
+        let attrRange = NSRange(location: 0, length: 1)
+        if let url = hoveredImageURL {
+            replacement.addAttribute(
+                MarkdownFormat.imageURLKey,
+                value: url, range: attrRange
             )
-            layoutManager?.invalidateDisplay(
-                forGlyphRange: glyphRange
-            )
-            needsDisplay = true
         }
+        if let markup = hoveredImageMarkup {
+            replacement.addAttribute(
+                MarkdownFormat.imageMarkupKey,
+                value: markup, range: attrRange
+            )
+        }
+        let charRange = NSRange(location: charIndex, length: 1)
+        storage.replaceCharacters(in: charRange, with: replacement)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -756,6 +766,7 @@ class FormattingTextView: NSTextView {
             return
         }
         isResizeDragging = false
+        isResizing = false
         let point = convert(event.locationInWindow, from: nil)
         let delta = point.x - resizeDragStartX
         let newWidth = Int(max(80, resizeDragStartWidth + delta))
@@ -1644,7 +1655,10 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView, !isFormatting else { return }
+            guard let textView = textView,
+                  !isFormatting,
+                  !textView.isResizing
+            else { return }
             parent.text = MarkdownFormat.restoreImageMarkup(
                 in: textView.string
             )

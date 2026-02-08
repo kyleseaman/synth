@@ -300,7 +300,9 @@ struct DailyNoteEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = textView,
-                  !isFormatting else { return }
+                  !isFormatting,
+                  !textView.isResizing
+            else { return }
             parent.onTextChange(
                 MarkdownFormat.restoreImageMarkup(in: textView.string)
             )
