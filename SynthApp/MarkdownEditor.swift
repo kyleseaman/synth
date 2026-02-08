@@ -721,13 +721,15 @@ class FormattingTextView: NSTextView {
             }
             return
         }
+
+        // Hide copy/delete during resize
+        if !imageOverlay.isHidden { imageOverlay.isHidden = true }
+
         let point = convert(event.locationInWindow, from: nil)
         let delta = point.x - resizeDragStartX
         let newWidth = max(80, resizeDragStartWidth + delta)
         let newHeight = newWidth / resizeDragAspectRatio
 
-        // Rebuild the attachment with new bounds and replace in storage
-        // to force NSLayoutManager to pick up the size change.
         guard let oldAttachment = storage.attribute(
             .attachment, at: charIndex, effectiveRange: nil
         ) as? NSTextAttachment else { return }
@@ -742,7 +744,6 @@ class FormattingTextView: NSTextView {
                 attachment: newAttachment
             )
         )
-        // Preserve custom attributes
         let attrRange = NSRange(location: 0, length: 1)
         if let url = hoveredImageURL {
             replacement.addAttribute(
@@ -758,6 +759,26 @@ class FormattingTextView: NSTextView {
         }
         let charRange = NSRange(location: charIndex, length: 1)
         storage.replaceCharacters(in: charRange, with: replacement)
+
+        // Reposition grip after layout updates
+        layoutManager?.ensureLayout(
+            forCharacterRange: charRange
+        )
+        if let glyphRange = layoutManager?.glyphRange(
+            forCharacterRange: charRange,
+            actualCharacterRange: nil
+        ), let textContainer = textContainer {
+            let glyphRect = layoutManager?.boundingRect(
+                forGlyphRange: glyphRange, in: textContainer
+            ) ?? .zero
+            let newRect = CGRect(
+                x: glyphRect.origin.x + textContainerInset.width,
+                y: glyphRect.origin.y + textContainerInset.height,
+                width: glyphRect.width,
+                height: glyphRect.height
+            )
+            resizeHandle.frame = resizeHandleRect(for: newRect)
+        }
     }
 
     override func mouseUp(with event: NSEvent) {
