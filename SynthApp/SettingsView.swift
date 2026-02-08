@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @State private var detectedPath = ""
+    @State private var showKiroPicker = false
 
     var body: some View {
         TabView {
@@ -41,12 +43,20 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                     }
                     Spacer()
-                    Button("Browse...") { browseForKiroCli() }
+                    Button("Browse...") { showKiroPicker = true }
                         .controlSize(.small)
                 }
             }
         }
         .padding()
+        .fileImporter(
+            isPresented: $showKiroPicker,
+            allowedContentTypes: [.item]
+        ) { result in
+            if case .success(let url) = result {
+                kiroCliPath = url.path
+            }
+        }
     }
 
     // MARK: - Context
@@ -117,19 +127,6 @@ struct SettingsView: View {
                 Text("Agents defined in .kiro/agents/ for this workspace.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func browseForKiroCli() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Select kiro-cli"
-        panel.begin { response in
-            if response == .OK, let url = panel.url {
-                kiroCliPath = url.path
             }
         }
     }

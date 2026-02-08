@@ -1,8 +1,7 @@
 import SwiftUI
-import AppKit
 
 struct MeetingNoteView: View {
-    @EnvironmentObject var store: DocumentStore
+    @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
 
     @State private var meetingName = ""
@@ -43,7 +42,7 @@ struct MeetingNoteView: View {
         .frame(width: 420)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: NSColor.windowBackgroundColor))
+                .fill(Color(.windowBackgroundColor))
                 .shadow(radius: 12)
         )
         .accessibilityAddTraits(.isModal)

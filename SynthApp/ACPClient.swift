@@ -1,34 +1,35 @@
 // swiftlint:disable file_length
 import Foundation
+import Observation
 
 // swiftlint:disable:next type_body_length
-class ACPClient: ObservableObject {
-    private var process: Process?
-    private var stdin: FileHandle?
-    private var requestId = 0
-    private var pendingRequests: [Int: (Result<AnyCodable?, Error>) -> Void] = [:]
-    private var buffer = Data()
-    private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
-    private var cwd: String = ""
-    private var agent: String?
-    private var lastToolCallDiff: [String: DiffContent] = [:]
-    private var pendingPromptRequest = false
-    var mcpServerManager: MCPServerManager?
+@Observable class ACPClient {
+    @ObservationIgnored private var process: Process?
+    @ObservationIgnored private var stdin: FileHandle?
+    @ObservationIgnored private var requestId = 0
+    @ObservationIgnored private var pendingRequests: [Int: (Result<AnyCodable?, Error>) -> Void] = [:]
+    @ObservationIgnored private var buffer = Data()
+    @ObservationIgnored private let queue = DispatchQueue(label: "com.synth.acp.\(UUID().uuidString)")
+    @ObservationIgnored private var cwd: String = ""
+    @ObservationIgnored private var agent: String?
+    @ObservationIgnored private var lastToolCallDiff: [String: DiffContent] = [:]
+    @ObservationIgnored private var pendingPromptRequest = false
+    @ObservationIgnored var mcpServerManager: MCPServerManager?
 
-    @Published var isConnected = false
-    @Published var sessionId: String?
-    @Published var connectionFailed = false
-    @Published var toolCalls: [ACPToolCall] = []
-    @Published var pendingPermission: ACPPermissionRequest?
+    var isConnected = false
+    var sessionId: String?
+    var connectionFailed = false
+    var toolCalls: [ACPToolCall] = []
+    var pendingPermission: ACPPermissionRequest?
 
-    var onUpdate: ((String) -> Void)?
-    var onTurnComplete: (() -> Void)?
-    var onFileWrite: ((String, String) -> Void)?
-    var onFileRead: ((String) -> String?)?
-    var onToolCall: ((ACPToolCall) -> Void)?
-    var onToolCallUpdate: ((String, String) -> Void)?
-    var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
-    var onError: ((String) -> Void)?
+    @ObservationIgnored var onUpdate: ((String) -> Void)?
+    @ObservationIgnored var onTurnComplete: (() -> Void)?
+    @ObservationIgnored var onFileWrite: ((String, String) -> Void)?
+    @ObservationIgnored var onFileRead: ((String) -> String?)?
+    @ObservationIgnored var onToolCall: ((ACPToolCall) -> Void)?
+    @ObservationIgnored var onToolCallUpdate: ((String, String) -> Void)?
+    @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
+    @ObservationIgnored var onError: ((String) -> Void)?
 
     // swiftlint:disable:next function_body_length
     func start(cwd: String, agent: String? = nil) {

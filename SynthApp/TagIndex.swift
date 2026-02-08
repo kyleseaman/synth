@@ -1,13 +1,14 @@
 import Foundation
+import Observation
 
 // MARK: - Tag Index
 
-class TagIndex: ObservableObject {
+@Observable class TagIndex {
     /// Map from normalized tag name -> set of file URLs containing that tag
-    @Published private(set) var tagToFiles: [String: Set<URL>] = [:]
+    private(set) var tagToFiles: [String: Set<URL>] = [:]
 
     /// Map from file URL -> set of normalized tag names in that file
-    private var fileToTags: [URL: Set<String>] = [:]
+    @ObservationIgnored private var fileToTags: [URL: Set<String>] = [:]
 
     // Tag regex: must start with letter after #, min 2 chars after #, not preceded by # or word char
     // swiftlint:disable:next force_try

@@ -4,9 +4,9 @@ import SwiftUI
 
 struct BacklinksSection: View {
     let noteTitle: String
-    @ObservedObject var backlinkIndex: BacklinkIndex
+    var backlinkIndex: BacklinkIndex
     let onNavigate: (URL) -> Void
-    @AppStorage("backlinksExpanded") private var isExpanded = false
+    @AppStorage("backlinksExpanded") private var isExpanded = true
 
     var backlinks: [(url: URL, title: String, snippet: String, relativePath: String)] {
         let currentTitle = noteTitle.lowercased()
@@ -41,10 +41,10 @@ struct BacklinksSection: View {
                             BacklinkRow(
                                 title: link.title,
                                 snippet: link.snippet,
-                                relativePath: link.relativePath
+                                relativePath: link.relativePath,
+                                url: link.url,
+                                onNavigate: onNavigate
                             )
-                            .contentShape(Rectangle())
-                            .onTapGesture { onNavigate(link.url) }
                             .accessibilityLabel("Link from \(link.title)")
                             .accessibilityHint("Opens \(link.title)")
                         }
@@ -73,10 +73,14 @@ struct BacklinkRow: View {
     let title: String
     let snippet: String
     let relativePath: String
+    let url: URL
+    let onNavigate: (URL) -> Void
     @State private var isHovering = false
+    @State private var showFullNote = false
+    @State private var fullContent: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Image(systemName: "doc.text")
                     .font(.system(size: 12))
@@ -85,16 +89,50 @@ struct BacklinkRow: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(relativePath)
-                    .font(.caption)
+                Button {
+                    if !showFullNote && fullContent == nil {
+                        fullContent = try? String(
+                            contentsOf: url, encoding: .utf8
+                        )
+                    }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        showFullNote.toggle()
+                    }
+                } label: {
+                    Image(
+                        systemName: showFullNote
+                            ? "rectangle.compress.vertical"
+                            : "rectangle.expand.vertical"
+                    )
+                    .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help(showFullNote ? "Collapse" : "Show full note")
             }
-            if !snippet.isEmpty {
+            .contentShape(Rectangle())
+            .onTapGesture { onNavigate(url) }
+
+            if !showFullNote && !snippet.isEmpty {
                 Text(snippet)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .truncationMode(.tail)
+                    .textSelection(.enabled)
+            }
+
+            if showFullNote, let content = fullContent {
+                Text(content)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.03))
+                    )
             }
         }
         .padding(.horizontal, 8)

@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 // MARK: - Note Search Result
 
@@ -11,11 +12,11 @@ struct NoteSearchResult: Identifiable {
 
 // MARK: - Note Index
 
-class NoteIndex: ObservableObject {
-    @Published private(set) var notes: [NoteSearchResult] = []
-    private var allNotes: [NoteSearchResult] = []
+@Observable class NoteIndex {
+    private(set) var notes: [NoteSearchResult] = []
+    @ObservationIgnored private var allNotes: [NoteSearchResult] = []
     /// Whether the index has been populated at least once.
-    private(set) var isPopulated = false
+    @ObservationIgnored private(set) var isPopulated = false
 
     func rebuild(from fileTree: [FileTreeNode], workspace: URL?) {
         allNotes = Self.flatten(fileTree, workspace: workspace)

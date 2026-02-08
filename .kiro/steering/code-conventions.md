@@ -17,6 +17,16 @@ If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
 - Use trailing closure syntax.
 - Group related properties and methods with `// MARK:` comments.
 
+## Modern SwiftUI (macOS 26)
+
+- Use `@Observable` macro for model classes, never `ObservableObject`/`@Published`.
+- Use `@Environment(Type.self)` for injection, never `@EnvironmentObject`.
+- Use `@State` for owned observable objects, never `@StateObject`.
+- Use plain `var` for passed-in observable objects, never `@ObservedObject`.
+- Use `@Bindable` when creating `$` bindings to `@Environment`-injected objects.
+- Use `.fileImporter()` for file pickers, `.alert()` for dialogs, `@Environment(\.openURL)` for URLs.
+- AppKit exceptions: FormattingTextView (NSTextView) and WikiLinkPopover (NSPopover) only.
+
 ## Rust Style
 
 - Run `cargo fmt` before committing.

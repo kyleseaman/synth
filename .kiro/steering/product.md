@@ -9,8 +9,12 @@ Synth combines SwiftUI with a Rust core for performance. Users press `Cmd+K` to 
 Writers and developers who want a distraction-free writing environment with AI built in.
 
 ## Key Features
-- Native macOS app (SwiftUI + AppKit bridging)
+- Native macOS 26 app (modern SwiftUI, AppKit only for NSTextView/NSPopover)
 - Rust core for document processing
 - Kiro CLI integration for AI assistance
 - Specialized agents (synth-editor, synth-writer)
 - Keyboard-driven workflow
+- Live markdown rendering with [[wiki links]], @mentions, #tags
+- Daily Notes view with chronological scroll and calendar sidebar
+- Backlinks, tag browser, people browser
+- Link capture and meeting notes

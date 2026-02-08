@@ -1,13 +1,14 @@
 import Foundation
+import Observation
 
 /// Manages the lifecycle of the synth-mcp-server process.
 /// Starts the server when a workspace opens and stops it on workspace change/close.
-class MCPServerManager: ObservableObject {
-    @Published var isRunning = false
-    @Published var httpPort: UInt16 = 9712
+@Observable class MCPServerManager {
+    var isRunning = false
+    var httpPort: UInt16 = 9712
 
-    private var process: Process?
-    private var serverPath: String?
+    @ObservationIgnored private var process: Process?
+    @ObservationIgnored private var serverPath: String?
 
     // MARK: - Lifecycle
 

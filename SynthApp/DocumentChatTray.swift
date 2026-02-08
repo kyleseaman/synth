@@ -2,8 +2,8 @@ import SwiftUI
 
 // swiftlint:disable:next type_body_length
 struct DocumentChatTray: View {
-    @ObservedObject var chatState: DocumentChatState
-    @EnvironmentObject var store: DocumentStore
+    var chatState: DocumentChatState
+    @Environment(DocumentStore.self) var store
     let documentURL: URL
     let documentContent: String
     var selectedText: String?
@@ -91,7 +91,7 @@ struct DocumentChatTray: View {
             .buttonStyle(.plain)
 
             Button {
-                NotificationCenter.default.post(name: .toggleChat, object: nil)
+                store.toggleChatForCurrentTab()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
@@ -424,7 +424,6 @@ struct DocumentChatTray: View {
                 chatState.undoSnapshot = snapshot
                 store.openFiles[fileIndex].content = NSAttributedString(string: content)
                 store.openFiles[fileIndex].isDirty = true
-                store.objectWillChange.send()
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     if chatState.undoSnapshot?.timestamp == snapshot.timestamp {

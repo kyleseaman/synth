@@ -213,8 +213,8 @@ struct WikiLinkPopupView: View {
     }
 
     private func colorForResult(_ result: NoteSearchResult) -> Color {
-        if result.url.host == "person" { return Color(nsColor: .systemPurple) }
-        if mode == "hashtag" { return Color(nsColor: .systemTeal) }
+        if result.url.host == "person" { return .purple }
+        if mode == "hashtag" { return .teal }
         return .primary
     }
 

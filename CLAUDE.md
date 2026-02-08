@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Synth is a native macOS text editor (macOS 13+) with AI integration. SwiftUI/AppKit frontend with a Rust core linked via FFI. Press `Cmd+K` to invoke AI assistance via `kiro-cli` subprocess.
+Synth is a native macOS 26 text editor with AI integration. Modern SwiftUI frontend with a Rust core linked via FFI. Press `Cmd+K` to invoke AI assistance via `kiro-cli` subprocess.
 
 ## Build Commands
 
@@ -39,10 +39,13 @@ There is also an Xcode project (`Synth.xcodeproj`) for building via Xcode.
 **Key Swift files in `SynthApp/`**:
 - `SynthApp.swift` — App entry point, scene setup, global keyboard shortcuts
 - `ContentView.swift` — Main UI: NavigationSplitView with file sidebar, editor tabs, chat panel
-- `DocumentStore.swift` — Central state management (@StateObject, MVVM). Manages workspace path, file tree, open documents, persists via UserDefaults
+- `DocumentStore.swift` — Central state management (`@Observable`, MVVM). Manages workspace path, file tree, open documents, persists via UserDefaults
 - `Document.swift` — File model with load/save (.docx via Rust FFI, .md, .txt)
-- `EditorView.swift` — NSViewRepresentable wrapping NSTextView for rich text editing
-- `ChatPanel.swift` — AI chat UI with streaming responses
+- `MarkdownEditor.swift` — NSViewRepresentable wrapping FormattingTextView (NSTextView subclass) with live markdown rendering, wiki links, @mentions, #tags
+- `DailyNotesView.swift` — Chronological daily notes scroll view with inline FormattingTextView editors per day
+- `DailyNoteManager.swift` — Daily note lifecycle: entry scanning, virtual note materialization, debounced auto-save
+- `CalendarSidebarView.swift` — Monthly calendar widget for the daily notes right sidebar
+- `DailyNoteResolver.swift` — Daily note file resolution (today/yesterday/tomorrow tokens)
 - `ACPClient.swift` — JSON-RPC 2.0 client for Kiro CLI (ACP protocol)
 - `FileLauncher.swift` — Cmd+P fuzzy file search
 
@@ -57,7 +60,17 @@ There is also an Xcode project (`Synth.xcodeproj`) for building via Xcode.
 - Tools: `read_note`, `list_notes`, `global_search`, `manage_tags`, `update_note`, `get_backlinks`, `get_people`, `create_note`
 - Auto-started by `MCPServerManager` when workspace opens
 
-**UI communication** uses NotificationCenter for cross-component events (toggleChat, toggleSidebar, showFileLauncher).
+**UI communication**: Direct method calls on `DocumentStore` for all UI events (toggle sidebar, show modals, switch views). NotificationCenter is only used for AppKit↔SwiftUI bridging (wiki link signals between FormattingTextView and AutocompleteCoordinator, `.reloadEditor`, `.showDailyDate`).
+
+**View switching pattern**: `DocumentStore` has a `DetailViewMode` enum (`.editor`, `.dailyNotes`, `.links`, `.media`) controlling which view the detail column renders. Modal presentation uses an `ActiveModal` enum on DocumentStore.
+
+**Modern SwiftUI patterns (macOS 26)**: All model classes use `@Observable` (not `ObservableObject`). Views use `@Environment(Type.self)` (not `@EnvironmentObject`), `@State` (not `@StateObject`), and plain `var` for passed-in observable objects (not `@ObservedObject`). Use `@Bindable` when creating bindings to `@Environment`-injected objects. Use `.fileImporter()` instead of NSOpenPanel, `.alert()` with TextField instead of NSAlert, `@Environment(\.openURL)` instead of NSWorkspace.shared.open.
+
+**AppKit exceptions**: `FormattingTextView` (NSTextView subclass in MarkdownEditor.swift) and `WikiLinkPopover` (NSPopover) must remain AppKit — there are no SwiftUI equivalents for rich text editing or positioned popovers.
+
+**Daily Notes architecture**: Notes stored in `{workspace}/daily/YYYY-MM-DD.md`. `DailyNoteManager` generates entries for 30 past + 7 future days, auto-creates today+7 files on workspace load. Virtual notes (no file) are materialized on first edit. Each day gets a bare `FormattingTextView` (no NSScrollView wrapper) to avoid nested scroll issues. Debounced 1-second auto-save with `saveAll()` also called on app deactivation.
+
+**Xcode project**: When adding new Swift files, they must be registered in `Synth.xcodeproj/project.pbxproj` in 4 places: PBXBuildFile, PBXFileReference, PBXGroup children, and PBXSourcesBuildPhase. Without this, Xcode builds will fail and SourceKit will show "Cannot find type in scope" errors.
 
 ## Code Style
 
