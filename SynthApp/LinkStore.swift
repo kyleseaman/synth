@@ -51,8 +51,14 @@ struct SavedLink: Codable, Equatable {
 
         if let direct = URL(string: trimmed),
            let scheme = direct.scheme,
-           !scheme.isEmpty,
-           direct.host != nil {
+           !scheme.isEmpty {
+            let loweredScheme = scheme.lowercased()
+            guard loweredScheme == "http" || loweredScheme == "https" else {
+                return nil
+            }
+            guard direct.host != nil else {
+                return nil
+            }
             return direct.absoluteString
         }
 
