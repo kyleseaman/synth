@@ -629,6 +629,7 @@ class DocumentStore {
         // Incremental index updates after save
         let savedContent = openFiles[currentIndex].content.string
         let savedURL = openFiles[currentIndex].url
+        noteIndex.updateFile(savedURL, content: savedContent)
         backlinkIndex.updateFile(savedURL, content: savedContent)
         tagIndex.updateFile(savedURL, content: savedContent)
         peopleIndex.updateFile(savedURL, content: savedContent)
@@ -653,6 +654,7 @@ class DocumentStore {
             // Incremental index updates
             let savedURL = openFiles[index].url
             let savedContent = openFiles[index].content.string
+            noteIndex.updateFile(savedURL, content: savedContent)
             backlinkIndex.updateFile(savedURL, content: savedContent)
             tagIndex.updateFile(savedURL, content: savedContent)
             peopleIndex.updateFile(savedURL, content: savedContent)

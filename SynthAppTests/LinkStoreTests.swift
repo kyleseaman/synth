@@ -137,3 +137,231 @@ final class MediaManagerTests: XCTestCase {
         return image
     }
 }
+
+final class NoteIndexSearchTests: XCTestCase {
+    func testSearchHandlesTypoInTitleUsingFuzzyMatching() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Architecture Decisions.md",
+            content: """
+            # Architecture Decisions
+
+            Notes on design and implementation tradeoffs.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Groceries.md",
+            content: """
+            # Groceries
+
+            Apples, rice, and tea.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("archtecture")
+
+        XCTAssertEqual(results.first?.title, "Architecture Decisions")
+    }
+
+    func testSearchMatchesSemanticSynonymsInContent() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Team Catchup.md",
+            content: """
+            # Team Catchup
+
+            A concise summary of product updates and blockers.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Cooking.md",
+            content: """
+            # Cooking
+
+            Braise onions until golden.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status recap")
+
+        XCTAssertEqual(results.first?.title, "Team Catchup")
+    }
+
+    func testSearchReturnsPreviewSnippetFromMatchingContent() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Search Ideas.md",
+            content: """
+            # Search Ideas
+
+            Neural search makes retrieval smarter for long-form notes.
+            Keep the preview focused around matching terms.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("neural retrieval")
+
+        XCTAssertEqual(results.first?.title, "Search Ideas")
+        XCTAssertTrue(results.first?.preview.contains("Neural search makes retrieval smarter") == true)
+    }
+
+    func testSearchSupportsTagFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Roadmap.md",
+            content: """
+            # Roadmap
+
+            #project Q3 milestones and rollout plan.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Journal.md",
+            content: """
+            # Journal
+
+            Personal notes and reflections.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("plan tag:project")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Roadmap")
+    }
+
+    func testSearchSupportsPersonFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Standup.md",
+            content: """
+            # Standup
+
+            Follow up with @Alex on integration tests.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Errands.md",
+            content: """
+            # Errands
+
+            Pick up groceries.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("followup person:alex")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Standup")
+    }
+
+    func testSearchSupportsPathFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let meetingsFolder = workspaceURL.appendingPathComponent("meetings", isDirectory: true)
+        try FileManager.default.createDirectory(at: meetingsFolder, withIntermediateDirectories: true)
+        try write(
+            "Weekly.md",
+            content: """
+            # Weekly
+
+            Team status update and blockers.
+            """,
+            at: meetingsFolder
+        )
+        try write(
+            "Random.md",
+            content: """
+            # Random
+
+            Team status update and blockers.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status path:meetings")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Weekly")
+    }
+
+    func testSearchSupportsQuotedPhraseMatching() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Alpha.md",
+            content: """
+            # Alpha
+
+            The exact phrase appears here: resilient search pipeline.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Beta.md",
+            content: """
+            # Beta
+
+            These words are separate and not adjacent.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("\"resilient search pipeline\"")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Alpha")
+    }
+
+    private func makeWorkspace() throws -> URL {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        return rootURL
+    }
+
+    private func write(_ name: String, content: String, in workspaceURL: URL) throws {
+        let fileURL = workspaceURL.appendingPathComponent(name)
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+
+    private func write(_ name: String, content: String, at folderURL: URL) throws {
+        let fileURL = folderURL.appendingPathComponent(name)
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+}

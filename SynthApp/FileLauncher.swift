@@ -1,11 +1,13 @@
 import SwiftUI
 
 enum LauncherResult: Identifiable {
+    case note(result: NoteSearchResult)
     case file(node: FileTreeNode, score: Int)
     case person(name: String, count: Int, score: Int)
 
     var id: String {
         switch self {
+        case .note(let result): return "note:\(result.url.absoluteString)"
         case .file(let node, _): return "file:\(node.url.absoluteString)"
         case .person(let name, _, _): return "person:\(name)"
         }
@@ -13,6 +15,7 @@ enum LauncherResult: Identifiable {
 
     var sortScore: Int {
         switch self {
+        case .note(let result): return result.score
         case .file(_, let score): return score
         case .person(_, _, let score): return score
         }
@@ -55,14 +58,16 @@ struct FileLauncher: View {
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var cachedFiles: [FileTreeNode] = []
+    @State private var previewCache: [URL: String] = [:]
     @FocusState private var isSearchFocused: Bool
 
     var results: [LauncherResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
-        // Strip leading @ for people-specific search
+        // Strip leading @ for people-specific search.
         let isPersonQuery = trimmed.hasPrefix("@")
         let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
+        let noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
 
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
@@ -70,10 +75,15 @@ struct FileLauncher: View {
                 cachedFiles.first { $0.url == url }
             }
             let others = cachedFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
-            return (recentNodes + others).map { .file(node: $0, score: 0) }
+            return (recentNodes + others).map { file in
+                if let note = noteLookup[file.url] {
+                    return .note(result: note)
+                }
+                return .file(node: file, score: 0)
+            }
         }
 
-        // People results
+        // People results.
         let peopleResults: [LauncherResult] = store.peopleIndex.search(searchQuery)
             .map { .person(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(searchQuery) ?? 0) }
 
@@ -81,99 +91,178 @@ struct FileLauncher: View {
             return peopleResults
         }
 
-        // File results
+        // Semantic + fuzzy note results.
+        let noteResults = store.noteIndex.search(searchQuery)
+        let noteURLs = Set(noteResults.map(\.url))
+        let semanticResults: [LauncherResult] = noteResults.map { .note(result: $0) }
+
+        // Fallback for non-note files by file name.
         let fileResults: [LauncherResult] = cachedFiles
+            .filter { !noteURLs.contains($0.url) }
             .compactMap { file -> LauncherResult? in
-                guard let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
+                guard !Self.isSearchableNote(file.url),
+                      let nameScore = file.name.fuzzyScore(trimmed) else { return nil }
                 let recentBonus = store.recentFiles.contains(file.url) ? 2000 : 0
                 return .file(node: file, score: nameScore + recentBonus)
             }
 
-        return (fileResults + peopleResults).sorted { $0.sortScore > $1.sortScore }
+        return (semanticResults + fileResults + peopleResults)
+            .sorted { $0.sortScore > $1.sortScore }
+    }
+
+    private var selectedNoteResult: NoteSearchResult? {
+        guard selectedIndex >= 0 && selectedIndex < results.count else { return nil }
+        guard case .note(let note) = results[selectedIndex] else { return nil }
+        return note
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search files & people...", text: $query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 18))
-                    .focused($isSearchFocused)
-                    .onSubmit { openSelected() }
-            }
-            .padding(12)
-
+            searchHeader
             Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack {
-                                    switch result {
-                                    case .file(let node, _):
-                                        Image(systemName: "doc.text")
-                                            .foregroundStyle(.secondary)
-                                        Text(node.name)
-                                        Spacer()
-                                        Text(node.url.deletingLastPathComponent().lastPathComponent)
-                                            .foregroundStyle(.tertiary)
-                                            .font(.caption)
-                                    case .person(let name, let count, _):
-                                        Image(systemName: "person.fill")
-                                            .foregroundColor(.purple)
-                                        Text("@\(name)")
-                                            .foregroundColor(.purple)
-                                        Spacer()
-                                        let label = count == 1 ? "1 note" : "\(count) notes"
-                                        Text(label)
-                                            .foregroundStyle(.tertiary)
-                                            .font(.caption)
-                                    }
-                                }
-                                if case .file(let node, _) = result {
-                                    FileDatesLabel(url: node.url)
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(index == selectedIndex ? Color.accentColor.opacity(0.2) : Color.clear)
-                            .contentShape(Rectangle())
-                            .id(index)
-                            .onTapGesture {
-                                selectedIndex = index
-                                openSelected()
-                            }
-                        }
-                    }
-                }
-                .onChange(of: selectedIndex) {
-                    withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
-                }
+            HStack(spacing: 0) {
+                resultsPanel
+                Divider()
+                previewPanel
             }
-            .frame(maxHeight: 300)
         }
-        .frame(width: 500)
+        .frame(width: 780)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(radius: 8)
         .onAppear {
             isSearchFocused = true
             cachedFiles = Self.flattenFiles(store.fileTree)
+            if let selectedNoteResult {
+                loadPreview(for: selectedNoteResult.url)
+            }
         }
         .onChange(of: store.fileTree) {
             cachedFiles = Self.flattenFiles(store.fileTree)
         }
         .onChange(of: query) { _, _ in selectedIndex = 0 }
+        .onChange(of: results.count) { _, newValue in
+            guard newValue > 0 else {
+                selectedIndex = 0
+                return
+            }
+            selectedIndex = min(selectedIndex, newValue - 1)
+        }
+        .onChange(of: selectedNoteResult?.url) { _, nextURL in
+            guard let nextURL else { return }
+            loadPreview(for: nextURL)
+        }
         .background {
             KeyboardHandler(
                 onUp: { selectedIndex = max(0, selectedIndex - 1) },
-                onDown: { selectedIndex = min(results.count - 1, selectedIndex + 1) },
+                onDown: {
+                    guard !results.isEmpty else { return }
+                    selectedIndex = min(results.count - 1, selectedIndex + 1)
+                },
                 onEscape: { isPresented = false }
             )
+        }
+    }
+
+    private var searchHeader: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search notes, files & people...", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 18))
+                    .focused($isSearchFocused)
+                    .onSubmit { openSelected() }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            HStack(spacing: 6) {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                Text("Try: tag:project  person:alex  path:meetings  \"exact phrase\"")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
+    private var resultsPanel: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                        resultRow(result: result, index: index)
+                    }
+                }
+            }
+            .onChange(of: selectedIndex) {
+                withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
+            }
+        }
+        .frame(width: 420)
+        .frame(maxHeight: 360)
+    }
+
+    @ViewBuilder
+    private func resultRow(result: LauncherResult, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                switch result {
+                case .note(let note):
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Text(note.title)
+                    Spacer()
+                    Text(note.relativePath)
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                case .file(let node, _):
+                    Image(systemName: "doc.text")
+                        .foregroundStyle(.secondary)
+                    Text(node.name)
+                    Spacer()
+                    Text(node.url.deletingLastPathComponent().lastPathComponent)
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                case .person(let name, let count, _):
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.purple)
+                    Text("@\(name)")
+                        .foregroundColor(.purple)
+                    Spacer()
+                    let label = count == 1 ? "1 note" : "\(count) notes"
+                    Text(label)
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                }
+            }
+            if case .note(let note) = result {
+                Text(note.preview)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .padding(.leading, 20)
+            }
+            if case .file(let node, _) = result {
+                FileDatesLabel(url: node.url)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(index == selectedIndex ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+        .id(index)
+        .onTapGesture {
+            selectedIndex = index
+            openSelected()
         }
     }
 
@@ -188,9 +277,131 @@ struct FileLauncher: View {
         return result
     }
 
+    static func isSearchableNote(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        return ext == "md" || ext == "txt"
+    }
+
+    @ViewBuilder
+    private var previewPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let selectedNoteResult {
+                Text(selectedNoteResult.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Text(selectedNoteResult.relativePath)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                Divider()
+                ScrollView {
+                    Text(previewText(for: selectedNoteResult))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+            } else {
+                Spacer()
+                Text("Select a note result to preview the full context.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .padding(12)
+        .frame(width: 360, alignment: .topLeading)
+        .frame(maxHeight: 360, alignment: .topLeading)
+    }
+
+    private func loadPreview(for url: URL) {
+        if previewCache[url] != nil { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            let cleaned = Self.cleanPreviewText(text)
+            DispatchQueue.main.async {
+                previewCache[url] = cleaned
+            }
+        }
+    }
+
+    private func previewText(for note: NoteSearchResult) -> String {
+        guard let fullText = previewCache[note.url], !fullText.isEmpty else {
+            return note.preview
+        }
+
+        let content = Self.focusedSnippet(
+            from: fullText,
+            query: query,
+            fallback: note.preview
+        )
+        return content.isEmpty ? note.preview : content
+    }
+
+    private static func cleanPreviewText(_ text: String) -> String {
+        text
+            .components(separatedBy: .newlines)
+            .map { line in
+                line.replacingOccurrences(
+                    of: #"\s+"#,
+                    with: " ",
+                    options: .regularExpression
+                )
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    private static func focusedSnippet(
+        from content: String,
+        query: String,
+        fallback: String
+    ) -> String {
+        let terms = query
+            .lowercased()
+            .split { $0.isWhitespace }
+            .map(String.init)
+            .filter {
+                !$0.contains(":")
+                    && !$0.hasPrefix("#")
+                    && !$0.hasPrefix("@")
+                    && $0.count >= 3
+            }
+
+        if terms.isEmpty {
+            return String(content.prefix(650))
+        }
+
+        let lowerContent = content.lowercased()
+        var firstRange: Range<String.Index>?
+        for term in terms {
+            if let range = lowerContent.range(of: term) {
+                firstRange = range
+                break
+            }
+        }
+
+        guard let firstRange else {
+            if !fallback.isEmpty { return fallback }
+            return String(content.prefix(650))
+        }
+
+        let lowerBound = lowerContent.distance(from: lowerContent.startIndex, to: firstRange.lowerBound)
+        let upperBound = lowerContent.distance(from: lowerContent.startIndex, to: firstRange.upperBound)
+        let startOffset = max(0, lowerBound - 220)
+        let endOffset = min(content.count, upperBound + 420)
+
+        let startIndex = content.index(content.startIndex, offsetBy: startOffset)
+        let endIndex = content.index(content.startIndex, offsetBy: endOffset)
+        return String(content[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     func openSelected() {
         guard selectedIndex >= 0 && selectedIndex < results.count else { return }
         switch results[selectedIndex] {
+        case .note(let result):
+            store.open(result.url)
         case .file(let node, _):
             store.open(node.url)
         case .person(let name, _, _):
