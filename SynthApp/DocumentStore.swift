@@ -455,6 +455,7 @@ class DocumentStore: ObservableObject {
     }
 
     func open(_ url: URL) {
+        saveAll()
         isLinksTabSelected = false
         isDailyNotesViewActive = false
         isMediaTabSelected = false
@@ -601,6 +602,13 @@ class DocumentStore: ObservableObject {
                 }
             }
             openFiles[index].isDirty = false
+
+            // Incremental index updates
+            let savedURL = openFiles[index].url
+            let savedContent = openFiles[index].content.string
+            backlinkIndex.updateFile(savedURL, content: savedContent)
+            tagIndex.updateFile(savedURL, content: savedContent)
+            peopleIndex.updateFile(savedURL, content: savedContent)
         }
         if didRename { loadFileTree() }
         dailyNoteManager.saveAll()

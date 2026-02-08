@@ -515,25 +515,25 @@ class ResizeGripView: NSView {
         // Line 1: shorter
         context.move(to: CGPoint(
             x: bounds.maxX - inset,
-            y: bounds.minY + inset + 4
+            y: bounds.maxY - inset - 4
         ))
         context.addLine(to: CGPoint(
             x: bounds.maxX - inset - 4,
-            y: bounds.minY + inset
+            y: bounds.maxY - inset
         ))
         // Line 2: longer
         context.move(to: CGPoint(
             x: bounds.maxX - inset,
-            y: bounds.minY + inset + 8
+            y: bounds.maxY - inset - 8
         ))
         context.addLine(to: CGPoint(
             x: bounds.maxX - inset - 8,
-            y: bounds.minY + inset
+            y: bounds.maxY - inset
         ))
         context.strokePath()
     }
 
-    override func mouseDown(with event: NSEvent) {}
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - Image Attachment Overlay
@@ -798,7 +798,7 @@ class FormattingTextView: NSTextView {
         let overlaySize = CGSize(width: 64, height: 28)
         imageOverlay.frame = CGRect(
             x: attachRect.maxX - overlaySize.width - 6,
-            y: attachRect.maxY - overlaySize.height - 6,
+            y: attachRect.minY + 6,
             width: overlaySize.width,
             height: overlaySize.height
         )
@@ -812,7 +812,7 @@ class FormattingTextView: NSTextView {
     private func resizeHandleRect(for imageRect: CGRect) -> CGRect {
         CGRect(
             x: imageRect.maxX - 16,
-            y: imageRect.minY,
+            y: imageRect.maxY - 16,
             width: 16,
             height: 16
         )

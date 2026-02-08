@@ -586,7 +586,9 @@ struct DailyNoteBacklinks: View {
                             BacklinkRow(
                                 title: link.title,
                                 snippet: link.snippet,
-                                relativePath: link.relativePath
+                                relativePath: link.relativePath,
+                                url: link.url,
+                                onNavigate: { store.open($0) }
                             )
                             .contentShape(Rectangle())
                             .onTapGesture {
