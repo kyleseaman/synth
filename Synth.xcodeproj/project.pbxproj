@@ -47,6 +47,16 @@
 		4A0000000000000000000906 /* MCPServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000132 /* MCPServerManager.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		5C2A98E17EAF4B4FAEA74B01 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A0000000000000000000007 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1A000000000000000000000F;
+			remoteInfo = Synth;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		1A0000000000000000000010 /* Synth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Synth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000011 /* SynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthApp.swift; sourceTree = "<group>"; };
@@ -228,6 +238,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				5C2A98E27EAF4B4FAEA74B01 /* PBXTargetDependency */,
 			);
 			name = SynthTests;
 			productName = SynthTests;
@@ -235,6 +246,14 @@
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		5C2A98E27EAF4B4FAEA74B01 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1A000000000000000000000F /* Synth */;
+			targetProxy = 5C2A98E17EAF4B4FAEA74B01 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		1A0000000000000000000007 /* Project object */ = {
@@ -451,7 +470,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = SynthApp/BridgingHeader.h;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -470,7 +489,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = SynthApp/BridgingHeader.h;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -483,7 +502,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.appTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Synth.app/Contents/MacOS/Synth";
 			};
 			name = Debug;
@@ -497,7 +516,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.appTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Synth.app/Contents/MacOS/Synth";
 			};
 			name = Release;

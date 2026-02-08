@@ -3,6 +3,7 @@ import AppKit
 // MARK: - Shared autocomplete logic for wiki links, @mentions, #tags
 // Used by both MarkdownEditor.Coordinator and DailyNoteEditor.Coordinator
 
+@MainActor
 class AutocompleteCoordinator {
     weak var textView: FormattingTextView?
     weak var store: DocumentStore?
@@ -14,10 +15,6 @@ class AutocompleteCoordinator {
     /// The parent coordinator should update its binding and re-format.
     var onTextChange: (() -> Void)?
 
-    deinit {
-        removeObservers()
-    }
-
     // MARK: - Observer Setup
 
     func setupObservers() {
@@ -27,7 +24,15 @@ class AutocompleteCoordinator {
             forName: .wikiLinkTrigger,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleTrigger(notification)
+            let mode = notification.userInfo?["mode"] as? String ?? "wikilink"
+            let query = notification.userInfo?["query"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleTrigger(mode: mode, query: query)
+            }
         }
         observers.append(triggerObs)
 
@@ -35,7 +40,9 @@ class AutocompleteCoordinator {
             forName: .wikiLinkDismiss,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.wikiLinkPopover.dismiss()
+            Task { @MainActor [weak self] in
+                self?.wikiLinkPopover.dismiss()
+            }
         }
         observers.append(dismissObs)
 
@@ -43,7 +50,14 @@ class AutocompleteCoordinator {
             forName: .wikiLinkQueryUpdate,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleQueryUpdate(notification)
+            let query = notification.userInfo?["query"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleQueryUpdate(query: query)
+            }
         }
         observers.append(queryObs)
 
@@ -51,7 +65,9 @@ class AutocompleteCoordinator {
             forName: .wikiLinkSelect,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.handleSelect()
+            Task { @MainActor [weak self] in
+                self?.handleSelect()
+            }
         }
         observers.append(selectObs)
 
@@ -59,7 +75,14 @@ class AutocompleteCoordinator {
             forName: .wikiLinkNavigate,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleNavigate(notification)
+            let direction = notification.userInfo?["direction"] as? String ?? ""
+            let sourceIdentifier = notification.object.map { ObjectIdentifier($0 as AnyObject) }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.matchesCurrentTextView(sourceIdentifier)
+                else { return }
+                self.handleNavigate(direction: direction)
+            }
         }
         observers.append(navObs)
 
@@ -67,7 +90,10 @@ class AutocompleteCoordinator {
             forName: .insertTemplate,
             object: nil, queue: .main
         ) { [weak self] notification in
-            self?.handleTemplateInsertion(notification)
+            let templateIdentifierText = notification.userInfo?["templateIdentifier"] as? String
+            Task { @MainActor [weak self] in
+                self?.handleTemplateInsertion(templateIdentifierText: templateIdentifierText)
+            }
         }
         observers.append(insertTemplateObs)
 
@@ -85,14 +111,14 @@ class AutocompleteCoordinator {
 
     // MARK: - Handlers
 
-    private func handleTrigger(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let mode = notification.userInfo?["mode"]
-            as? String ?? "wikilink"
-        let query = notification.userInfo?["query"]
-            as? String ?? ""
+    private func matchesCurrentTextView(_ sourceIdentifier: ObjectIdentifier?) -> Bool {
+        guard let sourceIdentifier,
+              let textView else { return false }
+        return ObjectIdentifier(textView) == sourceIdentifier
+    }
+
+    private func handleTrigger(mode: String, query: String) {
+        guard let textView = textView else { return }
         let cursor = textView.selectedRange().location
 
         let triggerStart: Int
@@ -123,12 +149,8 @@ class AutocompleteCoordinator {
         )
     }
 
-    private func handleQueryUpdate(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let query = notification.userInfo?["query"]
-            as? String ?? ""
+    private func handleQueryUpdate(query: String) {
+        guard let textView = textView else { return }
 
         let results: [NoteSearchResult]
         switch textView.wikiLinkState {
@@ -155,12 +177,7 @@ class AutocompleteCoordinator {
         completeWikiLink(title: title)
     }
 
-    private func handleNavigate(_ notification: Notification) {
-        guard let textView = textView,
-              notification.object as? FormattingTextView
-                  === textView else { return }
-        let direction = notification.userInfo?["direction"]
-            as? String ?? ""
+    private func handleNavigate(direction: String) {
         if direction == "up" {
             wikiLinkPopover.moveSelectionUp()
         } else {
@@ -168,10 +185,10 @@ class AutocompleteCoordinator {
         }
     }
 
-    private func handleTemplateInsertion(_ notification: Notification) {
+    private func handleTemplateInsertion(templateIdentifierText: String?) {
         guard let textView = textView,
               textView.window?.firstResponder === textView,
-              let identifierText = notification.userInfo?["templateIdentifier"] as? String,
+              let identifierText = templateIdentifierText,
               let templateIdentifier = UUID(uuidString: identifierText),
               let template = templateStore?.templates.first(
                   where: { $0.identifier == templateIdentifier }
@@ -249,9 +266,7 @@ class AutocompleteCoordinator {
         // Auto-save after person mention so the people
         // index updates immediately
         if result.completedPerson {
-            DispatchQueue.main.async { [weak self] in
-                self?.store?.save()
-            }
+            store?.save()
         }
     }
 

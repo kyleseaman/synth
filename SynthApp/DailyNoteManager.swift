@@ -20,16 +20,18 @@ struct DailyNoteEntry: Identifiable, Equatable {
 
 // MARK: - Daily Note Manager
 
-@Observable class DailyNoteManager {
+@MainActor
+@Observable
+final class DailyNoteManager {
     var entries: [DailyNoteEntry] = []
 
     /// Called after a daily note is saved with (url, content)
     /// so indexes (backlinks, tags, people) can update.
-    @ObservationIgnored var onSave: ((URL, String) -> Void)?
+    var onSave: ((URL, String) -> Void)?
 
     private let pastDays = 30
     private let futureDays = 7
-    @ObservationIgnored private var saveTimer: Timer?
+    private var saveTimer: Timer?
 
     private static let fileDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -179,7 +181,9 @@ struct DailyNoteEntry: Identifiable, Equatable {
         saveTimer = Timer.scheduledTimer(
             withTimeInterval: 1.0, repeats: false
         ) { [weak self] _ in
-            self?.saveAll()
+            Task { @MainActor [weak self] in
+                self?.saveAll()
+            }
         }
     }
 

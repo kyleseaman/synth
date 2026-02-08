@@ -3,6 +3,7 @@ import AppKit
 
 // MARK: - Wiki Link Popover
 
+@MainActor
 class WikiLinkPopover {
     private var popover: NSPopover?
     private var hostingController: NSHostingController<WikiLinkPopupView>

@@ -42,10 +42,8 @@ import Observation
             }
         }
 
-        DispatchQueue.main.async {
-            self.tagToFiles = newTagToFiles
-            self.fileToTags = newFileToTags
-        }
+        tagToFiles = newTagToFiles
+        fileToTags = newFileToTags
     }
 
     // MARK: - Incremental Update
@@ -53,22 +51,20 @@ import Observation
     /// Incremental update for a single file on save. Must dispatch to main thread.
     func updateFile(_ url: URL, content: String) {
         let tags = scanFile(content: content)
-        DispatchQueue.main.async {
-            // Remove old tags for this file
-            if let oldTags = self.fileToTags[url] {
-                for tag in oldTags {
-                    self.tagToFiles[tag]?.remove(url)
-                    if self.tagToFiles[tag]?.isEmpty == true {
-                        self.tagToFiles.removeValue(forKey: tag)
-                    }
+        // Remove old tags for this file
+        if let oldTags = fileToTags[url] {
+            for tag in oldTags {
+                tagToFiles[tag]?.remove(url)
+                if tagToFiles[tag]?.isEmpty == true {
+                    tagToFiles.removeValue(forKey: tag)
                 }
             }
+        }
 
-            // Apply new scan results
-            self.fileToTags[url] = tags
-            for tag in tags {
-                self.tagToFiles[tag, default: []].insert(url)
-            }
+        // Apply new scan results
+        fileToTags[url] = tags
+        for tag in tags {
+            tagToFiles[tag, default: []].insert(url)
         }
     }
 

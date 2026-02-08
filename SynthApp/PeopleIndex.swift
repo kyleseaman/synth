@@ -63,15 +63,13 @@ import Observation
             }
         }
 
-        DispatchQueue.main.async {
-            self.personToFiles = newPersonToFiles
-            self.fileToPersons = newFileToPersons
-            // Merge discovered people into global set
-            let discovered = Set(newPersonToFiles.keys)
-            if !discovered.isEmpty {
-                self.globalPeople.formUnion(discovered)
-                self.saveGlobal()
-            }
+        personToFiles = newPersonToFiles
+        fileToPersons = newFileToPersons
+        // Merge discovered people into global set
+        let discovered = Set(newPersonToFiles.keys)
+        if !discovered.isEmpty {
+            globalPeople.formUnion(discovered)
+            saveGlobal()
         }
     }
 
@@ -80,28 +78,26 @@ import Observation
     /// Incremental update for a single file on save.
     func updateFile(_ url: URL, content: String) {
         let people = scanFile(content: content)
-        DispatchQueue.main.async {
-            // Remove old people for this file
-            if let oldPeople = self.fileToPersons[url] {
-                for person in oldPeople {
-                    self.personToFiles[person]?.remove(url)
-                    if self.personToFiles[person]?.isEmpty == true {
-                        self.personToFiles.removeValue(forKey: person)
-                    }
+        // Remove old people for this file
+        if let oldPeople = fileToPersons[url] {
+            for person in oldPeople {
+                personToFiles[person]?.remove(url)
+                if personToFiles[person]?.isEmpty == true {
+                    personToFiles.removeValue(forKey: person)
                 }
             }
+        }
 
-            // Apply new scan results
-            self.fileToPersons[url] = people
-            for person in people {
-                self.personToFiles[person, default: []].insert(url)
-            }
+        // Apply new scan results
+        fileToPersons[url] = people
+        for person in people {
+            personToFiles[person, default: []].insert(url)
+        }
 
-            // Merge into global set
-            if !people.isEmpty {
-                self.globalPeople.formUnion(people)
-                self.saveGlobal()
-            }
+        // Merge into global set
+        if !people.isEmpty {
+            globalPeople.formUnion(people)
+            saveGlobal()
         }
     }
 

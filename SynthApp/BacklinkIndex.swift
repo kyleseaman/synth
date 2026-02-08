@@ -41,11 +41,9 @@ import Observation
             }
         }
 
-        DispatchQueue.main.async {
-            self.incomingLinks = newIncoming
-            self.outgoingLinks = newOutgoing
-            self.contextSnippets = newSnippets
-        }
+        incomingLinks = newIncoming
+        outgoingLinks = newOutgoing
+        contextSnippets = newSnippets
     }
 
     // MARK: - Incremental Update
@@ -53,23 +51,21 @@ import Observation
     /// Incremental update for a single file on save. Must dispatch to main thread.
     func updateFile(_ url: URL, content: String) {
         let (targets, snippets) = scanFile(content: content)
-        DispatchQueue.main.async {
-            // Remove old outgoing links for this file
-            if let oldTargets = self.outgoingLinks[url] {
-                for target in oldTargets {
-                    self.incomingLinks[target]?.remove(url)
-                    if self.incomingLinks[target]?.isEmpty == true {
-                        self.incomingLinks.removeValue(forKey: target)
-                    }
+        // Remove old outgoing links for this file
+        if let oldTargets = outgoingLinks[url] {
+            for target in oldTargets {
+                incomingLinks[target]?.remove(url)
+                if incomingLinks[target]?.isEmpty == true {
+                    incomingLinks.removeValue(forKey: target)
                 }
             }
+        }
 
-            // Apply new scan results
-            self.outgoingLinks[url] = targets
-            self.contextSnippets[url] = snippets
-            for target in targets {
-                self.incomingLinks[target, default: []].insert(url)
-            }
+        // Apply new scan results
+        outgoingLinks[url] = targets
+        contextSnippets[url] = snippets
+        for target in targets {
+            incomingLinks[target, default: []].insert(url)
         }
     }
 

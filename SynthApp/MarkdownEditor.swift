@@ -1465,13 +1465,12 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.bindImageOverlay(to: textView)
         textView.layoutManager?.delegate = context.coordinator
 
-        context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { _ in
-            context.coordinator.updateScrollOffset()
-        }
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.handleBoundsDidChange(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
 
         // MARK: Autocomplete (wiki links, @mentions, #tags)
         context.coordinator.setupAutocomplete()
@@ -1511,15 +1510,24 @@ struct MarkdownEditor: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    static func dismantleNSView(
+        _ scrollView: NSScrollView,
+        coordinator: Coordinator
+    ) {
+        Task { @MainActor in
+            coordinator.tearDown()
+        }
+    }
+
     // MARK: - Coordinator
 
-    class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate {
+    @MainActor
+    class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
         var isFormatting = false
-        var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
         weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
@@ -1527,11 +1535,23 @@ struct MarkdownEditor: NSViewRepresentable {
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
-        deinit {
+        deinit {}
+
+        func tearDown() {
             saveTimer?.invalidate()
-            if let observer = boundsObserver {
-                NotificationCenter.default.removeObserver(observer)
+            if let clipView = scrollView?.contentView {
+                NotificationCenter.default.removeObserver(
+                    self,
+                    name: NSView.boundsDidChangeNotification,
+                    object: clipView
+                )
             }
+            autocomplete.removeObservers()
+        }
+
+        @objc
+        func handleBoundsDidChange(_ notification: Notification) {
+            updateScrollOffset()
         }
 
         // MARK: - Autocomplete Setup
@@ -1768,7 +1788,9 @@ struct MarkdownEditor: NSViewRepresentable {
             saveTimer = Timer.scheduledTimer(
                 withTimeInterval: 1.0, repeats: false
             ) { [weak self] _ in
-                self?.store?.saveAll()
+                Task { @MainActor [weak self] in
+                    self?.store?.saveAll()
+                }
             }
         }
 
