@@ -2,8 +2,6 @@ import SwiftUI
 import AppKit
 
 extension Notification.Name {
-    static let reloadEditor = Notification.Name("reloadEditor")
-
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
     static let wikiLinkDismiss = Notification.Name("wikiLinkDismiss")
@@ -11,8 +9,6 @@ extension Notification.Name {
     static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
 
-    // MARK: - Daily Notes
-    static let showDailyDate = Notification.Name("showDailyDate")
 }
 
 struct EditorSelectionContext {
@@ -588,9 +584,6 @@ struct EditorViewSimple: View {
         .onChange(of: store.currentIndex) { _, _ in loadText() }
         .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
-        .onReceive(NotificationCenter.default.publisher(for: .reloadEditor)) { _ in
-            loadText()
-        }
     }
 
     func loadText() {
