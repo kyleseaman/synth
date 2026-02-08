@@ -24,6 +24,9 @@ extension Notification.Name {
 
     // MARK: - Backlinks Sidebar
     static let toggleBacklinks = Notification.Name("toggleBacklinks")
+
+    // MARK: - Templates
+    static let insertTemplate = Notification.Name("insertTemplate")
 }
 
 enum ActiveModal: Equatable {
@@ -442,6 +445,7 @@ struct KiroSetupBanner: View {
 
 struct EditorViewSimple: View {
     @EnvironmentObject var store: DocumentStore
+    @EnvironmentObject var templateStore: TemplateStore
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
@@ -476,7 +480,8 @@ struct EditorViewSimple: View {
                     linePositions: $linePositions,
                     selectedText: $selectedText,
                     selectedLineRange: $selectedLineRange,
-                    store: store
+                    store: store,
+                    templateStore: templateStore
                 )
                 .background(Color(nsColor: .textBackgroundColor))
             }

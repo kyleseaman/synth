@@ -137,3 +137,88 @@ final class MediaManagerTests: XCTestCase {
         return image
     }
 }
+
+final class TemplateStoreTests: XCTestCase {
+    private var storage: UserDefaults?
+    private let storageSuite = "TemplateStoreTests"
+    private let storageKey = "tests.savedTemplates"
+
+    override func setUp() {
+        super.setUp()
+        storage = UserDefaults(suiteName: storageSuite)
+        storage?.removePersistentDomain(forName: storageSuite)
+    }
+
+    override func tearDown() {
+        storage?.removePersistentDomain(forName: storageSuite)
+        storage = nil
+        super.tearDown()
+    }
+
+    func testAddTemplatePersistsAndSearchesByName() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+        let template = store.addTemplate(
+            name: "Daily Note",
+            content: "# Daily\n\n- Wins\n- Todos",
+            shortcutSlot: nil
+        )
+
+        XCTAssertNotNil(template)
+        XCTAssertEqual(store.templates.count, 1)
+        XCTAssertEqual(store.search("daily").first?.name, "Daily Note")
+
+        let reloaded = TemplateStore(storage: storage, storageKey: storageKey)
+        XCTAssertEqual(reloaded.templates.count, 1)
+        XCTAssertEqual(reloaded.templates.first?.name, "Daily Note")
+    }
+
+    func testShortcutSlotIsUniqueAcrossTemplates() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+        _ = store.addTemplate(name: "First", content: "one", shortcutSlot: 1)
+        _ = store.addTemplate(name: "Second", content: "two", shortcutSlot: 1)
+
+        let firstTemplate = store.templates.first(where: { $0.name == "First" })
+        let secondTemplate = store.templates.first(where: { $0.name == "Second" })
+
+        XCTAssertEqual(secondTemplate?.shortcutSlot, 1)
+        XCTAssertNil(firstTemplate?.shortcutSlot)
+        XCTAssertEqual(store.templateForShortcut(1)?.name, "Second")
+    }
+
+    func testUpdateTemplateChangesContentAndShortcut() {
+        guard let storage = storage else {
+            XCTFail("Missing storage")
+            return
+        }
+
+        let store = TemplateStore(storage: storage, storageKey: storageKey)
+        guard let created = store.addTemplate(
+            name: "Meeting",
+            content: "old",
+            shortcutSlot: nil
+        ) else {
+            XCTFail("Template creation failed")
+            return
+        }
+
+        let didUpdate = store.updateTemplate(
+            identifier: created.identifier,
+            name: "Meeting",
+            content: "## Agenda\n-",
+            shortcutSlot: 3
+        )
+
+        XCTAssertTrue(didUpdate)
+        XCTAssertEqual(store.templateForShortcut(3)?.content, "## Agenda\n-")
+    }
+}

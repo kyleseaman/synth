@@ -24,10 +24,29 @@ struct SynthApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var store = DocumentStore()
     @StateObject private var linkStore = LinkStore()
+    @StateObject private var templateStore = TemplateStore()
 
     init() {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
         signal(SIGPIPE, SIG_IGN)
+    }
+
+    private var templatesSortedForMenu: [SavedTemplate] {
+        templateStore.templates.sorted { firstTemplate, secondTemplate in
+            switch (firstTemplate.shortcutSlot, secondTemplate.shortcutSlot) {
+            case let (firstSlot?, secondSlot?):
+                if firstSlot != secondSlot { return firstSlot < secondSlot }
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            default:
+                break
+            }
+            return firstTemplate.name.localizedCaseInsensitiveCompare(
+                secondTemplate.name
+            ) == .orderedAscending
+        }
     }
 
     var body: some Scene {
@@ -35,6 +54,7 @@ struct SynthApp: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(linkStore)
+                .environmentObject(templateStore)
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1200, height: 800)
@@ -107,11 +127,43 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("d")
             }
+
+            CommandMenu("Templates") {
+                if templatesSortedForMenu.isEmpty {
+                    Button("Add templates in Settings") {}
+                        .disabled(true)
+                } else {
+                    ForEach(templatesSortedForMenu) { template in
+                        if let shortcutSlot = template.shortcutSlot {
+                            Button("Insert \(template.name)") {
+                                NotificationCenter.default.post(
+                                    name: .insertTemplate,
+                                    object: nil,
+                                    userInfo: ["templateIdentifier": template.identifier.uuidString]
+                                )
+                            }
+                            .keyboardShortcut(
+                                KeyEquivalent(Character("\(shortcutSlot)")),
+                                modifiers: [.command, .option]
+                            )
+                        } else {
+                            Button("Insert \(template.name)") {
+                                NotificationCenter.default.post(
+                                    name: .insertTemplate,
+                                    object: nil,
+                                    userInfo: ["templateIdentifier": template.identifier.uuidString]
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         Settings {
             SettingsView()
                 .environmentObject(store)
+                .environmentObject(templateStore)
         }
     }
 }

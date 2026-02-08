@@ -345,6 +345,7 @@ enum WikiLinkState {
     case wikiLinkActive(start: Int)
     case atActive(start: Int)
     case hashtagActive(start: Int)
+    case slashActive(start: Int)
 }
 
 class FormattingTextView: NSTextView {
@@ -380,7 +381,7 @@ class FormattingTextView: NSTextView {
     override func insertNewline(_ sender: Any?) {
         // Dismiss wiki link popup on newline
         switch wikiLinkState {
-        case .wikiLinkActive, .atActive, .hashtagActive:
+        case .wikiLinkActive, .atActive, .hashtagActive, .slashActive:
             wikiLinkState = .idle
             NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
         default:
@@ -431,6 +432,8 @@ class FormattingTextView: NSTextView {
             handleLinkActiveState(for: str)
         case .hashtagActive(let start):
             handleHashtagActiveState(for: str, start: start)
+        case .slashActive(let start):
+            handleSlashActiveState(for: str, start: start)
         }
     }
 
@@ -459,6 +462,26 @@ class FormattingTextView: NSTextView {
             }
             if precededBySpace {
                 wikiLinkState = .hashtagActive(start: cursor)
+            }
+        } else if str == "/" {
+            let cursor = selectedRange().location
+            let isAtStart = cursor <= 1
+            var precededBySpace = isAtStart
+            if !isAtStart, let storage = textStorage {
+                let charBefore = (storage.string as NSString).substring(
+                    with: NSRange(location: cursor - 2, length: 1)
+                )
+                precededBySpace = charBefore.rangeOfCharacter(
+                    from: .whitespacesAndNewlines
+                ) != nil
+            }
+            if precededBySpace {
+                wikiLinkState = .slashActive(start: cursor)
+                NotificationCenter.default.post(
+                    name: .wikiLinkTrigger,
+                    object: self,
+                    userInfo: ["mode": "template", "query": ""]
+                )
             }
         }
     }
@@ -517,6 +540,22 @@ class FormattingTextView: NSTextView {
         }
     }
 
+    private func handleSlashActiveState(for str: String, start: Int) {
+        if str == " " || str == "\n" || str == "\t" {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+            return
+        }
+
+        let cursor = selectedRange().location
+        if cursor <= start {
+            wikiLinkState = .idle
+            NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
+        } else {
+            postQueryUpdate()
+        }
+    }
+
     private func postQueryUpdate() {
         let query = extractCurrentQuery()
         NotificationCenter.default.post(
@@ -549,7 +588,7 @@ class FormattingTextView: NSTextView {
     override func deleteBackward(_ sender: Any?) {
         super.deleteBackward(sender)
         switch wikiLinkState {
-        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             if selectedRange().location <= start {
                 wikiLinkState = .idle
                 NotificationCenter.default.post(name: .wikiLinkDismiss, object: self)
@@ -573,7 +612,7 @@ class FormattingTextView: NSTextView {
     override func keyDown(with event: NSEvent) {
         let isPopupActive: Bool
         switch wikiLinkState {
-        case .wikiLinkActive, .atActive, .hashtagActive:
+        case .wikiLinkActive, .atActive, .hashtagActive, .slashActive:
             isPopupActive = true
         default:
             isPopupActive = false
@@ -613,7 +652,7 @@ class FormattingTextView: NSTextView {
         guard let storage = textStorage else { return "" }
         let cursor = selectedRange().location
         switch wikiLinkState {
-        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start):
+        case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             guard cursor > start else { return "" }
             let range = NSRange(location: start, length: cursor - start)
             return (storage.string as NSString).substring(with: range)
@@ -692,6 +731,7 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
     weak var store: DocumentStore?
+    weak var templateStore: TemplateStore?
 
     var format: DocumentFormat {
         let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
@@ -728,6 +768,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.templateStore = templateStore
         context.coordinator.bindImagePasteHandler(to: textView)
 
         context.coordinator.boundsObserver = NotificationCenter.default.addObserver(
@@ -754,6 +795,7 @@ struct MarkdownEditor: NSViewRepresentable {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.parent = self
         context.coordinator.store = store
+        context.coordinator.templateStore = templateStore
 
         if !context.coordinator.isEditing && textView.string != text {
             textView.textStorage?.setAttributedString(format.render(text))
@@ -776,6 +818,7 @@ struct MarkdownEditor: NSViewRepresentable {
         var isFormatting = false
         var boundsObserver: NSObjectProtocol?
         weak var store: DocumentStore?
+        weak var templateStore: TemplateStore?
         var wikiLinkPopover = WikiLinkPopover()
         var wikiLinkObservers: [NSObjectProtocol] = []
 
@@ -830,6 +873,13 @@ struct MarkdownEditor: NSViewRepresentable {
             }
             wikiLinkObservers.append(navObs)
 
+            let insertTemplateObserver = center.addObserver(
+                forName: .insertTemplate, object: nil, queue: .main
+            ) { [weak self] notification in
+                self?.handleTemplateInsertion(notification)
+            }
+            wikiLinkObservers.append(insertTemplateObserver)
+
             // Set up the selection callback on the popover
             wikiLinkPopover.onSelect = { [weak self] title in
                 self?.completeWikiLink(title: title)
@@ -876,6 +926,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 results = atAutocompleteResults(query: "")
             } else if mode == "hashtag" {
                 results = tagAutocompleteResults(query: initialQuery)
+            } else if mode == "template" {
+                results = templateAutocompleteResults(query: initialQuery)
             } else {
                 results = store?.noteIndex.search("") ?? []
             }
@@ -894,6 +946,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 results = atAutocompleteResults(query: query)
             case .hashtagActive:
                 results = tagAutocompleteResults(query: query)
+            case .slashActive:
+                results = templateAutocompleteResults(query: query)
             default:
                 results = store?.noteIndex.search(query) ?? []
             }
@@ -916,6 +970,15 @@ struct MarkdownEditor: NSViewRepresentable {
             } else {
                 wikiLinkPopover.moveSelectionDown()
             }
+        }
+
+        private func handleTemplateInsertion(_ notification: Notification) {
+            guard let identifierText = notification.userInfo?["templateIdentifier"] as? String,
+                  let templateIdentifier = UUID(uuidString: identifierText),
+                  let template = templateStore?.templates.first(
+                      where: { $0.identifier == templateIdentifier }
+                  ) else { return }
+            insertTemplateContent(template.content)
         }
 
         // MARK: - Complete Wiki Link Insertion
@@ -964,6 +1027,15 @@ struct MarkdownEditor: NSViewRepresentable {
                     NSRange(location: replaceStart + replacement.count, length: 0)
                 )
 
+            case .slashActive(let start):
+                let replaceStart = max(start - 1, 0)
+                let range = NSRange(location: replaceStart, length: cursor - replaceStart)
+                guard let template = templateStore?.template(named: title) else { break }
+                storage.replaceCharacters(in: range, with: template.content)
+                textView.setSelectedRange(
+                    NSRange(location: replaceStart + template.content.count, length: 0)
+                )
+
             default:
                 break
             }
@@ -981,6 +1053,22 @@ struct MarkdownEditor: NSViewRepresentable {
                     self?.store?.save()
                 }
             }
+        }
+
+        private func insertTemplateContent(_ content: String) {
+            guard let textView = textView,
+                  let storage = textView.textStorage else { return }
+
+            if textView.window?.firstResponder !== textView {
+                textView.window?.makeFirstResponder(textView)
+            }
+
+            let selectionRange = textView.selectedRange()
+            storage.replaceCharacters(in: selectionRange, with: content)
+            let newCursor = selectionRange.location + content.count
+            textView.setSelectedRange(NSRange(location: newCursor, length: 0))
+            parent.text = textView.string
+            applyWikiLinkFormatting()
         }
 
         // MARK: - Date Autocomplete Results
@@ -1043,6 +1131,31 @@ struct MarkdownEditor: NSViewRepresentable {
                     relativePath: "\(tag.count) notes",
                     // swiftlint:disable:next force_unwrapping
                     url: URL(string: "synth://tag/\(tag.name)")!
+                )
+            }
+        }
+
+        // MARK: - Template Autocomplete Results
+
+        private func templateAutocompleteResults(query: String) -> [NoteSearchResult] {
+            guard let templateStore else { return [] }
+            return templateStore.search(query).prefix(20).compactMap { template in
+                guard let templateURL = URL(
+                    string: "synth://template/\(template.identifier.uuidString)"
+                ) else { return nil }
+
+                let shortcutLabel: String
+                if let shortcutSlot = template.shortcutSlot {
+                    shortcutLabel = "Shortcut ⌥⌘\(shortcutSlot)"
+                } else {
+                    shortcutLabel = "Template"
+                }
+
+                return NoteSearchResult(
+                    id: templateURL,
+                    title: template.name,
+                    relativePath: shortcutLabel,
+                    url: templateURL
                 )
             }
         }
