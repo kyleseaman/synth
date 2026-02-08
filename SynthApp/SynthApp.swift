@@ -49,6 +49,20 @@ struct SynthApp: App {
         }
     }
 
+    private func postTemplateInsertion(for template: SavedTemplate) {
+        NotificationCenter.default.post(
+            name: .insertTemplate,
+            object: nil,
+            userInfo: ["templateIdentifier": template.identifier.uuidString]
+        )
+    }
+
+    private func templateInsertButton(for template: SavedTemplate) -> some View {
+        Button("Insert \(template.name)") {
+            postTemplateInsertion(for: template)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -135,25 +149,13 @@ struct SynthApp: App {
                 } else {
                     ForEach(templatesSortedForMenu) { template in
                         if let shortcutSlot = template.shortcutSlot {
-                            Button("Insert \(template.name)") {
-                                NotificationCenter.default.post(
-                                    name: .insertTemplate,
-                                    object: nil,
-                                    userInfo: ["templateIdentifier": template.identifier.uuidString]
-                                )
-                            }
+                            templateInsertButton(for: template)
                             .keyboardShortcut(
                                 KeyEquivalent(Character("\(shortcutSlot)")),
                                 modifiers: [.command, .option]
                             )
                         } else {
-                            Button("Insert \(template.name)") {
-                                NotificationCenter.default.post(
-                                    name: .insertTemplate,
-                                    object: nil,
-                                    userInfo: ["templateIdentifier": template.identifier.uuidString]
-                                )
-                            }
+                            templateInsertButton(for: template)
                         }
                     }
                 }

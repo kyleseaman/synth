@@ -28,6 +28,8 @@
 		1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */; };
 		1A0000000000000000000205 /* LinkStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* LinkStoreTests.swift */; };
 		1A0000000000000000000206 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* XCTest.framework */; };
+		1A0000000000000000000217 /* TemplateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000147 /* TemplateStore.swift */; };
+		1A0000000000000000000218 /* TemplateStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000148 /* TemplateStoreTests.swift */; };
 		1A0000000000000000000211 /* DailyNoteResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000141 /* DailyNoteResolverTests.swift */; };
 		1A0000000000000000000212 /* DailyNoteManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000142 /* DailyNoteManagerTests.swift */; };
 		1A0000000000000000000213 /* TagAndPeopleIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000143 /* TagAndPeopleIndexTests.swift */; };
@@ -97,6 +99,8 @@
 		1A0000000000000000000144 /* BacklinkIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacklinkIndexTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000145 /* UtilityLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityLogicTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000146 /* DocumentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStoreTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000147 /* TemplateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateStore.swift; sourceTree = "<group>"; };
+		1A0000000000000000000148 /* TemplateStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateStoreTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000111 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000112 /* WikiLinkPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WikiLinkPopover.swift; sourceTree = "<group>"; };
 		1A0000000000000000000113 /* DailyNoteResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteResolver.swift; sourceTree = "<group>"; };
@@ -151,6 +155,7 @@
 				1A0000000000000000000011 /* SynthApp.swift */,
 				1A0000000000000000000104 /* GlobalHotkeyMonitor.swift */,
 				1A0000000000000000000101 /* LinkStore.swift */,
+				1A0000000000000000000147 /* TemplateStore.swift */,
 				1A0000000000000000000102 /* LinksView.swift */,
 				1A0000000000000000000103 /* LinkCaptureView.swift */,
 				1A0000000000000000000109 /* MeetingNoteView.swift */,
@@ -196,6 +201,7 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000105 /* LinkStoreTests.swift */,
+				1A0000000000000000000148 /* TemplateStoreTests.swift */,
 				1A0000000000000000000141 /* DailyNoteResolverTests.swift */,
 				1A0000000000000000000142 /* DailyNoteManagerTests.swift */,
 				1A0000000000000000000143 /* TagAndPeopleIndexTests.swift */,
@@ -332,6 +338,7 @@
 				1A0000000000000000000045 /* ContentView.swift in Sources */,
 				1A0000000000000000000204 /* GlobalHotkeyMonitor.swift in Sources */,
 				1A0000000000000000000201 /* LinkStore.swift in Sources */,
+				1A0000000000000000000217 /* TemplateStore.swift in Sources */,
 				1A0000000000000000000202 /* LinksView.swift in Sources */,
 				1A0000000000000000000203 /* LinkCaptureView.swift in Sources */,
 				1A0000000000000000000207 /* MeetingNoteView.swift in Sources */,
@@ -370,6 +377,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000205 /* LinkStoreTests.swift in Sources */,
+				1A0000000000000000000218 /* TemplateStoreTests.swift in Sources */,
 				1A0000000000000000000211 /* DailyNoteResolverTests.swift in Sources */,
 				1A0000000000000000000212 /* DailyNoteManagerTests.swift in Sources */,
 				1A0000000000000000000213 /* TagAndPeopleIndexTests.swift in Sources */,

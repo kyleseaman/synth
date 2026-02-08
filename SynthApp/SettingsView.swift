@@ -236,11 +236,9 @@ struct SettingsView: View {
               let template = templateStore.templates.first(
                   where: { $0.identifier == selectedTemplateIdentifier }
               ) else {
-            if selectedTemplateIdentifier == nil {
-                draftTemplateName = ""
-                draftTemplateContent = ""
-                draftShortcutSlot = 0
-            }
+            draftTemplateName = ""
+            draftTemplateContent = ""
+            draftShortcutSlot = 0
             return
         }
         draftTemplateName = template.name
@@ -271,11 +269,6 @@ struct SettingsView: View {
         guard let selectedTemplateIdentifier else { return }
         templateStore.removeTemplate(identifier: selectedTemplateIdentifier)
         self.selectedTemplateIdentifier = templateStore.templates.first?.identifier
-        if self.selectedTemplateIdentifier == nil {
-            draftTemplateName = ""
-            draftTemplateContent = ""
-            draftShortcutSlot = 0
-        }
     }
 }
 

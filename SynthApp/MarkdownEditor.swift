@@ -1023,33 +1023,11 @@ class FormattingTextView: NSTextView {
                 userInfo: ["mode": "at", "query": ""]
             )
         } else if str == "#" {
-            let cursor = selectedRange().location
-            let isAtStart = cursor <= 1
-            var precededBySpace = isAtStart
-            if !isAtStart, let storage = textStorage {
-                let charBefore = (storage.string as NSString).substring(
-                    with: NSRange(location: cursor - 2, length: 1)
-                )
-                precededBySpace = charBefore.rangeOfCharacter(
-                    from: .whitespacesAndNewlines
-                ) != nil
-            }
-            if precededBySpace {
+            if isAutocompleteTriggerAllowed() {
                 wikiLinkState = .hashtagActive(start: cursor)
             }
         } else if str == "/" {
-            let cursor = selectedRange().location
-            let isAtStart = cursor <= 1
-            var precededBySpace = isAtStart
-            if !isAtStart, let storage = textStorage {
-                let charBefore = (storage.string as NSString).substring(
-                    with: NSRange(location: cursor - 2, length: 1)
-                )
-                precededBySpace = charBefore.rangeOfCharacter(
-                    from: .whitespacesAndNewlines
-                ) != nil
-            }
-            if precededBySpace {
+            if isAutocompleteTriggerAllowed() {
                 wikiLinkState = .slashActive(start: cursor)
                 NotificationCenter.default.post(
                     name: .wikiLinkTrigger,
@@ -1058,6 +1036,24 @@ class FormattingTextView: NSTextView {
                 )
             }
         }
+    }
+
+    private var cursor: Int {
+        selectedRange().location
+    }
+
+    private func isAutocompleteTriggerAllowed() -> Bool {
+        if cursor <= 1 {
+            return true
+        }
+        guard let storage = textStorage else {
+            return false
+        }
+        let textValue = storage.string as NSString
+        let previousChar = textValue.substring(
+            with: NSRange(location: cursor - 2, length: 1)
+        )
+        return previousChar.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
     }
 
     private func handleSingleBracketState(for str: String) {
