@@ -774,7 +774,10 @@ final class DocumentStore {
             workspaceURL: workspace,
             noteURL: noteURL
         ) else { return nil }
-        loadFileTree()
+        // Add to media list directly instead of full rescan
+        if !mediaFiles.contains(savedMedia.fileURL) {
+            mediaFiles.append(savedMedia.fileURL)
+        }
         return savedMedia.relativePath
     }
 
@@ -878,6 +881,50 @@ final class DocumentStore {
 
     private func removeFileFromInMemoryTree(_ fileURL: URL) {
         fileTree = Self.removingNode(fileURL, from: fileTree)
+    }
+
+    func addFileToInMemoryTree(_ fileURL: URL) {
+        guard let workspace else { return }
+        let relativePath = fileURL.path.replacingOccurrences(
+            of: workspace.path + "/", with: ""
+        )
+        let components = relativePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return }
+        fileTree = Self.insertingNode(fileURL, path: components, into: fileTree)
+    }
+
+    private static func insertingNode(
+        _ target: URL,
+        path: [String],
+        into nodes: [FileTreeNode]
+    ) -> [FileTreeNode] {
+        guard let first = path.first else { return nodes }
+        let rest = Array(path.dropFirst())
+
+        for (index, node) in nodes.enumerated() {
+            if node.url.lastPathComponent == first {
+                if rest.isEmpty {
+                    return nodes // Already exists
+                }
+                if node.isDirectory, let children = node.children {
+                    var updated = nodes
+                    updated[index] = FileTreeNode(
+                        url: node.url,
+                        isDirectory: true,
+                        children: insertingNode(target, path: rest, into: children)
+                    )
+                    return updated
+                }
+                return nodes
+            }
+        }
+
+        // Not found — add new node
+        if rest.isEmpty {
+            let newNode = FileTreeNode(url: target, isDirectory: false, children: nil)
+            return (nodes + [newNode]).sorted { $0.url.lastPathComponent < $1.url.lastPathComponent }
+        }
+        return nodes
     }
 
     private static func removingNode(_ target: URL, from nodes: [FileTreeNode]) -> [FileTreeNode] {

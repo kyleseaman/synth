@@ -57,7 +57,7 @@ struct DailyNotesView: View {
                                         newContent: newContent
                                     )
                                 if didCreate {
-                                    store.loadFileTree()
+                                    store.addFileToInMemoryTree(entry.url)
                                 }
                             },
                             store: store
@@ -473,8 +473,8 @@ struct DailyNoteEditor: NSViewRepresentable {
                         try? FileManager.default.trashItem(
                             at: imageURL, resultingItemURL: nil
                         )
+                        self.store?.mediaFiles.removeAll { $0 == imageURL }
                     }
-                    self.store?.loadFileTree()
                 case .open:
                     self.store?.showImageDetailModal(imageURL)
                 }
@@ -549,6 +549,7 @@ struct DailyNoteBacklinks: View {
     let entry: DailyNoteEntry
     var store: DocumentStore
     @State private var isExpanded = true
+    @State private var cachedLinks: [(url: URL, title: String, snippet: String, relativePath: String)] = []
 
     private static let titleFormatter: DateFormatter = {
         let fmt = DateFormatter()
@@ -565,25 +566,21 @@ struct DailyNoteBacklinks: View {
         Self.titleFormatter.string(from: entry.date)
     }
 
-    private var backlinks: [(url: URL, title: String, snippet: String, relativePath: String)] {
+    private func loadBacklinks() {
         let byFilename = store.backlinkIndex.links(to: filename)
         let byTitle = store.backlinkIndex.links(to: dateTitle)
         let allURLs = byFilename.union(byTitle)
         let lowerFilename = filename.lowercased()
-        return allURLs.compactMap { url in
-            let title = url.deletingPathExtension().lastPathComponent
-            guard title.lowercased() != lowerFilename else { return nil }
-            let snippet = Self.contentPreview(for: url)
-            let parent = url.deletingLastPathComponent()
-                .lastPathComponent
-            return (
-                url: url, title: title,
-                snippet: snippet, relativePath: parent
-            )
-        }
-        .sorted {
-            $0.title.localizedCaseInsensitiveCompare($1.title)
-                == .orderedAscending
+        Task.detached(priority: .utility) {
+            let links = allURLs.compactMap { url -> (url: URL, title: String, snippet: String, relativePath: String)? in
+                let title = url.deletingPathExtension().lastPathComponent
+                guard title.lowercased() != lowerFilename else { return nil }
+                let snippet = Self.contentPreview(for: url)
+                let parent = url.deletingLastPathComponent().lastPathComponent
+                return (url: url, title: title, snippet: snippet, relativePath: parent)
+            }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            await MainActor.run { cachedLinks = links }
         }
     }
 
@@ -607,43 +604,46 @@ struct DailyNoteBacklinks: View {
     }
 
     var body: some View {
-        let links = backlinks
-        if !links.isEmpty {
-            VStack(spacing: 0) {
-                DisclosureGroup(isExpanded: $isExpanded) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(links.prefix(10), id: \.url) { link in
-                            BacklinkRow(
-                                title: link.title,
-                                snippet: link.snippet,
-                                relativePath: link.relativePath,
-                                url: link.url,
-                                onNavigate: { store.open($0) }
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                store.open(link.url)
+        let links = cachedLinks
+        Group {
+            if !links.isEmpty {
+                VStack(spacing: 0) {
+                    DisclosureGroup(isExpanded: $isExpanded) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(links.prefix(10), id: \.url) { link in
+                                BacklinkRow(
+                                    title: link.title,
+                                    snippet: link.snippet,
+                                    relativePath: link.relativePath,
+                                    url: link.url,
+                                    onNavigate: { store.open($0) }
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    store.open(link.url)
+                                }
                             }
                         }
+                        .padding(.top, 8)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(
+                                "Incoming backlinks (\(links.count))"
+                            )
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .padding(.top, 8)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(
-                            "Incoming backlinks (\(links.count))"
-                        )
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
+                    .animation(
+                        .easeOut(duration: 0.15), value: isExpanded
+                    )
                 }
-                .animation(
-                    .easeOut(duration: 0.15), value: isExpanded
-                )
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
         }
+        .onAppear { loadBacklinks() }
     }
 }

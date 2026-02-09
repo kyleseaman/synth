@@ -258,7 +258,7 @@ class AutocompleteCoordinator {
                 "\(completionTitle).md"
             )
             DailyNoteResolver.ensureExists(at: fileURL)
-            store.loadFileTree()
+            store.addFileToInMemoryTree(fileURL)
         }
 
         onTextChange?()
@@ -436,7 +436,7 @@ class AutocompleteCoordinator {
                       token, workspace: workspace
                   ) else { return true }
             DailyNoteResolver.ensureExists(at: resolved)
-            store.loadFileTree()
+            store.addFileToInMemoryTree(resolved)
             store.requestDailyDateScroll(token)
             return true
         }
