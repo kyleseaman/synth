@@ -82,7 +82,8 @@ struct Theme {
     ) -> [String] {
         let configured = parseCandidateList(defaults.string(forKey: customKey))
         var merged = configured
-        for fallbackCandidate in fallback where !merged.contains(fallbackCandidate) {
+        var seenCandidates = Set(configured)
+        for fallbackCandidate in fallback where seenCandidates.insert(fallbackCandidate).inserted {
             merged.append(fallbackCandidate)
         }
         return merged
@@ -178,13 +179,17 @@ struct Theme {
     static func editorNSFont(
         ofSize size: CGFloat,
         weight: NSFont.Weight = .regular,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        resolver: (String, CGFloat) -> NSFont? = { fontName, fontSize in
+            NSFont(name: fontName, size: fontSize)
+        }
     ) -> NSFont {
         resolveFont(
             candidates: editorCandidateNames(weight: weight, defaults: defaults),
-            size: size
+            size: size,
+            resolver: resolver
         )
-            ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+            ?? NSFont.systemFont(ofSize: size, weight: weight)
     }
 
     static func terminalNSFont(

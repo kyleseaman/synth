@@ -433,6 +433,15 @@ final class UtilityLogicTests: XCTestCase {
         XCTAssertEqual(displayed, ["one", "two", "three"])
     }
 
+    func testDocumentChatTrayDisplayedPermissionDiffTextPreservesFullContent() {
+        let fullDiffText = String(repeating: "0123456789", count: 80)
+
+        let displayed = DocumentChatTray.displayedPermissionDiffText(fullDiffText)
+
+        XCTAssertEqual(displayed.count, fullDiffText.count)
+        XCTAssertEqual(displayed, fullDiffText)
+    }
+
     @MainActor
     func testDocumentChatTrayAgentSymbolFallsBackWhenPreferredUnavailable() {
         let fallbackSymbol = DocumentChatTray.agentSymbolName { _ in false }
@@ -1135,5 +1144,13 @@ final class MCPServerManagerTests: XCTestCase {
 
         XCTAssertEqual(candidateNames.first, "PublicSans-Regular")
         XCTAssertTrue(candidateNames.contains("Public Sans"))
+    }
+
+    func testThemeEditorNSFontFallsBackToSystemFontWhenCandidatesMiss() {
+        let expectedFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+        let resolvedFont = Theme.editorNSFont(ofSize: 13, weight: .regular) { _, _ in nil }
+
+        XCTAssertEqual(resolvedFont.fontName, expectedFont.fontName)
+        XCTAssertEqual(resolvedFont.pointSize, expectedFont.pointSize)
     }
 }

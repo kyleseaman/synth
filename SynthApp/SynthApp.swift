@@ -79,6 +79,9 @@ struct SynthApp: App {
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                SettingsLink()
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Draft") { store.newDraft() }
                     .keyboardShortcut("n")
@@ -171,5 +174,12 @@ struct SynthApp: App {
                 .environment(store)
                 .environment(templateStore)
         }
+
+        Window("Settings", id: "synth-settings-window") {
+            SettingsView()
+                .environment(store)
+                .environment(templateStore)
+        }
+        .defaultSize(width: 720, height: 560)
     }
 }

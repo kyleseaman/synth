@@ -94,19 +94,21 @@ private extension View {
 
 struct ContentView: View {
     @Environment(DocumentStore.self) var store
+    @Environment(\.openWindow) private var openWindow
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
     @State private var hoveredSidebarMode: DetailViewMode?
 
-    private func showSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
     private var settingsToolbarButton: some CustomizableToolbarContent {
-        ToolbarItem(id: "openSettings", placement: .automatic) {
-            Button(action: showSettingsWindow) {
-                Image(systemName: "gearshape")
+        ToolbarItem(id: "toolbarSettingsLink", placement: .automatic) {
+            Button {
+                openWindow(id: "synth-settings-window")
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 16, height: 16)
             }
+            .help("Settings")
             .keyboardShortcutHint("⌘,")
         }
     }
@@ -259,7 +261,7 @@ struct ContentView: View {
             }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar(id: "sidebar") {
+            .toolbar(id: "sidebar-main-v2") {
                 settingsToolbarButton
                 openWorkspaceButton
             }

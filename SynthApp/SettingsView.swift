@@ -19,11 +19,12 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             generalTab.tabItem { Label("General", systemImage: "gear") }
+            fontsTab.tabItem { Label("Fonts", systemImage: "textformat") }
             contextTab.tabItem { Label("Context", systemImage: "doc.text.magnifyingglass") }
             agentsTab.tabItem { Label("Agents", systemImage: "cpu") }
             templatesTab.tabItem { Label("Templates", systemImage: "text.badge.plus") }
         }
-        .frame(width: 480, height: 400)
+        .frame(width: 720, height: 560)
         .onAppear {
             store.loadKiroConfig()
             detectedPath = KiroCliResolver.resolve() ?? "Not found"
@@ -72,8 +73,23 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
+        }
+        .padding()
+        .fileImporter(
+            isPresented: $showKiroPicker,
+            allowedContentTypes: [.item]
+        ) { result in
+            if case .success(let url) = result {
+                kiroCliPath = url.path
+            }
+        }
+    }
 
-            Section("Typography") {
+    // MARK: - Fonts
+
+    private var fontsTab: some View {
+        List {
+            Section("Editor") {
                 HStack {
                     Button("Use MesloLGS (Mono)") {
                         editorFontCandidates = Theme.mesloPresetValue
@@ -88,26 +104,32 @@ struct SettingsView: View {
                 .controlSize(.small)
 
                 TextField(
-                    "Editor font candidates",
+                    "Font (Editor)",
                     text: $editorFontCandidates,
                     prompt: Text("MesloLGS-Regular, FiraCode-Regular")
                 )
                 .textFieldStyle(.roundedBorder)
+            }
 
+            Section("Terminal") {
                 TextField(
-                    "Terminal font candidates",
+                    "Font (Terminal)",
                     text: $terminalFontCandidates,
                     prompt: Text("MesloLGS-Regular, JetBrainsMono-Regular")
                 )
                 .textFieldStyle(.roundedBorder)
+            }
 
+            Section("Sidebar") {
                 TextField(
-                    "Sidebar font candidates",
+                    "Font (Sidebar)",
                     text: $sidebarFontCandidates,
                     prompt: Text("SF Pro Text Regular, Inter-Regular")
                 )
                 .textFieldStyle(.roundedBorder)
+            }
 
+            Section {
                 Text(
                     "Use comma-separated PostScript font names. "
                     + "Blank value falls back to built-in defaults."
@@ -125,15 +147,6 @@ struct SettingsView: View {
                         && terminalFontCandidates.isEmpty
                         && sidebarFontCandidates.isEmpty
                 )
-            }
-        }
-        .padding()
-        .fileImporter(
-            isPresented: $showKiroPicker,
-            allowedContentTypes: [.item]
-        ) { result in
-            if case .success(let url) = result {
-                kiroCliPath = url.path
             }
         }
     }
