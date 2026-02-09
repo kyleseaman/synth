@@ -228,7 +228,9 @@ struct MarkdownFormat: DocumentFormat {
     /// Restore object replacement characters back to `!` so the
     /// underlying plain text stays valid markdown.
     static func restoreImageMarkup(in text: String) -> String {
-        text.replacingOccurrences(of: attachmentCharacter, with: "!")
+        // Short-circuit if no attachment characters present
+        guard text.contains(attachmentCharacter) else { return text }
+        return text.replacingOccurrences(of: attachmentCharacter, with: "!")
     }
 
     static func maxRenderedImageSize(for baseFont: NSFont) -> NSSize {
@@ -1711,17 +1713,31 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // MARK: - Line Positions
 
+        private var lastNewlineCount = 0
+
         func updateLinePositions() {
             guard let textView = textView,
                   let layoutManager = textView.layoutManager,
                   let textContainer = textView.textContainer else { return }
+
+            let string = textView.string
+
+            // Quick newline count — O(n) but fast single pass
+            var newlineCount = 0
+            for char in string where char == "\n" { newlineCount += 1 }
+
+            // Skip if newline count unchanged (most keystrokes don't add/remove lines)
+            if newlineCount == lastNewlineCount && !parent.linePositions.isEmpty {
+                return
+            }
+            lastNewlineCount = newlineCount
 
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
             let baseFont = Theme.editorNSFont(ofSize: 16)
             var positions: [CGFloat] = []
-            let nsString = textView.string as NSString
+            let nsString = string as NSString
             let length = nsString.length
 
             if length == 0 {

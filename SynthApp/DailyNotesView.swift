@@ -6,9 +6,10 @@ import AppKit
 struct DailyNotesView: View {
     @Environment(DocumentStore.self) var store
     @State private var scrollTarget: String?
+    @State private var cachedNoteDates: Set<String> = []
 
-    private var noteDates: Set<String> {
-        Set(
+    private func updateNoteDates() {
+        cachedNoteDates = Set(
             store.dailyNoteManager.entries
                 .filter { $0.exists }
                 .map { DailyNoteManager.dateIdentifier($0.date) }
@@ -26,12 +27,13 @@ struct DailyNotesView: View {
             // Calendar sidebar
             CalendarSidebarView(
                 onSelectDate: { date in scrollToDate(date) },
-                noteDates: noteDates
+                noteDates: cachedNoteDates
             )
         }
         .background(Color(.textBackgroundColor))
         .onAppear {
             loadAllEntries()
+            updateNoteDates()
             scrollToToday()
         }
         .onChange(of: store.dailyDateScrollTarget) { _, target in
@@ -58,6 +60,7 @@ struct DailyNotesView: View {
                                     )
                                 if didCreate {
                                     store.addFileToInMemoryTree(entry.url)
+                                    updateNoteDates()
                                 }
                             },
                             store: store
