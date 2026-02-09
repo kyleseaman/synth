@@ -901,22 +901,20 @@ final class DocumentStore {
         guard let first = path.first else { return nodes }
         let rest = Array(path.dropFirst())
 
-        for (index, node) in nodes.enumerated() {
-            if node.url.lastPathComponent == first {
-                if rest.isEmpty {
-                    return nodes // Already exists
-                }
-                if node.isDirectory, let children = node.children {
-                    var updated = nodes
-                    updated[index] = FileTreeNode(
-                        url: node.url,
-                        isDirectory: true,
-                        children: insertingNode(target, path: rest, into: children)
-                    )
-                    return updated
-                }
-                return nodes
+        for (index, node) in nodes.enumerated() where node.url.lastPathComponent == first {
+            if rest.isEmpty {
+                return nodes // Already exists
             }
+            if node.isDirectory, let children = node.children {
+                var updated = nodes
+                updated[index] = FileTreeNode(
+                    url: node.url,
+                    isDirectory: true,
+                    children: insertingNode(target, path: rest, into: children)
+                )
+                return updated
+            }
+            return nodes
         }
 
         // Not found — add new node
