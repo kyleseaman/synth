@@ -527,22 +527,25 @@ final class DocumentStore {
         mediaFiles: [URL], workspace: URL
     ) -> Set<URL> {
         var removed: Set<URL> = []
-        let enumerator = FileManager.default.enumerator(
-            at: workspace,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        var allContent = ""
-        while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathExtension == "md",
-                  let content = try? String(
-                      contentsOf: fileURL, encoding: .utf8
-                  ) else { continue }
-            allContent += content
-        }
         for mediaURL in mediaFiles {
             let filename = mediaURL.lastPathComponent
-            if !allContent.contains(filename) {
+            var isReferenced = false
+            let enumerator = FileManager.default.enumerator(
+                at: workspace,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+            while let fileURL = enumerator?.nextObject() as? URL {
+                guard fileURL.pathExtension == "md",
+                      let content = try? String(
+                          contentsOf: fileURL, encoding: .utf8
+                      ),
+                      content.contains(filename)
+                else { continue }
+                isReferenced = true
+                break
+            }
+            if !isReferenced {
                 try? FileManager.default.trashItem(
                     at: mediaURL, resultingItemURL: nil
                 )
@@ -639,6 +642,9 @@ final class DocumentStore {
     }
 
     func activateDailyNotes() {
+        if detailMode == .dailyNotes {
+            dailyDateScrollTarget = DailyNoteManager.dateIdentifier(Date())
+        }
         selectDailyNotesTab()
     }
 

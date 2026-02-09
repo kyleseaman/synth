@@ -14,6 +14,20 @@ struct MarkdownFormat: DocumentFormat {
         let attachmentRange: NSRange
     }
 
+    // MARK: - Static Regex Patterns (compiled once)
+
+    // swiftlint:disable force_try
+    static let imagePattern = try! NSRegularExpression(
+        pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
+    )
+    private static let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    private static let datePattern = try! NSRegularExpression(pattern: "@(\\d{4}-\\d{2}-\\d{2})")
+    private static let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
+    private static let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
+    private static let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
+    private static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
+    // swiftlint:enable force_try
+
     var noteIndex: NoteIndex?
     var baseURL: URL?
 
@@ -101,10 +115,6 @@ struct MarkdownFormat: DocumentFormat {
         var pendingRenders: [PendingImageRender] = []
 
         // Match ![alt](path) or ![alt](path =WIDTHx)
-        // swiftlint:disable:next force_try
-        let imagePattern = try! NSRegularExpression(
-            pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
-        )
         let fullRange = NSRange(
             location: 0, length: attributedText.string.utf16.count
         )
@@ -260,10 +270,8 @@ struct MarkdownFormat: DocumentFormat {
     private func applyInlineFormatting(_ str: NSMutableAttributedString, baseFont: NSFont) {
         // MARK: Wiki links [[Note Title]]
         // Must run BEFORE bold/italic so link content isn't further reformatted
-        // swiftlint:disable:next force_try
-        let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
         let wikiRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
+        for match in Self.wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
             let fullNSRange = match.range
             let innerNSRange = match.range(at: 1)
             guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
@@ -323,14 +331,10 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: @Date mentions (@2026-02-07) — styled as daily note links
-        // swiftlint:disable:next force_try
-        let datePattern = try! NSRegularExpression(
-            pattern: "@(\\d{4}-\\d{2}-\\d{2})"
-        )
         let dateRange = NSRange(
             location: 0, length: str.string.utf16.count
         )
-        for match in datePattern.matches(
+        for match in Self.datePattern.matches(
             in: str.string, range: dateRange
         ).reversed() {
             let fullNSRange = match.range
@@ -426,10 +430,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Bold **text** — style inner text, keep markers
-        // swiftlint:disable:next force_try
-        let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
         let boldRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in boldPattern.matches(in: str.string, range: boldRange) {
+        for match in Self.boldPattern.matches(in: str.string, range: boldRange) {
             let innerRange = match.range(at: 1)
             let boldFont = NSFontManager.shared.convert(
                 baseFont, toHaveTrait: .boldFontMask
@@ -438,12 +440,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Italic *text* — style inner text, keep markers
-        // swiftlint:disable:next force_try
-        let italicPattern = try! NSRegularExpression(
-            pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
-        )
         let italicRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in italicPattern.matches(in: str.string, range: italicRange) {
+        for match in Self.italicPattern.matches(in: str.string, range: italicRange) {
             let innerRange = match.range(at: 1)
             let italicFont = NSFontManager.shared.convert(
                 baseFont, toHaveTrait: .italicFontMask
@@ -452,10 +450,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Underline __text__ — style inner text, keep markers
-        // swiftlint:disable:next force_try
-        let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
         let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in underlinePattern.matches(in: str.string, range: underlineRange) {
+        for match in Self.underlinePattern.matches(in: str.string, range: underlineRange) {
             let innerRange = match.range(at: 1)
             str.addAttribute(
                 .underlineStyle,
@@ -465,10 +461,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Inline code `text` — style inner text, keep backticks
-        // swiftlint:disable:next force_try
-        let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
         let codeRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in codePattern.matches(in: str.string, range: codeRange) {
+        for match in Self.codePattern.matches(in: str.string, range: codeRange) {
             let innerRange = match.range(at: 1)
             str.addAttributes([
                 .font: Theme.terminalNSFont(ofSize: 14),
@@ -932,6 +926,23 @@ class FormattingTextView: NSTextView {
         // Only return if the point is actually inside the image area
         guard rect.contains(point), rect.height > 20 else { return nil }
         return rect
+    }
+
+    override func drawInsertionPoint(
+        in rect: NSRect,
+        color: NSColor,
+        turnedOn: Bool
+    ) {
+        let font = typingAttributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 16)
+        let fontHeight = font.ascender - font.descender
+        let verticalOffset = (rect.height - fontHeight) / 2
+        let adjusted = NSRect(
+            x: rect.origin.x,
+            y: rect.origin.y + verticalOffset,
+            width: rect.width,
+            height: fontHeight
+        )
+        super.drawInsertionPoint(in: adjusted, color: color, turnedOn: turnedOn)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

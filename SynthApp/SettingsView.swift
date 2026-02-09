@@ -91,24 +91,29 @@ struct SettingsView: View {
         List {
             Section("Editor") {
                 HStack {
-                    Button("Use MesloLGS (Mono)") {
+                    Button("System (Default)") {
+                        editorFontCandidates = ""
+                    }
+                    Button("MesloLGS (Mono)") {
                         editorFontCandidates = Theme.mesloPresetValue
                     }
-                    Button("Use Source Serif 4 (Serif)") {
+                    Button("Source Serif 4 (Serif)") {
                         editorFontCandidates = Theme.sourceSerifPresetValue
                     }
-                    Button("Use Public Sans (Sans)") {
+                    Button("Public Sans (Sans)") {
                         editorFontCandidates = Theme.publicSansPresetValue
                     }
                 }
                 .controlSize(.small)
 
-                TextField(
-                    "Font (Editor)",
-                    text: $editorFontCandidates,
-                    prompt: Text("MesloLGS-Regular, FiraCode-Regular")
-                )
-                .textFieldStyle(.roundedBorder)
+                if !editorFontCandidates.isEmpty {
+                    TextField(
+                        "Font (Editor)",
+                        text: $editorFontCandidates,
+                        prompt: Text("MesloLGS-Regular, FiraCode-Regular")
+                    )
+                    .textFieldStyle(.roundedBorder)
+                }
             }
 
             Section("Terminal") {

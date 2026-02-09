@@ -1101,10 +1101,9 @@ final class MCPServerManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            Array(candidateNames.prefix(2)),
+            candidateNames,
             ["FiraCode-Regular", "Iosevka-Regular"]
         )
-        XCTAssertTrue(candidateNames.contains("MesloLGS-Regular"))
     }
 
     func testThemeEditorCandidateNamesDeduplicatesAgainstFallbacks() {
@@ -1123,11 +1122,9 @@ final class MCPServerManagerTests: XCTestCase {
             weight: .regular,
             defaults: defaultsStore
         )
-        let mesloOccurrences = candidateNames.filter { $0 == "MesloLGS-Regular" }.count
 
-        XCTAssertEqual(mesloOccurrences, 1)
         XCTAssertEqual(
-            Array(candidateNames.prefix(2)),
+            candidateNames,
             ["MesloLGS-Regular", "FiraCode-Regular"]
         )
     }

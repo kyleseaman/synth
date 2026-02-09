@@ -102,6 +102,7 @@ struct DailyNoteSection: View {
     let entry: DailyNoteEntry
     let onContentChange: (String) -> Void
     weak var store: DocumentStore?
+    @State private var editorHeight: CGFloat = 120
 
     private var isToday: Bool {
         DailyNoteManager.isToday(entry.date)
@@ -122,9 +123,10 @@ struct DailyNoteSection: View {
                 noteURL: entry.url,
                 onTextChange: onContentChange,
                 noteIndex: store?.noteIndex,
-                store: store
+                store: store,
+                computedHeight: $editorHeight
             )
-            .frame(minHeight: isToday ? 240 : 120)
+            .frame(height: max(isToday ? 240 : 120, editorHeight))
             .padding(.leading, 20)
             .padding(.trailing, 16)
 
@@ -152,15 +154,12 @@ struct DailyNoteSection: View {
                 .frame(width: 3, height: 20)
 
             Text(dateLabel)
-                .font(.system(
-                    size: 14,
-                    weight: isToday ? .bold : .semibold
-                ))
+                .font(Theme.editorSwiftUIFont(size: 16))
                 .foregroundStyle(isToday ? .primary : .secondary)
 
             if isToday {
                 Text("Today")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.editorSwiftUIFont(size: 11))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -186,6 +185,7 @@ struct DailyNoteEditor: NSViewRepresentable {
     let onTextChange: (String) -> Void
     var noteIndex: NoteIndex?
     weak var store: DocumentStore?
+    @Binding var computedHeight: CGFloat
 
     func makeNSView(context: Context) -> FormattingTextView {
         let textView = FormattingTextView()
@@ -220,6 +220,15 @@ struct DailyNoteEditor: NSViewRepresentable {
         context.coordinator.bindImageOverlay(to: textView)
         context.coordinator.setupAutocomplete()
         context.coordinator.applyFormatting()
+
+        textView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.frameDidChange(_:)),
+            name: NSView.frameDidChangeNotification,
+            object: textView
+        )
+
         return textView
     }
 
@@ -267,6 +276,21 @@ struct DailyNoteEditor: NSViewRepresentable {
         let autocomplete = AutocompleteCoordinator()
 
         init(_ parent: DailyNoteEditor) { self.parent = parent }
+
+        @objc func frameDidChange(_ notification: Notification) {
+            guard let textView = textView else { return }
+            textView.layoutManager?.ensureLayout(
+                for: textView.textContainer!
+            )
+            let usedRect = textView.layoutManager?.usedRect(
+                for: textView.textContainer!
+            ) ?? .zero
+            let inset = textView.textContainerInset
+            let newHeight = usedRect.height + inset.height * 2
+            if abs(parent.computedHeight - newHeight) > 1 {
+                parent.computedHeight = newHeight
+            }
+        }
 
         func setupAutocomplete() {
             autocomplete.textView = textView
@@ -340,6 +364,7 @@ struct DailyNoteEditor: NSViewRepresentable {
             )
             textView.setSelectedRange(cursor)
             isFormatting = false
+            frameDidChange(Notification(name: NSView.frameDidChangeNotification))
         }
 
         private func loadInlineImages(
@@ -564,9 +589,11 @@ struct DailyNoteBacklinks: View {
 
     /// First meaningful content line from a file (skips headings and blanks).
     private static func contentPreview(for url: URL) -> String {
-        guard let content = try? String(
-            contentsOf: url, encoding: .utf8
-        ) else { return "" }
+        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return "" }
+        defer { try? fileHandle.close() }
+        guard let data = try? fileHandle.read(upToCount: 1024),
+              let content = String(data: data, encoding: .utf8)
+        else { return "" }
         let lines = content.components(separatedBy: "\n")
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)

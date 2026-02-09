@@ -157,9 +157,9 @@ final class DailyNoteManager {
         try? FileManager.default.createDirectory(
             at: folder, withIntermediateDirectories: true
         )
+        let heading = Self.headingDateFormatter.string(from: date)
+        let template = "# \(heading)\n\n"
         if !FileManager.default.fileExists(atPath: url.path) {
-            let heading = Self.headingDateFormatter.string(from: date)
-            let template = "# \(heading)\n\n"
             try? template.write(
                 to: url, atomically: true, encoding: .utf8
             )
@@ -167,9 +167,7 @@ final class DailyNoteManager {
         if let index = entries.firstIndex(where: { $0.url == url }) {
             entries[index].exists = true
             if entries[index].content.isEmpty {
-                entries[index].content = (try? String(
-                    contentsOf: url, encoding: .utf8
-                )) ?? ""
+                entries[index].content = template
             }
         }
     }
