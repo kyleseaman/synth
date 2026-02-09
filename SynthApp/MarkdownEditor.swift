@@ -934,23 +934,6 @@ class FormattingTextView: NSTextView {
         return rect
     }
 
-    override func drawInsertionPoint(
-        in rect: NSRect,
-        color: NSColor,
-        turnedOn: Bool
-    ) {
-        let font = typingAttributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: 16)
-        let fontHeight = font.ascender - font.descender
-        let verticalOffset = (rect.height - fontHeight) / 2
-        let adjusted = NSRect(
-            x: rect.origin.x,
-            y: rect.origin.y + verticalOffset,
-            width: rect.width,
-            height: fontHeight
-        )
-        super.drawInsertionPoint(in: adjusted, color: color, turnedOn: turnedOn)
-    }
-
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
         switch event.charactersIgnoringModifiers {
