@@ -266,6 +266,10 @@ struct MarkdownFormat: DocumentFormat {
         return cleaned
     }
 
+    func applyInlineOnly(_ str: NSMutableAttributedString, baseFont: NSFont) {
+        applyInlineFormatting(str, baseFont: baseFont)
+    }
+
     // swiftlint:disable:next function_body_length
     private func applyInlineFormatting(_ str: NSMutableAttributedString, baseFont: NSFont) {
         // MARK: Wiki links [[Note Title]]
@@ -1789,8 +1793,7 @@ struct MarkdownEditor: NSViewRepresentable {
             parent.text = MarkdownFormat.restoreImageMarkup(
                 in: textView.string
             )
-            applyFormatting()
-            updateLinePositions()
+            applyFormattingToCurrentParagraph()
             scheduleSave()
         }
 
@@ -1834,6 +1837,93 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage: storage,
                 baseFont: baseFont
             )
+            textView.setSelectedRange(cursor)
+            isFormatting = false
+        }
+
+        func applyFormattingToCurrentParagraph() {
+            guard let textView = textView,
+                  let storage = textView.textStorage
+            else { return }
+            isFormatting = true
+            let cursor = textView.selectedRange()
+            let nsString = storage.string as NSString
+            let fullLength = nsString.length
+            guard fullLength > 0 else {
+                isFormatting = false
+                return
+            }
+
+            // Find the paragraph range around the cursor
+            let cursorLoc = min(cursor.location, fullLength - 1)
+            let paraRange = nsString.paragraphRange(
+                for: NSRange(location: max(cursorLoc, 0), length: 0)
+            )
+            let lineText = nsString.substring(with: paraRange)
+            let cleanLine = MarkdownFormat.restoreImageMarkup(in: lineText)
+
+            // Build attributes for this single line
+            let bodyFont = Theme.editorNSFont(ofSize: 16)
+            let bodyParagraph = NSMutableParagraphStyle()
+            bodyParagraph.lineHeightMultiple = 1.25
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: bodyFont, .foregroundColor: NSColor.textColor,
+                .paragraphStyle: bodyParagraph
+            ]
+
+            var headingPrefixLen = 0
+            if cleanLine.hasPrefix("# ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
+                headingPrefixLen = 2
+            } else if cleanLine.hasPrefix("## ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
+                headingPrefixLen = 3
+            } else if cleanLine.hasPrefix("### ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
+                headingPrefixLen = 4
+            }
+
+            if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
+                let para = NSMutableParagraphStyle()
+                para.lineHeightMultiple = 1.25
+                para.minimumLineHeight = ceil(
+                    headingFont.ascender - headingFont.descender + headingFont.leading
+                )
+                attrs[.paragraphStyle] = para
+            }
+
+            // Apply base attributes to the paragraph
+            storage.setAttributes(attrs, range: paraRange)
+
+            // Hide heading prefix
+            if headingPrefixLen > 0 {
+                let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ]
+                storage.addAttributes(
+                    hiddenAttrs,
+                    range: NSRange(location: paraRange.location, length: headingPrefixLen)
+                )
+            }
+
+            // Apply inline formatting to just this paragraph
+            let paraStr = storage.attributedSubstring(from: paraRange).mutableCopy()
+                as! NSMutableAttributedString // swiftlint:disable:this force_cast
+            let format = MarkdownFormat(noteIndex: store?.noteIndex)
+            format.applyInlineOnly(paraStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
+
+            // Copy inline attributes back
+            paraStr.enumerateAttributes(
+                in: NSRange(location: 0, length: paraStr.length)
+            ) { attrDict, range, _ in
+                let storageRange = NSRange(
+                    location: paraRange.location + range.location,
+                    length: range.length
+                )
+                storage.setAttributes(attrDict, range: storageRange)
+            }
+
             textView.setSelectedRange(cursor)
             isFormatting = false
         }
