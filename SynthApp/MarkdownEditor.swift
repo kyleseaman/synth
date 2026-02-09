@@ -1970,12 +1970,15 @@ struct MarkdownEditor: NSViewRepresentable {
 
             if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
                 let para = NSMutableParagraphStyle()
-                para.lineHeightMultiple = 1.25
                 para.minimumLineHeight = ceil(
                     headingFont.ascender - headingFont.descender + headingFont.leading
                 )
                 attrs[.paragraphStyle] = para
             }
+
+            // Wrap all attribute changes in beginEditing/endEditing
+            // to batch them into a single layout pass (per Christian Tietze's approach)
+            storage.beginEditing()
 
             // Apply base attributes to the paragraph
             storage.setAttributes(attrs, range: paraRange)
@@ -2009,6 +2012,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage.setAttributes(attrDict, range: storageRange)
             }
 
+            storage.endEditing()
             textView.setSelectedRange(cursor)
             isFormatting = false
         }
