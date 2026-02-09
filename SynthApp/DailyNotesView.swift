@@ -205,7 +205,7 @@ struct DailyNoteEditor: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.insertionPointColor = NSColor.textColor
         textView.typingAttributes = [
-            .font: NSFont.systemFont(ofSize: 16),
+            .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor
         ]
 
@@ -240,7 +240,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                 format.render(text)
             )
             if let storage = textView.textStorage {
-                let baseFont = NSFont.systemFont(ofSize: 16)
+                let baseFont = Theme.editorNSFont(ofSize: 16)
                 let baseDirectory = noteURL?
                     .deletingLastPathComponent()
                 MarkdownFormat.applyImageRendering(
@@ -325,7 +325,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                 format.render(cleanText)
             )
 
-            let baseFont = NSFont.systemFont(ofSize: 16)
+            let baseFont = Theme.editorNSFont(ofSize: 16)
             let baseDirectory = parent.noteURL?
                 .deletingLastPathComponent()
             let pendingRenders = MarkdownFormat.applyImageRendering(

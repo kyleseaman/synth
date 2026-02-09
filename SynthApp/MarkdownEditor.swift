@@ -19,7 +19,7 @@ struct MarkdownFormat: DocumentFormat {
 
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let bodyFont = NSFont.systemFont(ofSize: 16)
+        let bodyFont = Theme.editorNSFont(ofSize: 16)
         let bodyParagraph = NSMutableParagraphStyle()
         bodyParagraph.lineHeightMultiple = 1.25
         let defaultAttrs: [NSAttributedString.Key: Any] = [
@@ -34,13 +34,13 @@ struct MarkdownFormat: DocumentFormat {
             // Style headings — hide # prefix visually
             var headingPrefixLen = 0
             if line.hasPrefix("# ") {
-                attrs[.font] = NSFont.systemFont(ofSize: 28, weight: .bold)
+                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
                 headingPrefixLen = 2
             } else if line.hasPrefix("## ") {
-                attrs[.font] = NSFont.systemFont(ofSize: 22, weight: .bold)
+                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
                 headingPrefixLen = 3
             } else if line.hasPrefix("### ") {
-                attrs[.font] = NSFont.systemFont(ofSize: 18, weight: .semibold)
+                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
                 headingPrefixLen = 4
             }
 
@@ -275,7 +275,10 @@ struct MarkdownFormat: DocumentFormat {
             ) ?? noteTitle
             // swiftlint:disable:next force_unwrapping
             let linkURL = URL(string: "synth://wiki/\(encodedTitle)")!
-            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let mediumFont = Theme.editorNSFont(
+                ofSize: baseFont.pointSize,
+                weight: .medium
+            )
 
             // Broken link detection: check if target exists in noteIndex
             // If noteIndex hasn't populated yet, assume note exists to avoid broken-link flash on load
@@ -340,8 +343,9 @@ struct MarkdownFormat: DocumentFormat {
             let linkURL = URL(string: "synth://daily/\(dateStr)")!
             // Style the date part as a link
             let linkAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(
-                    ofSize: baseFont.pointSize, weight: .medium
+                .font: Theme.editorNSFont(
+                    ofSize: baseFont.pointSize,
+                    weight: .medium
                 ),
                 .foregroundColor: NSColor.controlAccentColor,
                 .link: linkURL,
@@ -374,7 +378,10 @@ struct MarkdownFormat: DocumentFormat {
             let personLower = personName.lowercased()
             // swiftlint:disable:next force_unwrapping
             let personURL = URL(string: "synth://person/\(personLower)")!
-            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let mediumFont = Theme.editorNSFont(
+                ofSize: baseFont.pointSize,
+                weight: .medium
+            )
             let replacement = NSAttributedString(
                 string: "@\(personName)",
                 attributes: [
@@ -401,7 +408,10 @@ struct MarkdownFormat: DocumentFormat {
             let tagLower = tagName.lowercased()
             // swiftlint:disable:next force_unwrapping
             let tagURL = URL(string: "synth://tag/\(tagLower)")!
-            let mediumFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+            let mediumFont = Theme.editorNSFont(
+                ofSize: baseFont.pointSize,
+                weight: .medium
+            )
             let replacement = NSAttributedString(
                 string: "#\(tagName)",
                 attributes: [
@@ -461,7 +471,7 @@ struct MarkdownFormat: DocumentFormat {
         for match in codePattern.matches(in: str.string, range: codeRange) {
             let innerRange = match.range(at: 1)
             str.addAttributes([
-                .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
+                .font: Theme.terminalNSFont(ofSize: 14),
                 .foregroundColor: NSColor.systemPink,
                 .backgroundColor: NSColor.quaternaryLabelColor
             ], range: innerRange)
@@ -472,7 +482,7 @@ struct MarkdownFormat: DocumentFormat {
 struct RichTextFormat: DocumentFormat {
     func render(_ text: String) -> NSAttributedString {
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 16),
+            .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor
         ]
         return NSAttributedString(string: text, attributes: attrs)
@@ -1431,7 +1441,7 @@ struct MarkdownEditor: NSViewRepresentable {
         let typingParagraph = NSMutableParagraphStyle()
         typingParagraph.lineHeightMultiple = 1.25
         textView.typingAttributes = [
-            .font: NSFont.systemFont(ofSize: 16),
+            .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor,
             .paragraphStyle: typingParagraph
         ]
@@ -1694,7 +1704,7 @@ struct MarkdownEditor: NSViewRepresentable {
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
-            let baseFont = NSFont.systemFont(ofSize: 16)
+            let baseFont = Theme.editorNSFont(ofSize: 16)
             var positions: [CGFloat] = []
             let nsString = textView.string as NSString
             let length = nsString.length
@@ -1800,7 +1810,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 format.render(cleanText)
             )
 
-            let baseFont = NSFont.systemFont(ofSize: 16)
+            let baseFont = Theme.editorNSFont(ofSize: 16)
             let baseDirectory = store?.currentDocumentURL?
                 .deletingLastPathComponent()
             let pendingRenders = MarkdownFormat.applyImageRendering(

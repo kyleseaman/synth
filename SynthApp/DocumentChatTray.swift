@@ -424,7 +424,7 @@ struct DocumentChatTray: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                 Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(Theme.terminalSwiftUIFont(size: 11))
                     .foregroundStyle(.green)
             }
             if !diff.oldText.isEmpty {
@@ -433,7 +433,7 @@ struct DocumentChatTray: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                     Text(diff.oldText.prefix(300) + (diff.oldText.count > 300 ? "..." : ""))
-                        .font(.system(size: 11, design: .monospaced))
+                        .font(Theme.terminalSwiftUIFont(size: 11))
                         .foregroundStyle(.red)
                         .strikethrough()
                 }

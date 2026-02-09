@@ -43,7 +43,7 @@ private struct DelayedShortcutHintModifier: ViewModifier {
             .overlay(alignment: .bottom) {
                 if shouldShowHint {
                     Text(shortcutText)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(Theme.terminalSwiftUIFont(size: 11, weight: .semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.thinMaterial, in: Capsule())
@@ -251,6 +251,7 @@ struct ContentView: View {
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
                     }
+                    .font(Theme.sidebarSwiftUIFont(size: 13))
                     .listStyle(.sidebar)
                     .contentTransition(.identity)
                     .transaction { $0.animation = nil }
@@ -771,7 +772,7 @@ struct LineNumberGutter: View {
                     let yOffset = yPos - scrollOffset
                     if yOffset > -20 && yOffset < size.height + 20 {
                         let text = Text("\(lineIndex + 1)")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(Theme.terminalSwiftUIFont(size: 11))
                             .foregroundColor(Color(.tertiaryLabelColor))
                         context.draw(
                             text,

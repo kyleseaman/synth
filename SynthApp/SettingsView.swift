@@ -6,6 +6,9 @@ struct SettingsView: View {
     @Environment(TemplateStore.self) var templateStore
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
+    @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
+    @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
+    @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
     @State private var detectedPath = ""
     @State private var showKiroPicker = false
     @State private var selectedTemplateIdentifier: UUID?
@@ -68,6 +71,60 @@ struct SettingsView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+
+            Section("Typography") {
+                HStack {
+                    Button("Use MesloLGS (Mono)") {
+                        editorFontCandidates = Theme.mesloPresetValue
+                    }
+                    Button("Use Source Serif 4 (Serif)") {
+                        editorFontCandidates = Theme.sourceSerifPresetValue
+                    }
+                    Button("Use Public Sans (Sans)") {
+                        editorFontCandidates = Theme.publicSansPresetValue
+                    }
+                }
+                .controlSize(.small)
+
+                TextField(
+                    "Editor font candidates",
+                    text: $editorFontCandidates,
+                    prompt: Text("MesloLGS-Regular, FiraCode-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+
+                TextField(
+                    "Terminal font candidates",
+                    text: $terminalFontCandidates,
+                    prompt: Text("MesloLGS-Regular, JetBrainsMono-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+
+                TextField(
+                    "Sidebar font candidates",
+                    text: $sidebarFontCandidates,
+                    prompt: Text("SF Pro Text Regular, Inter-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+
+                Text(
+                    "Use comma-separated PostScript font names. "
+                    + "Blank value falls back to built-in defaults."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Button("Reset Font Overrides") {
+                    editorFontCandidates = ""
+                    terminalFontCandidates = ""
+                    sidebarFontCandidates = ""
+                }
+                .disabled(
+                    editorFontCandidates.isEmpty
+                        && terminalFontCandidates.isEmpty
+                        && sidebarFontCandidates.isEmpty
+                )
             }
         }
         .padding()
@@ -234,7 +291,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $draftTemplateContent)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(Theme.terminalSwiftUIFont(size: 13))
                         .frame(minHeight: 180)
                         .overlay {
                             RoundedRectangle(cornerRadius: 6)
