@@ -59,6 +59,7 @@ struct FileLauncher: View {
     @State private var selectedIndex = 0
     @State private var cachedFiles: [FileTreeNode] = []
     @State private var previewCache: [URL: String] = [:]
+    @State private var noteLookup: [URL: NoteSearchResult] = [:]
     @FocusState private var isSearchFocused: Bool
 
     var results: [LauncherResult] {
@@ -67,7 +68,6 @@ struct FileLauncher: View {
         // Strip leading @ for people-specific search.
         let isPersonQuery = trimmed.hasPrefix("@")
         let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
-        let noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
 
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
@@ -131,12 +131,14 @@ struct FileLauncher: View {
         .onAppear {
             isSearchFocused = true
             cachedFiles = Self.flattenFiles(store.fileTree)
+            noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
             if let selectedNoteResult {
                 loadPreview(for: selectedNoteResult.url)
             }
         }
         .onChange(of: store.fileTree) {
             cachedFiles = Self.flattenFiles(store.fileTree)
+            noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
         }
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: results.count) { _, newValue in
