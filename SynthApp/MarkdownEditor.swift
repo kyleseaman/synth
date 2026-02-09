@@ -1290,49 +1290,48 @@ class FormattingTextView: NSTextView {
         super.insertBacktab(sender)
     }
 
-    func toggleBold() { toggleMarkdownWrap("**") }
-    func toggleItalic() { toggleMarkdownWrap("*") }
-
-    private func toggleMarkdownWrap(_ marker: String) {
+    func toggleBold() {
         let range = selectedRange()
         guard range.length > 0, let storage = textStorage else { return }
-        let text = storage.string as NSString
-        let selected = text.substring(with: range)
-        let markerLen = marker.count
-
-        // Check if already wrapped with this marker
-        let hasBefore = range.location >= markerLen
-            && text.substring(
-                with: NSRange(location: range.location - markerLen, length: markerLen)
-            ) == marker
-        let hasAfter = range.location + range.length + markerLen <= text.length
-            && text.substring(
-                with: NSRange(location: range.location + range.length, length: markerLen)
-            ) == marker
-
-        if hasBefore && hasAfter {
-            // Remove markers
-            let fullRange = NSRange(
-                location: range.location - markerLen,
-                length: range.length + markerLen * 2
-            )
-            storage.replaceCharacters(in: fullRange, with: selected)
-            setSelectedRange(NSRange(
-                location: range.location - markerLen,
-                length: range.length
-            ))
+        let currentFont = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+            ?? Theme.editorNSFont(ofSize: 16)
+        let fontManager = NSFontManager.shared
+        let traits = fontManager.traits(of: currentFont)
+        let newFont: NSFont
+        if traits.contains(.boldFontMask) {
+            newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
         } else {
-            // Add markers
-            let wrapped = "\(marker)\(selected)\(marker)"
-            storage.replaceCharacters(in: range, with: wrapped)
-            setSelectedRange(NSRange(
-                location: range.location + markerLen,
-                length: range.length
-            ))
+            newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
         }
+        storage.addAttribute(.font, value: newFont, range: range)
     }
 
-    func toggleUnderline() { toggleMarkdownWrap("__") }
+    func toggleItalic() {
+        let range = selectedRange()
+        guard range.length > 0, let storage = textStorage else { return }
+        let currentFont = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
+            ?? Theme.editorNSFont(ofSize: 16)
+        let fontManager = NSFontManager.shared
+        let traits = fontManager.traits(of: currentFont)
+        let newFont: NSFont
+        if traits.contains(.italicFontMask) {
+            newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
+        } else {
+            newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
+        }
+        storage.addAttribute(.font, value: newFont, range: range)
+    }
+
+    func toggleUnderline() {
+        let range = selectedRange()
+        guard range.length > 0, let storage = textStorage else { return }
+        let current = storage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
+        if current != 0 {
+            storage.removeAttribute(.underlineStyle, range: range)
+        } else {
+            storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        }
+    }
 
     // MARK: - Shared Autocomplete Completion
 
