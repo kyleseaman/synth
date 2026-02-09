@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import ImageIO
 import Observation
+import CoreServices
 
 struct StoredMediaAsset {
     let fileURL: URL
@@ -131,6 +132,38 @@ private extension NSImage {
     }
 }
 
+private final class WorkspaceWatcherContext {
+    weak var store: DocumentStore?
+
+    init(store: DocumentStore) {
+        self.store = store
+    }
+}
+
+private let watcherContextRetain: CFAllocatorRetainCallBack = { info in
+    guard let info else { return nil }
+    let rawPointer = UnsafeMutableRawPointer(mutating: info)
+    let context = Unmanaged<WorkspaceWatcherContext>.fromOpaque(rawPointer)
+    return UnsafeRawPointer(context.retain().toOpaque())
+}
+
+private let watcherContextRelease: CFAllocatorReleaseCallBack = { info in
+    guard let info else { return }
+    let rawPointer = UnsafeMutableRawPointer(mutating: info)
+    Unmanaged<WorkspaceWatcherContext>.fromOpaque(rawPointer).release()
+}
+
+private enum DiskDeleteResult {
+    case deleted(URL)
+    case notFound
+    case failed(String)
+}
+
+private enum DiskDeleteScope {
+    case workspace
+    case media
+}
+
 final class WorkspaceImageLoader: @unchecked Sendable {
     static let shared = WorkspaceImageLoader()
 
@@ -238,7 +271,12 @@ enum ActiveModal: Equatable {
 @Observable
 final class DocumentStore {
     var workspace: URL?
-    var fileTree: [FileTreeNode] = []
+    var fileTreeVersion: Int = 0
+    var fileTree: [FileTreeNode] = [] {
+        didSet {
+            fileTreeVersion &+= 1
+        }
+    }
     var openFiles: [Document] = []
     var currentIndex = -1
     var steeringFiles: [String] = []
@@ -258,6 +296,9 @@ final class DocumentStore {
     var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
+    var pendingDeleteTarget: URL?
+    var pendingDeleteName: String = ""
+    var pendingDeleteIsDirectory = false
     var showWorkspacePicker = false
 
     let noteIndex = NoteIndex()
@@ -276,9 +317,14 @@ final class DocumentStore {
 
     @ObservationIgnored private var chatStates: [URL: DocumentChatState] = [:]
     @ObservationIgnored private let maxRecentFiles = 20
-    @ObservationIgnored private var fileWatcher: DispatchSourceFileSystemObject?
-    @ObservationIgnored private var watcherFD: Int32 = -1
+    @ObservationIgnored private var fileEventStream: FSEventStreamRef?
+    @ObservationIgnored private var watcherContext: WorkspaceWatcherContext?
     @ObservationIgnored private var fileTreeLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingFileTreeReloadTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingWatcherReloadTask: Task<Void, Never>?
+    @ObservationIgnored private var isFileTreeScanRunning = false
+    @ObservationIgnored private var fileTreeRescanRequested = false
+    @ObservationIgnored private var activeFileTreeScanID = UUID()
 
     init() {
         loadRecentFiles()
@@ -299,38 +345,67 @@ final class DocumentStore {
         }
     }
 
-    deinit {
-        fileTreeLoadTask?.cancel()
-        fileWatcher?.cancel()
-        fileWatcher = nil
+    func shutdownForTermination() {
+        resetFileTreeScanState()
+        saveAll()
+        chatStates.values.forEach { chatState in
+            chatState.stop()
+        }
+        stopWatching()
+        mcpServer.stop()
     }
 
     private func startWatching() {
         guard let workspace = workspace else { return }
         stopWatching()
 
-        watcherFD = Darwin.open(workspace.path, O_EVTONLY)
-        guard watcherFD >= 0 else { return }
+        let context = WorkspaceWatcherContext(store: self)
+        watcherContext = context
 
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: watcherFD,
-            eventMask: .write,
-            queue: .main
+        var streamContext = FSEventStreamContext(
+            version: 0,
+            info: UnsafeMutableRawPointer(Unmanaged.passRetained(context).toOpaque()),
+            retain: watcherContextRetain,
+            release: watcherContextRelease,
+            copyDescription: nil
         )
-        source.setEventHandler { [weak self] in
-            self?.loadFileTree()
+
+        let watchPaths = [workspace.path] as CFArray
+        let streamFlags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagFileEvents
+                | kFSEventStreamCreateFlagNoDefer
+                | kFSEventStreamCreateFlagUseCFTypes
+        )
+
+        guard let stream = FSEventStreamCreate(
+            kCFAllocatorDefault,
+            Self.workspaceEventCallback,
+            &streamContext,
+            watchPaths,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
+            0.2,
+            streamFlags
+        ) else {
+            return
         }
-        source.setCancelHandler { [weak self] in
-            if let fileDesc = self?.watcherFD, fileDesc >= 0 { close(fileDesc) }
-            self?.watcherFD = -1
+
+        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
+        if FSEventStreamStart(stream) {
+            fileEventStream = stream
+        } else {
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+            watcherContext = nil
         }
-        source.resume()
-        fileWatcher = source
     }
 
     private func stopWatching() {
-        fileWatcher?.cancel()
-        fileWatcher = nil
+        guard let stream = fileEventStream else { return }
+        FSEventStreamStop(stream)
+        FSEventStreamInvalidate(stream)
+        FSEventStreamRelease(stream)
+        fileEventStream = nil
+        watcherContext = nil
     }
 
     func loadRecentFiles() {
@@ -350,6 +425,8 @@ final class DocumentStore {
     }
 
     func setWorkspace(_ url: URL) {
+        resetFileTreeScanState()
+
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -360,6 +437,9 @@ final class DocumentStore {
             currentIndex = -1
             detailMode = .editor
             mediaFiles = MediaManager.screenshotURLs(in: url)
+            pendingDeleteTarget = nil
+            pendingDeleteName = ""
+            pendingDeleteIsDirectory = false
         }
         startWatching()
         loadKiroConfig()
@@ -371,20 +451,9 @@ final class DocumentStore {
 
     func loadFileTree() {
         guard let workspace = workspace else { return }
-        fileTreeLoadTask?.cancel()
-        fileTreeLoadTask = Task(priority: .userInitiated) { [weak self] in
-            let scanResult = Self.scanWorkspace(at: workspace)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                guard let self = self, self.workspace == workspace else { return }
-                self.fileTree = scanResult.tree
-                self.noteIndex.rebuild(from: scanResult.tree, workspace: workspace)
-                self.mediaFiles = scanResult.media
-                self.backlinkIndex.rebuild(fileTree: scanResult.tree)
-                self.tagIndex.rebuild(fileTree: scanResult.tree)
-                self.peopleIndex.rebuild(fileTree: scanResult.tree)
-            }
-        }
+        fileTreeRescanRequested = true
+        guard !isFileTreeScanRunning else { return }
+        runFileTreeScan(for: workspace)
     }
 
     private struct WorkspaceScanResult {
@@ -400,6 +469,57 @@ final class DocumentStore {
             media.removeAll { removed.contains($0) }
         }
         return WorkspaceScanResult(tree: tree, media: media)
+    }
+
+    private func runFileTreeScan(for workspace: URL) {
+        guard fileTreeRescanRequested else { return }
+        isFileTreeScanRunning = true
+        fileTreeRescanRequested = false
+        let scanID = UUID()
+        activeFileTreeScanID = scanID
+
+        fileTreeLoadTask?.cancel()
+        fileTreeLoadTask = Task(priority: .userInitiated) { [weak self] in
+            let scanResult = Self.scanWorkspace(at: workspace)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self = self else { return }
+                guard Self.shouldApplyFileTreeScanResult(
+                    activeScanID: self.activeFileTreeScanID,
+                    scanID: scanID,
+                    currentWorkspace: self.workspace,
+                    scanWorkspace: workspace
+                ) else {
+                    if self.activeFileTreeScanID == scanID {
+                        self.isFileTreeScanRunning = false
+                        self.fileTreeRescanRequested = false
+                    }
+                    return
+                }
+                self.applyScanResult(scanResult, workspace: workspace)
+                self.isFileTreeScanRunning = false
+                if self.fileTreeRescanRequested {
+                    self.runFileTreeScan(for: workspace)
+                }
+            }
+        }
+    }
+
+    private func applyScanResult(_ scanResult: WorkspaceScanResult, workspace: URL) {
+        fileTree = scanResult.tree
+        noteIndex.rebuild(from: scanResult.tree, workspace: workspace)
+        mediaFiles = scanResult.media
+        backlinkIndex.rebuild(fileTree: scanResult.tree)
+        tagIndex.rebuild(fileTree: scanResult.tree)
+        peopleIndex.rebuild(fileTree: scanResult.tree)
+    }
+
+    private func rebuildIndexesFromCurrentTree() {
+        guard let workspace else { return }
+        noteIndex.rebuild(from: fileTree, workspace: workspace)
+        backlinkIndex.rebuild(fileTree: fileTree)
+        tagIndex.rebuild(fileTree: fileTree)
+        peopleIndex.rebuild(fileTree: fileTree)
     }
 
     @discardableResult
@@ -613,6 +733,26 @@ final class DocumentStore {
         return openFiles[currentIndex].url
     }
 
+    @discardableResult
+    func reloadOpenDocumentFromDisk(_ fileURL: URL) -> Bool {
+        let resolvedURL = Self.canonicalFileURL(fileURL)
+        guard let fileIndex = openFiles.firstIndex(
+            where: { Self.canonicalFileURL($0.url) == resolvedURL }
+        ) else { return false }
+        guard let reloadedDocument = Document.load(from: openFiles[fileIndex].url) else { return false }
+
+        openFiles[fileIndex].content = reloadedDocument.content
+        openFiles[fileIndex].isDirty = false
+
+        let reloadedContent = reloadedDocument.content.string
+        let reloadedURL = openFiles[fileIndex].url
+        noteIndex.updateFile(reloadedURL, content: reloadedContent)
+        backlinkIndex.updateFile(reloadedURL, content: reloadedContent)
+        tagIndex.updateFile(reloadedURL, content: reloadedContent)
+        peopleIndex.updateFile(reloadedURL, content: reloadedContent)
+        return true
+    }
+
     func savePastedImageToMedia(_ image: NSImage, noteURL: URL) -> String? {
         guard let workspace else { return nil }
         guard let savedMedia = try? MediaManager.saveScreenshotImage(
@@ -702,6 +842,103 @@ final class DocumentStore {
         return newURL
     }
 
+    private static func canonicalFileURL(_ fileURL: URL) -> URL {
+        fileURL.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    private static func equivalentFileURL(_ firstURL: URL, _ secondURL: URL) -> Bool {
+        if firstURL.standardizedFileURL.path == secondURL.standardizedFileURL.path {
+            return true
+        }
+        return canonicalFileURL(firstURL).path == canonicalFileURL(secondURL).path
+    }
+
+    private static func deletionCandidates(for url: URL) -> [URL] {
+        let standardized = url.standardizedFileURL
+        let canonical = canonicalFileURL(url)
+        if standardized.path == canonical.path {
+            return [standardized]
+        }
+        return [standardized, canonical]
+    }
+
+    private func removeFileFromInMemoryTree(_ fileURL: URL) {
+        fileTree = Self.removingNode(fileURL, from: fileTree)
+    }
+
+    private static func removingNode(_ target: URL, from nodes: [FileTreeNode]) -> [FileTreeNode] {
+        nodes.compactMap { node in
+            if equivalentFileURL(node.url, target) {
+                return nil
+            }
+
+            if node.isDirectory, let children = node.children {
+                let prunedChildren = removingNode(target, from: children)
+                return FileTreeNode(url: node.url, isDirectory: true, children: prunedChildren)
+            }
+
+            return node
+        }
+    }
+
+    private func scheduleFileTreeReload(delaySeconds: TimeInterval = 0.3) {
+        pendingFileTreeReloadTask?.cancel()
+        pendingFileTreeReloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.loadFileTree()
+        }
+    }
+
+    private func handleWorkspaceEvents(_ eventPaths: [String]) {
+        guard let workspace else { return }
+        let workspacePath = workspace.standardizedFileURL.path
+        let shouldRefresh = eventPaths.isEmpty || eventPaths.contains { eventPath in
+            Self.shouldRefreshSidebar(forWorkspace: workspacePath, eventPath: eventPath)
+        }
+        guard shouldRefresh else { return }
+
+        pendingWatcherReloadTask?.cancel()
+        pendingWatcherReloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            self?.loadFileTree()
+        }
+    }
+
+    static func shouldRefreshSidebar(forWorkspace workspacePath: String, eventPath: String) -> Bool {
+        let normalizedWorkspace = URL(fileURLWithPath: workspacePath).standardizedFileURL.path
+        let normalizedEvent = URL(fileURLWithPath: eventPath).standardizedFileURL.path
+        guard normalizedEvent.hasPrefix(normalizedWorkspace) else { return false }
+
+        let relativePath = String(normalizedEvent.dropFirst(normalizedWorkspace.count))
+        if relativePath == "/.kiro" || relativePath.hasPrefix("/.kiro/") {
+            return false
+        }
+        if relativePath == "/daily" || relativePath.hasPrefix("/daily/") {
+            return false
+        }
+        if relativePath == "/media" || relativePath.hasPrefix("/media/") {
+            return false
+        }
+        return true
+    }
+
+    private static let workspaceEventCallback: FSEventStreamCallback = { _, clientInfo, _, eventPathsPointer, _, _ in
+        guard let clientInfo else { return }
+        let context = Unmanaged<WorkspaceWatcherContext>
+            .fromOpaque(clientInfo)
+            .takeUnretainedValue()
+        guard let store = context.store else { return }
+
+        let eventPathArray = Unmanaged<CFArray>
+            .fromOpaque(eventPathsPointer)
+            .takeUnretainedValue() as NSArray
+        let eventPaths = eventPathArray.compactMap { $0 as? String }
+
+        store.handleWorkspaceEvents(eventPaths)
+    }
+
     func closeCurrentTab() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
         closeTab(at: currentIndex)
@@ -739,7 +976,7 @@ final class DocumentStore {
             url = drafts.appendingPathComponent("Untitled \(num).md")
         }
 
-        try? "# \n\n".write(to: url, atomically: true, encoding: .utf8)
+        try? "# \n".write(to: url, atomically: true, encoding: .utf8)
         loadFileTree()
         open(url)
     }
@@ -807,7 +1044,7 @@ final class DocumentStore {
             workspace.standardizedFileURL.path
         ) else { return }
         if !FileManager.default.fileExists(atPath: url.path) {
-            let content = "# \(sanitized)\n\n"
+            let content = "# \(sanitized)\n"
             try? content.write(
                 to: url, atomically: true, encoding: .utf8
             )
@@ -818,13 +1055,66 @@ final class DocumentStore {
         }
     }
 
-    func delete(_ url: URL) {
-        // Close if open
-        if let idx = openFiles.firstIndex(where: { $0.url == url }) {
+    @discardableResult
+    func delete(_ url: URL) -> Bool {
+        let candidates = Self.deletionCandidates(for: url)
+
+        // Close if open (canonical path match prevents stale tabs)
+        if let idx = openFiles.firstIndex(
+            where: { openFile in
+                candidates.contains { Self.equivalentFileURL(openFile.url, $0) }
+            }
+        ) {
             closeTab(at: idx)
         }
-        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
-        loadFileTree()
+
+        switch deleteFromDisk(url, scope: .workspace) {
+        case .deleted(let deletedURL):
+            resetFileTreeScanState()
+            removeFileFromInMemoryTree(deletedURL)
+            rebuildIndexesFromCurrentTree()
+            scheduleFileTreeReload(delaySeconds: 0.6)
+            return true
+        case .notFound:
+            resetFileTreeScanState()
+            removeFileFromInMemoryTree(url)
+            rebuildIndexesFromCurrentTree()
+            scheduleFileTreeReload(delaySeconds: 0.6)
+            return false
+        case .failed(let message):
+            print("[DocumentStore] Failed to delete \(url.path): \(message)")
+            return false
+        }
+    }
+
+    func requestDelete(_ targetURL: URL, isDirectory: Bool) {
+        if isDirectory {
+            pendingDeleteTarget = targetURL
+            pendingDeleteName = targetURL.lastPathComponent
+            pendingDeleteIsDirectory = true
+            return
+        }
+
+        _ = delete(targetURL)
+        pendingDeleteTarget = nil
+        pendingDeleteName = ""
+        pendingDeleteIsDirectory = false
+    }
+
+    func cancelPendingDelete() {
+        pendingDeleteTarget = nil
+        pendingDeleteName = ""
+        pendingDeleteIsDirectory = false
+    }
+
+    @discardableResult
+    func confirmPendingDelete() -> Bool {
+        guard let targetURL = pendingDeleteTarget else { return false }
+        let didDelete = delete(targetURL)
+        pendingDeleteTarget = nil
+        pendingDeleteName = ""
+        pendingDeleteIsDirectory = false
+        return didDelete
     }
 
     func promptRename(_ url: URL) {
@@ -886,5 +1176,146 @@ final class DocumentStore {
 
     func showImageDetailModal(_ url: URL) {
         imageDetailURL = url
+    }
+}
+
+extension DocumentStore {
+    @discardableResult
+    func deleteMedia(_ mediaURL: URL) -> Bool {
+        switch deleteFromDisk(mediaURL, scope: .media) {
+        case .deleted(let deletedURL):
+            resetFileTreeScanState()
+            mediaFiles.removeAll { itemURL in
+                Self.equivalentFileURL(itemURL, deletedURL)
+                    || Self.equivalentFileURL(itemURL, mediaURL)
+            }
+            scheduleFileTreeReload(delaySeconds: 0.6)
+            return true
+        case .notFound:
+            resetFileTreeScanState()
+            mediaFiles.removeAll { itemURL in
+                Self.equivalentFileURL(itemURL, mediaURL)
+            }
+            scheduleFileTreeReload(delaySeconds: 0.6)
+            return false
+        case .failed(let message):
+            print("[DocumentStore] Failed to delete media \(mediaURL.path): \(message)")
+            return false
+        }
+    }
+
+    static func shouldApplyFileTreeScanResult(
+        activeScanID: UUID,
+        scanID: UUID,
+        currentWorkspace: URL?,
+        scanWorkspace: URL
+    ) -> Bool {
+        guard activeScanID == scanID else { return false }
+        guard let currentWorkspace else { return false }
+        return currentWorkspace.standardizedFileURL.path == scanWorkspace.standardizedFileURL.path
+    }
+}
+
+private extension DocumentStore {
+    func resetFileTreeScanState() {
+        fileTreeLoadTask?.cancel()
+        pendingFileTreeReloadTask?.cancel()
+        pendingWatcherReloadTask?.cancel()
+        isFileTreeScanRunning = false
+        fileTreeRescanRequested = false
+        activeFileTreeScanID = UUID()
+    }
+
+    func deleteFromDisk(_ sourceURL: URL, scope: DiskDeleteScope) -> DiskDeleteResult {
+        guard isDeletionTargetInAllowedScope(sourceURL, scope: scope) else {
+            return .failed("Refusing to delete outside workspace scope")
+        }
+
+        let candidates = Self.deletionCandidates(for: sourceURL)
+        var didFindExistingCandidate = false
+        var latestErrorMessage: String?
+        var visitedPaths: Set<String> = []
+
+        for candidateURL in candidates {
+            let normalizedPath = candidateURL.standardizedFileURL.path
+            guard visitedPaths.insert(normalizedPath).inserted else { continue }
+            guard FileManager.default.fileExists(atPath: candidateURL.path) else { continue }
+            didFindExistingCandidate = true
+
+            if deleteFilesystemEntry(at: candidateURL) {
+                return .deleted(candidateURL)
+            }
+
+            latestErrorMessage = "Unable to remove \(candidateURL.path)"
+        }
+
+        if didFindExistingCandidate {
+            return .failed(latestErrorMessage ?? "Unable to remove file")
+        }
+        return .notFound
+    }
+
+    func deleteFilesystemEntry(at url: URL) -> Bool {
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                return true
+            }
+        } catch {
+            print("[DocumentStore] Failed to trash \(url.path): \(error)")
+        }
+
+        do {
+            try FileManager.default.removeItem(at: url)
+            return !FileManager.default.fileExists(atPath: url.path)
+        } catch {
+            print("[DocumentStore] Failed to remove \(url.path): \(error)")
+        }
+
+        return false
+    }
+
+    func isDeletionTargetInAllowedScope(_ sourceURL: URL, scope: DiskDeleteScope) -> Bool {
+        guard let workspace else { return false }
+
+        let workspaceURL = workspace.standardizedFileURL
+        let canonicalWorkspaceURL = Self.canonicalFileURL(workspace)
+        let mediaURL = workspaceURL.appendingPathComponent("media", isDirectory: true)
+        let canonicalMediaURL = Self.canonicalFileURL(mediaURL)
+
+        let allowedRoots: [String]
+        switch scope {
+        case .workspace:
+            allowedRoots = [
+                workspaceURL.path,
+                canonicalWorkspaceURL.path
+            ]
+        case .media:
+            allowedRoots = [
+                mediaURL.path,
+                canonicalMediaURL.path
+            ]
+        }
+
+        let uniqueRoots = Array(Set(allowedRoots))
+        let targetPaths = [
+            sourceURL.standardizedFileURL.path,
+            Self.canonicalFileURL(sourceURL).path
+        ]
+        let uniqueTargetPaths = Array(Set(targetPaths))
+
+        for targetPath in uniqueTargetPaths {
+            guard uniqueRoots.contains(where: { rootPath in
+                Self.pathIsWithinDirectory(targetPath, directoryPath: rootPath)
+            }) else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    static func pathIsWithinDirectory(_ path: String, directoryPath: String) -> Bool {
+        path == directoryPath || path.hasPrefix(directoryPath + "/")
     }
 }

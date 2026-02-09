@@ -154,7 +154,7 @@ enum ACPProtocolAdapter {
     ) -> [String: AnyCodable] {
         [
             "sessionId": AnyCodable(sessionId),
-            "content": AnyCodable(contentBlocks.map { AnyCodable($0) })
+            "prompt": AnyCodable(contentBlocks.map { AnyCodable($0) })
         ]
     }
 }

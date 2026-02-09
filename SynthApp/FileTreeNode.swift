@@ -15,10 +15,6 @@ struct FileTreeNode: Identifiable, Equatable {
         self.children = children
     }
 
-    static func == (lhs: FileTreeNode, rhs: FileTreeNode) -> Bool {
-        lhs.id == rhs.id
-    }
-
     static func scan(_ url: URL) -> [FileTreeNode] {
         let keys: [URLResourceKey] = [.isDirectoryKey]
         guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -27,7 +23,7 @@ struct FileTreeNode: Identifiable, Equatable {
         return contents
             .filter {
                 let name = $0.lastPathComponent
-                if name.hasPrefix(".") && name != ".kiro" { return false }
+                if name.hasPrefix(".") { return false }
                 if name == "daily" || name == "media" { return false }
                 return true
             }

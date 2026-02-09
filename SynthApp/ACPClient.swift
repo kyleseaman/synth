@@ -12,6 +12,7 @@ import Observation
     @ObservationIgnored private var cwd: String = ""
     @ObservationIgnored private var agent: String?
     @ObservationIgnored private var lastToolCallDiff: [String: DiffContent] = [:]
+    @ObservationIgnored private var lastToolCallLocations: [String: [String]] = [:]
     @ObservationIgnored private var pendingPromptRequest = false
     @ObservationIgnored var mcpServerManager: MCPServerManager?
 
@@ -27,6 +28,7 @@ import Observation
     @ObservationIgnored var onFileRead: ((String) -> String?)?
     @ObservationIgnored var onToolCall: ((ACPToolCall) -> Void)?
     @ObservationIgnored var onToolCallUpdate: ((String, String) -> Void)?
+    @ObservationIgnored var onEditToolCompleted: ((String, [String]) -> Void)?
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
 
@@ -244,6 +246,10 @@ import Observation
                    let newText = first["newText"]?.stringValue {
                     self.lastToolCallDiff[toolCallId] = DiffContent(oldText: oldText, newText: newText, path: path)
                 }
+                let locationPaths = Self.locationPaths(from: update)
+                if !locationPaths.isEmpty {
+                    self.lastToolCallLocations[toolCallId] = locationPaths
+                }
                 toolCalls.append(call)
                 onToolCall?(call)
             }
@@ -251,15 +257,67 @@ import Observation
         case .toolCallUpdate:
             if let toolCallId = update["toolCallId"]?.stringValue {
                 let status = update["status"]?.stringValue ?? "in_progress"
+                let updateLocationPaths = Self.locationPaths(from: update)
+                if !updateLocationPaths.isEmpty {
+                    let previousPaths = lastToolCallLocations[toolCallId] ?? []
+                    lastToolCallLocations[toolCallId] = Self.mergeUniquePaths(
+                        previousPaths + updateLocationPaths
+                    )
+                }
                 if let idx = toolCalls.firstIndex(where: { $0.id == toolCallId }) {
                     toolCalls[idx].status = status
                 }
                 onToolCallUpdate?(toolCallId, status)
+
+                let toolKind = update["kind"]?.stringValue
+                    ?? toolCalls.first(where: { $0.id == toolCallId })?.kind
+                    ?? "other"
+                if status == "completed", toolKind == "edit" {
+                    let locationPaths = lastToolCallLocations[toolCallId] ?? updateLocationPaths
+                    if !locationPaths.isEmpty {
+                        onEditToolCompleted?(toolCallId, locationPaths)
+                    }
+                }
+
+                let isTerminalStatus = status == "completed"
+                    || status == "failed"
+                    || status == "cancelled"
+                if isTerminalStatus {
+                    lastToolCallLocations.removeValue(forKey: toolCallId)
+                    lastToolCallDiff.removeValue(forKey: toolCallId)
+                    if pendingPermission?.toolCallId == toolCallId {
+                        pendingPermission = nil
+                    }
+                }
             }
 
         case .turnEnd:
             finishTurnIfNeeded()
         }
+    }
+
+    nonisolated static func locationPaths(from update: [String: AnyCodable]) -> [String] {
+        guard let locations = update["locations"]?.arrayValue else { return [] }
+        var parsedPaths: [String] = []
+        var seenPaths: Set<String> = []
+        for locationEntry in locations {
+            guard let locationDict = locationEntry.dictValue,
+                  let filePath = locationDict["path"]?.stringValue,
+                  !filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            if seenPaths.insert(filePath).inserted {
+                parsedPaths.append(filePath)
+            }
+        }
+        return parsedPaths
+    }
+
+    nonisolated private static func mergeUniquePaths(_ paths: [String]) -> [String] {
+        var uniquePaths: [String] = []
+        var seenPaths: Set<String> = []
+        for filePath in paths where seenPaths.insert(filePath).inserted {
+            uniquePaths.append(filePath)
+        }
+        return uniquePaths
     }
 
     // MARK: - Send Helpers

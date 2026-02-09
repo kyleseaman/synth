@@ -1,5 +1,61 @@
 import SwiftUI
 
+enum ThinkingAnimation {
+    static let phaseDuration: TimeInterval = 0.45
+    private static let totalPhases = 6
+    private static let statusSteps = ["Thinking", "Reviewing", "Reasoning"]
+    private static let fallbackByKind: [String: String] = [
+        "read": "Reading",
+        "edit": "Editing",
+        "search": "Searching",
+        "execute": "Running",
+        "think": "Reasoning"
+    ]
+
+    static func phaseIndex(at date: Date) -> Int {
+        let rawValue = Int((date.timeIntervalSinceReferenceDate / phaseDuration).rounded(.down))
+        return rawValue.modulo(totalPhases)
+    }
+
+    static func activeDotIndex(for phaseIndex: Int) -> Int {
+        phaseIndex.modulo(3)
+    }
+
+    static func statusText(for phaseIndex: Int) -> String {
+        statusText(for: phaseIndex, latestToolCall: nil)
+    }
+
+    static func statusText(for phaseIndex: Int, latestToolCall: ACPToolCall?) -> String {
+        if let latestToolCall {
+            if let titleAction = actionFromToolTitle(latestToolCall.title) {
+                return titleAction
+            }
+            return fallbackByKind[latestToolCall.kind.lowercased()] ?? "Thinking"
+        }
+        return statusSteps[phaseIndex.modulo(statusSteps.count)]
+    }
+
+    private static func actionFromToolTitle(_ title: String) -> String? {
+        guard let token = title
+            .split(separator: " ")
+            .first?
+            .trimmingCharacters(in: .punctuationCharacters) else { return nil }
+        let actionWord = String(token)
+        guard actionWord.count >= 4 else { return nil }
+        guard actionWord.range(of: "^[A-Za-z]+$", options: .regularExpression) != nil else {
+            return nil
+        }
+        return actionWord.prefix(1).uppercased() + actionWord.dropFirst()
+    }
+}
+
+private extension Int {
+    func modulo(_ divisor: Int) -> Int {
+        let remainder = self % divisor
+        return remainder >= 0 ? remainder : remainder + divisor
+    }
+}
+
 @ViewBuilder
 private func roleBadge(symbolName: String, tintColor: Color) -> some View {
     Image(systemName: symbolName)
@@ -65,9 +121,55 @@ struct ChatBubble: View {
 
 // MARK: - Streaming Bubble
 
+struct ThinkingStatusIndicator: View {
+    let latestToolCall: ACPToolCall?
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: ThinkingAnimation.phaseDuration / 2)) { timeline in
+            let phaseIndex = ThinkingAnimation.phaseIndex(at: timeline.date)
+            let activeDot = ThinkingAnimation.activeDotIndex(for: phaseIndex)
+            let statusText = ThinkingAnimation.statusText(
+                for: phaseIndex,
+                latestToolCall: latestToolCall
+            )
+            let pulseScale = phaseIndex % 2 == 0 ? 1.0 : 1.08
+
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.12))
+                        .frame(width: 18, height: 18)
+                        .scaleEffect(pulseScale)
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+
+                HStack(spacing: 4) {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .fill(
+                                index == activeDot
+                                    ? Color.accentColor
+                                    : Color.secondary.opacity(0.35)
+                            )
+                            .frame(width: 5, height: 5)
+                            .offset(y: index == activeDot ? -1 : 0)
+                    }
+                }
+
+                Text("\(statusText)...")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 struct StreamingBubble: View {
     let text: String
     let isLoading: Bool
+    let latestToolCall: ACPToolCall?
 
     var body: some View {
         HStack {
@@ -78,12 +180,7 @@ struct StreamingBubble: View {
                         .font(.system(size: 13))
                 }
                 if isLoading {
-                    HStack(spacing: 4) {
-                        ProgressView().scaleEffect(0.6)
-                        Text("Thinking...")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+                    ThinkingStatusIndicator(latestToolCall: latestToolCall)
                 }
             }
             .padding(.horizontal, 12)

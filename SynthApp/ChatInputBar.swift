@@ -5,7 +5,7 @@ struct ChatInputBar: View {
     var onSend: () -> Void
     @FocusState.Binding var isInputFocused: Bool
     var isDisabled: Bool = false
-    var placeholder = "Ask for edits, reasoning, or code changes"
+    var placeholder = "Ask for edits, summaries, or rewrites"
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {

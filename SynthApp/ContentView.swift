@@ -17,10 +17,99 @@ struct EditorSelectionContext {
     let selectedLineRange: String
 }
 
+enum ShortcutHintRules {
+    static let revealDelaySeconds: TimeInterval = 1.0
+
+    static func shouldRevealHint(hoverStartDate: Date, currentDate: Date) -> Bool {
+        currentDate.timeIntervalSince(hoverStartDate) >= revealDelaySeconds
+    }
+}
+
+enum SidebarSectionHoverRules {
+    static func backgroundOpacity(isSelected: Bool, isHovering: Bool) -> Double {
+        if isSelected { return 0.15 }
+        return isHovering ? 0.08 : 0.0
+    }
+}
+
+private struct DelayedShortcutHintModifier: ViewModifier {
+    let shortcutText: String
+    @State private var isPointerHovering = false
+    @State private var hoverStartDate: Date?
+    @State private var shouldShowHint = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .bottom) {
+                if shouldShowHint {
+                    Text(shortcutText)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial, in: Capsule())
+                        .offset(y: 24)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                        .allowsHitTesting(false)
+                }
+            }
+            .onHover { hovering in
+                isPointerHovering = hovering
+                if hovering {
+                    let hoverDate = Date()
+                    hoverStartDate = hoverDate
+                    shouldShowHint = false
+                    DispatchQueue.main.asyncAfter(
+                        deadline: .now() + ShortcutHintRules.revealDelaySeconds
+                    ) {
+                        guard isPointerHovering,
+                              hoverStartDate == hoverDate,
+                              ShortcutHintRules.shouldRevealHint(
+                                  hoverStartDate: hoverDate,
+                                  currentDate: Date()
+                              ) else { return }
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            shouldShowHint = true
+                        }
+                    }
+                } else {
+                    hoverStartDate = nil
+                    withAnimation(.easeOut(duration: 0.08)) {
+                        shouldShowHint = false
+                    }
+                }
+            }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func keyboardShortcutHint(_ shortcutText: String?) -> some View {
+        if let shortcutText {
+            modifier(DelayedShortcutHintModifier(shortcutText: shortcutText))
+        } else {
+            self
+        }
+    }
+}
+
 struct ContentView: View {
     @Environment(DocumentStore.self) var store
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
+    @State private var hoveredSidebarMode: DetailViewMode?
+
+    private func showSettingsWindow() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    }
+
+    private var settingsToolbarButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "openSettings", placement: .automatic) {
+            Button(action: showSettingsWindow) {
+                Image(systemName: "gearshape")
+            }
+            .keyboardShortcutHint("⌘,")
+        }
+    }
 
     private var openWorkspaceButton: some CustomizableToolbarContent {
         ToolbarItem(id: "openWorkspace", placement: .automatic) {
@@ -29,7 +118,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "folder")
             }
-            .help("Open Workspace (⌘O)")
+            .keyboardShortcutHint("⌘O")
         }
     }
 
@@ -49,6 +138,23 @@ struct ContentView: View {
         }
     }
 
+    private var backlinksToolbarButton: some CustomizableToolbarContent {
+        ToolbarItem(id: "toggleBacklinks", placement: .primaryAction) {
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    store.toggleBacklinks()
+                }
+            } label: {
+                Image(systemName: "link")
+                    .foregroundStyle(
+                        store.showBacklinks && store.detailMode == .editor ? .primary : .secondary
+                    )
+            }
+            .disabled(store.detailMode != .editor || store.openFiles.isEmpty)
+            .keyboardShortcutHint("⌘⇧B")
+        }
+    }
+
     var body: some View {
         @Bindable var store = store
         NavigationSplitView(columnVisibility: $store.columnVisibility) {
@@ -62,6 +168,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         Button("Open Workspace...") { store.pickWorkspace() }
                             .keyboardShortcut("o")
+                            .keyboardShortcutHint("⌘O")
                     }
                     .frame(maxHeight: .infinity)
                 } else {
@@ -79,11 +186,17 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .dailyNotes
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .dailyNotes,
+                                    isHovering: hoveredSidebarMode == .dailyNotes
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .dailyNotes : nil
+                        }
 
                         // MARK: - Links sidebar button
                         Button {
@@ -98,11 +211,17 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .links
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .links,
+                                    isHovering: hoveredSidebarMode == .links
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .links : nil
+                        }
 
                         // MARK: - Media sidebar button
                         Button {
@@ -117,13 +236,20 @@ struct ContentView: View {
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
                         .background(
-                            store.detailMode == .media
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .media,
+                                    isHovering: hoveredSidebarMode == .media
+                                )
+                            ),
                             in: RoundedRectangle(cornerRadius: 6)
                         )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .media : nil
+                        }
 
                         FileTreeView(nodes: store.fileTree, store: store)
+                            .id(store.fileTreeVersion)
                     }
                     .listStyle(.sidebar)
                     .contentTransition(.identity)
@@ -133,6 +259,7 @@ struct ContentView: View {
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
             .toolbar(id: "sidebar") {
+                settingsToolbarButton
                 openWorkspaceButton
             }
         } detail: {
@@ -221,11 +348,13 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive())
+                    .keyboardShortcutHint("⌘J")
                     .padding(12)
                 }
             }
             .toolbar(id: "tabs") {
                 tabBar
+                backlinksToolbarButton
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
@@ -299,6 +428,30 @@ struct ContentView: View {
         } message: {
             Text("Enter a new name")
         }
+        .alert(
+            "Delete Folder",
+            isPresented: Binding(
+                get: {
+                    store.pendingDeleteTarget != nil && store.pendingDeleteIsDirectory
+                },
+                set: { shouldShow in
+                    if !shouldShow {
+                        store.cancelPendingDelete()
+                    }
+                }
+            )
+        ) {
+            Button("Cancel", role: .cancel) {
+                store.cancelPendingDelete()
+            }
+            Button("Delete Folder", role: .destructive) {
+                _ = store.confirmPendingDelete()
+            }
+        } message: {
+            Text(
+                "Delete \"\(store.pendingDeleteName)\" and all of its contents? This cannot be undone."
+            )
+        }
         .fileImporter(
             isPresented: $store.showWorkspacePicker,
             allowedContentTypes: [.folder]
@@ -321,10 +474,7 @@ struct ContentView: View {
                 },
                 onDelete: {
                     store.imageDetailURL = nil
-                    try? FileManager.default.trashItem(
-                        at: mediaURL, resultingItemURL: nil
-                    )
-                    store.loadFileTree()
+                    _ = store.deleteMedia(mediaURL)
                 },
                 onNavigate: { noteURL in
                     store.imageDetailURL = nil
@@ -401,7 +551,17 @@ struct FileNodeView: View {
                         }
                     }
                     .contextMenu {
-                        Button("Rename...") { store.promptRename(node.url) }
+                        Button {
+                            store.promptRename(node.url)
+                        } label: {
+                            Label("Rename Folder...", systemImage: "pencil")
+                        }
+                        Divider()
+                        Button(role: .destructive) {
+                            store.requestDelete(node.url, isDirectory: true)
+                        } label: {
+                            Label("Delete Folder...", systemImage: "trash")
+                        }
                     }
             }
         } else {
@@ -409,9 +569,17 @@ struct FileNodeView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { store.open(node.url) }
                 .contextMenu {
-                    Button("Rename...") { store.promptRename(node.url) }
+                    Button {
+                        store.promptRename(node.url)
+                    } label: {
+                        Label("Rename File...", systemImage: "pencil")
+                    }
                     Divider()
-                    Button("Delete", role: .destructive) { store.delete(node.url) }
+                    Button(role: .destructive) {
+                        store.requestDelete(node.url, isDirectory: false)
+                    } label: {
+                        Label("Delete File", systemImage: "trash")
+                    }
                 }
         }
     }
@@ -562,22 +730,6 @@ struct EditorViewSimple: View {
                 .background(Color(.textBackgroundColor).opacity(0.5))
             }
         }
-        .overlay(alignment: .topTrailing) {
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    store.toggleBacklinks()
-                }
-            } label: {
-                Image(systemName: "link")
-                    .font(.system(size: 12))
-                    .foregroundStyle(store.showBacklinks ? .primary : .tertiary)
-                    .padding(6)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle Backlinks (⌘⇧B)")
-            .padding(.top, 4)
-            .padding(.trailing, 4)
-        }
         .onChange(of: selectedText) { _, _ in
             publishSelectionContext()
         }
@@ -695,10 +847,7 @@ struct MediaGridView: View {
     }
 
     private func deleteMedia(_ mediaURL: URL) {
-        try? FileManager.default.trashItem(
-            at: mediaURL, resultingItemURL: nil
-        )
-        store.loadFileTree()
+        _ = store.deleteMedia(mediaURL)
     }
 }
 
