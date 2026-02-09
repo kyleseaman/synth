@@ -1301,32 +1301,41 @@ class FormattingTextView: NSTextView {
     func toggleUnderline() { toggleMarkdownWrap("__") }
 
     private func toggleMarkdownWrap(_ marker: String) {
+        guard let storage = textStorage else { return }
         let range = selectedRange()
-        guard range.length > 0, let storage = textStorage else { return }
         let text = storage.string as NSString
-        guard range.location + range.length <= text.length else { return }
-        let selected = text.substring(with: range)
-        let markerLen = marker.count
 
-        // Check if already wrapped
-        let hasBefore = range.location >= markerLen
-            && text.substring(with: NSRange(location: range.location - markerLen, length: markerLen)) == marker
-        let hasAfter = range.location + range.length + markerLen <= text.length
-            && text.substring(with: NSRange(location: range.location + range.length, length: markerLen)) == marker
+        if range.length > 0 {
+            // Selection exists — wrap it
+            guard range.location + range.length <= text.length else { return }
+            let selected = text.substring(with: range)
+            let markerLen = marker.count
 
-        if hasBefore && hasAfter {
-            // Remove markers
-            let fullRange = NSRange(location: range.location - markerLen, length: range.length + markerLen * 2)
-            storage.replaceCharacters(in: fullRange, with: selected)
-            setSelectedRange(NSRange(location: range.location - markerLen, length: range.length))
+            // Check if already wrapped
+            let hasBefore = range.location >= markerLen
+                && text.substring(with: NSRange(location: range.location - markerLen, length: markerLen)) == marker
+            let hasAfter = range.location + range.length + markerLen <= text.length
+                && text.substring(with: NSRange(location: range.location + range.length, length: markerLen)) == marker
+
+            if hasBefore && hasAfter {
+                // Remove markers
+                let fullRange = NSRange(location: range.location - markerLen, length: range.length + markerLen * 2)
+                storage.replaceCharacters(in: fullRange, with: selected)
+                setSelectedRange(NSRange(location: range.location - markerLen, length: range.length))
+            } else {
+                // Add markers
+                storage.replaceCharacters(in: range, with: "\(marker)\(selected)\(marker)")
+                setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
+            }
+            // Trigger immediate formatting
+            NotificationCenter.default.post(name: .formatParagraphNow, object: self)
         } else {
-            // Add markers
-            storage.replaceCharacters(in: range, with: "\(marker)\(selected)\(marker)")
-            setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
+            // No selection — insert empty markers and place cursor inside
+            let insertion = "\(marker)\(marker)"
+            storage.replaceCharacters(in: range, with: insertion)
+            setSelectedRange(NSRange(location: range.location + marker.count, length: 0))
+            NotificationCenter.default.post(name: .formatParagraphNow, object: self)
         }
-
-        // Trigger immediate formatting
-        NotificationCenter.default.post(name: .formatParagraphNow, object: self)
     }
 
     // MARK: - Shared Autocomplete Completion
