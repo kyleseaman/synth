@@ -439,53 +439,35 @@ struct MarkdownFormat: DocumentFormat {
             .foregroundColor: NSColor.clear
         ]
 
-        // MARK: Bold **text** — style inner text, hide markers
+        // MARK: Bold **text** — style full range including markers
         let boldRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.boldPattern.matches(in: str.string, range: boldRange).reversed() {
             let fullRange = match.range
-            let innerRange = match.range(at: 1)
             let boldFont = NSFontManager.shared.convert(
                 baseFont, toHaveTrait: .boldFontMask
             )
-            str.addAttribute(.font, value: boldFont, range: innerRange)
-            // Hide ** markers
-            let openRange = NSRange(location: fullRange.location, length: 2)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.font, value: boldFont, range: fullRange)
         }
 
-        // MARK: Italic *text* — style inner text, hide markers
+        // MARK: Italic *text* — style full range including markers
         let italicRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.italicPattern.matches(in: str.string, range: italicRange).reversed() {
             let fullRange = match.range
-            let innerRange = match.range(at: 1)
             let italicFont = NSFontManager.shared.convert(
                 baseFont, toHaveTrait: .italicFontMask
             )
-            str.addAttribute(.font, value: italicFont, range: innerRange)
-            // Hide * markers
-            let openRange = NSRange(location: fullRange.location, length: 1)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 1, length: 1)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.font, value: italicFont, range: fullRange)
         }
 
-        // MARK: Underline __text__ — style inner text, hide markers
+        // MARK: Underline __text__ — style full range including markers
         let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.underlinePattern.matches(in: str.string, range: underlineRange).reversed() {
             let fullRange = match.range
-            let innerRange = match.range(at: 1)
             str.addAttribute(
                 .underlineStyle,
                 value: NSUnderlineStyle.single.rawValue,
-                range: innerRange
+                range: fullRange
             )
-            // Hide __ markers
-            let openRange = NSRange(location: fullRange.location, length: 2)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
         }
 
         // MARK: Inline code `text` — style inner text, hide backticks
