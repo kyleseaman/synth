@@ -35,7 +35,6 @@ struct MarkdownFormat: DocumentFormat {
         let result = NSMutableAttributedString()
         let bodyFont = Theme.editorNSFont(ofSize: 16)
         let bodyParagraph = NSMutableParagraphStyle()
-        bodyParagraph.lineHeightMultiple = 1.25
         let defaultAttrs: [NSAttributedString.Key: Any] = [
             .font: bodyFont, .foregroundColor: NSColor.textColor,
             .paragraphStyle: bodyParagraph
@@ -62,7 +61,6 @@ struct MarkdownFormat: DocumentFormat {
             // collapse the line fragment (e.g. "# " with no content)
             if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
                 let para = NSMutableParagraphStyle()
-                para.lineHeightMultiple = 1.25
                 para.minimumLineHeight = ceil(
                     headingFont.ascender - headingFont.descender
                         + headingFont.leading
@@ -1438,12 +1436,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
-        let typingParagraph = NSMutableParagraphStyle()
-        typingParagraph.lineHeightMultiple = 1.25
         textView.typingAttributes = [
             .font: Theme.editorNSFont(ofSize: 16),
-            .foregroundColor: NSColor.textColor,
-            .paragraphStyle: typingParagraph
+            .foregroundColor: NSColor.textColor
         ]
         textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
@@ -1886,11 +1881,8 @@ struct MarkdownEditor: NSViewRepresentable {
 
             // Build attributes for this single line
             let bodyFont = Theme.editorNSFont(ofSize: 16)
-            let bodyParagraph = NSMutableParagraphStyle()
-            bodyParagraph.lineHeightMultiple = 1.25
             var attrs: [NSAttributedString.Key: Any] = [
-                .font: bodyFont, .foregroundColor: NSColor.textColor,
-                .paragraphStyle: bodyParagraph
+                .font: bodyFont, .foregroundColor: NSColor.textColor
             ]
 
             var headingPrefixLen = 0
