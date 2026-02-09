@@ -1296,46 +1296,32 @@ class FormattingTextView: NSTextView {
         super.insertBacktab(sender)
     }
 
-    func toggleBold() {
-        let range = selectedRange()
-        guard range.length > 0, let storage = textStorage else { return }
-        let currentFont = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
-            ?? Theme.editorNSFont(ofSize: 16)
-        let fontManager = NSFontManager.shared
-        let traits = fontManager.traits(of: currentFont)
-        let newFont: NSFont
-        if traits.contains(.boldFontMask) {
-            newFont = fontManager.convert(currentFont, toNotHaveTrait: .boldFontMask)
-        } else {
-            newFont = fontManager.convert(currentFont, toHaveTrait: .boldFontMask)
-        }
-        storage.addAttribute(.font, value: newFont, range: range)
-    }
+    func toggleBold() { toggleMarkdownWrap("**") }
+    func toggleItalic() { toggleMarkdownWrap("*") }
+    func toggleUnderline() { toggleMarkdownWrap("__") }
 
-    func toggleItalic() {
+    private func toggleMarkdownWrap(_ marker: String) {
         let range = selectedRange()
         guard range.length > 0, let storage = textStorage else { return }
-        let currentFont = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont
-            ?? Theme.editorNSFont(ofSize: 16)
-        let fontManager = NSFontManager.shared
-        let traits = fontManager.traits(of: currentFont)
-        let newFont: NSFont
-        if traits.contains(.italicFontMask) {
-            newFont = fontManager.convert(currentFont, toNotHaveTrait: .italicFontMask)
-        } else {
-            newFont = fontManager.convert(currentFont, toHaveTrait: .italicFontMask)
-        }
-        storage.addAttribute(.font, value: newFont, range: range)
-    }
+        let text = storage.string as NSString
+        let selected = text.substring(with: range)
+        let markerLen = marker.count
 
-    func toggleUnderline() {
-        let range = selectedRange()
-        guard range.length > 0, let storage = textStorage else { return }
-        let current = storage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
-        if current != 0 {
-            storage.removeAttribute(.underlineStyle, range: range)
+        // Check if already wrapped
+        let hasBefore = range.location >= markerLen
+            && text.substring(with: NSRange(location: range.location - markerLen, length: markerLen)) == marker
+        let hasAfter = range.location + range.length + markerLen <= text.length
+            && text.substring(with: NSRange(location: range.location + range.length, length: markerLen)) == marker
+
+        if hasBefore && hasAfter {
+            // Remove markers
+            let fullRange = NSRange(location: range.location - markerLen, length: range.length + markerLen * 2)
+            storage.replaceCharacters(in: fullRange, with: selected)
+            setSelectedRange(NSRange(location: range.location - markerLen, length: range.length))
         } else {
-            storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+            // Add markers
+            storage.replaceCharacters(in: range, with: "\(marker)\(selected)\(marker)")
+            setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
         }
     }
 
@@ -1826,12 +1812,21 @@ struct MarkdownEditor: NSViewRepresentable {
             store?.saveAll()
         }
 
+        private var formatTask: DispatchWorkItem?
+
         func textDidChange(_ notification: Notification) {
             guard let textView = textView,
                   !isFormatting,
                   !textView.isResizing
             else { return }
-            applyFormattingToCurrentParagraph()
+            
+            // Debounce formatting to avoid lag while typing
+            formatTask?.cancel()
+            let task = DispatchWorkItem { [weak self] in
+                self?.applyFormattingToCurrentParagraph()
+            }
+            formatTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: task)
             debouncedTextSync()
         }
 
@@ -1920,7 +1915,8 @@ struct MarkdownEditor: NSViewRepresentable {
             let hasMarkdown = trimmed.hasPrefix("#") ||
                 trimmed.contains("[[") || trimmed.contains("#") ||
                 trimmed.contains("@") || trimmed.contains("`") || 
-                trimmed.contains("![")
+                trimmed.contains("![") || trimmed.contains("**") ||
+                trimmed.contains("__") || trimmed.contains("*")
             if !hasMarkdown {
                 return
             }
