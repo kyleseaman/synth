@@ -1807,7 +1807,8 @@ struct MarkdownEditor: NSViewRepresentable {
                 self?.updateLinePositions()
             }
             linePositionTask = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: item)
+            // Longer debounce to avoid blocking typing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
         }
 
         // MARK: - Text Delegate Methods
@@ -1891,14 +1892,10 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView,
                   let storage = textView.textStorage
             else { return }
-            isFormatting = true
             let cursor = textView.selectedRange()
             let nsString = storage.string as NSString
             let fullLength = nsString.length
-            guard fullLength > 0 else {
-                isFormatting = false
-                return
-            }
+            guard fullLength > 0 else { return }
 
             // Find the paragraph range around the cursor
             let cursorLoc = min(cursor.location, fullLength - 1)
@@ -1906,6 +1903,14 @@ struct MarkdownEditor: NSViewRepresentable {
                 for: NSRange(location: max(cursorLoc, 0), length: 0)
             )
             let lineText = nsString.substring(with: paraRange)
+            
+            // Skip formatting for empty or whitespace-only lines
+            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                return
+            }
+            
+            isFormatting = true
             let cleanLine = MarkdownFormat.restoreImageMarkup(in: lineText)
 
             // Build attributes for this single line
