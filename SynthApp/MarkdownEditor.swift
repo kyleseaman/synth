@@ -1301,9 +1301,9 @@ class FormattingTextView: NSTextView {
     func toggleUnderline() { toggleMarkdownWrap("__") }
 
     private func toggleMarkdownWrap(_ marker: String) {
-        guard let storage = textStorage else { return }
+        guard textStorage != nil else { return }
         let range = selectedRange()
-        let text = storage.string as NSString
+        let text = (textStorage!.string as NSString)
         let markerLen = marker.count
 
         if range.length > 0 {
@@ -1317,14 +1317,14 @@ class FormattingTextView: NSTextView {
                 && text.substring(with: NSRange(location: range.location + range.length, length: markerLen)) == marker
 
             if hasBefore && hasAfter {
-                // Remove markers — use insertText for proper undo support
+                // Remove markers
                 let fullRange = NSRange(location: range.location - markerLen, length: range.length + markerLen * 2)
-                setSelectedRange(fullRange)
                 insertText(selected, replacementRange: fullRange)
                 setSelectedRange(NSRange(location: range.location - markerLen, length: range.length))
             } else {
                 // Add markers
-                insertText("\(marker)\(selected)\(marker)", replacementRange: range)
+                let wrapped = "\(marker)\(selected)\(marker)"
+                insertText(wrapped, replacementRange: range)
                 setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
             }
         } else {
