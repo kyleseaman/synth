@@ -997,9 +997,6 @@ class FormattingTextView: NSTextView {
             break
         }
 
-        // Preserve current typing attributes (bold, italic, etc.)
-        let currentAttrs = typingAttributes
-
         guard let storage = textStorage else { super.insertNewline(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange).trimmingCharacters(in: .newlines)
@@ -1011,7 +1008,6 @@ class FormattingTextView: NSTextView {
         // If current line is just a bullet (empty item), remove it instead
         if line == "\(indent)•" {
             storage.replaceCharacters(in: lineRange, with: "")
-            typingAttributes = currentAttrs
             return
         }
 
@@ -1019,12 +1015,10 @@ class FormattingTextView: NSTextView {
         if line.hasPrefix("\(indent)•") {
             super.insertNewline(sender)
             insertText("\(indent)• ", replacementRange: selectedRange())
-            typingAttributes = currentAttrs
             return
         }
 
         super.insertNewline(sender)
-        typingAttributes = currentAttrs
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
