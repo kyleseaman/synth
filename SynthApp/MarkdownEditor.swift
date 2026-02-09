@@ -1323,6 +1323,9 @@ class FormattingTextView: NSTextView {
             storage.replaceCharacters(in: range, with: "\(marker)\(selected)\(marker)")
             setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
         }
+        
+        // Trigger immediate formatting
+        NotificationCenter.default.post(name: .formatParagraphNow, object: self)
     }
 
     // MARK: - Shared Autocomplete Completion
@@ -1589,6 +1592,19 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.applyFormatting()
             }
             autocomplete.setupObservers()
+            
+            // Listen for immediate format requests
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleFormatNow),
+                name: .formatParagraphNow,
+                object: textView
+            )
+        }
+        
+        @objc func handleFormatNow(_ notification: Notification) {
+            formatTask?.cancel()
+            applyFormattingToCurrentParagraph()
         }
 
         // MARK: - Image Paste

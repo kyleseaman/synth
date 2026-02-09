@@ -10,6 +10,7 @@ extension Notification.Name {
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
     static let showDailyDate = Notification.Name("showDailyDate")
     static let insertTemplate = Notification.Name("insertTemplate")
+    static let formatParagraphNow = Notification.Name("formatParagraphNow")
 }
 
 struct EditorSelectionContext {
