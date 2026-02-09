@@ -1772,8 +1772,19 @@ struct MarkdownEditor: NSViewRepresentable {
             atEnd layoutFinishedFlag: Bool
         ) {
             if layoutFinishedFlag && !isFormatting {
-                updateLinePositions()
+                debouncedLinePositionUpdate()
             }
+        }
+
+        private var linePositionTask: DispatchWorkItem?
+
+        private func debouncedLinePositionUpdate() {
+            linePositionTask?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                self?.updateLinePositions()
+            }
+            linePositionTask = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: item)
         }
 
         // MARK: - Text Delegate Methods
@@ -1790,10 +1801,22 @@ struct MarkdownEditor: NSViewRepresentable {
                   !isFormatting,
                   !textView.isResizing
             else { return }
-            parent.text = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
-            )
             applyFormattingToCurrentParagraph()
+            debouncedTextSync()
+        }
+
+        private var textSyncTask: DispatchWorkItem?
+
+        private func debouncedTextSync() {
+            textSyncTask?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self, let textView = self.textView else { return }
+                self.parent.text = MarkdownFormat.restoreImageMarkup(
+                    in: textView.string
+                )
+            }
+            textSyncTask = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
             scheduleSave()
         }
 
@@ -2003,11 +2026,17 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView else { return }
             let range = textView.selectedRange()
             if range.length > 0 {
-                let text = (textView.string as NSString).substring(with: range)
-                let beforeSelection = (textView.string as NSString)
-                    .substring(to: range.location)
-                let startLine = beforeSelection.components(separatedBy: "\n").count
-                let selectedLines = text.components(separatedBy: "\n").count
+                let nsString = textView.string as NSString
+                let text = nsString.substring(with: range)
+                // Count newlines without allocating arrays
+                var startLine = 1
+                let beforeEnd = min(range.location, nsString.length)
+                nsString.enumerateSubstrings(
+                    in: NSRange(location: 0, length: beforeEnd),
+                    options: [.byLines, .substringNotRequired]
+                ) { _, _, _, _ in startLine += 1 }
+                var selectedLines = 1
+                for char in text where char == "\n" { selectedLines += 1 }
                 let endLine = startLine + selectedLines - 1
                 DispatchQueue.main.async {
                     self.parent.selectedText = text

@@ -447,6 +447,18 @@ final class DocumentStore {
         dailyNoteManager.ensureFutureDays(workspace: url)
         mcpServer.start(workspace: url)
         loadFileTree()
+        // Clean orphaned media only on workspace open, not every scan
+        Task(priority: .utility) { [weak self] in
+            let removed = Self.cleanOrphanedMedia(
+                mediaFiles: MediaManager.screenshotURLs(in: url),
+                workspace: url
+            )
+            if !removed.isEmpty {
+                await MainActor.run {
+                    self?.mediaFiles.removeAll { removed.contains($0) }
+                }
+            }
+        }
     }
 
     func loadFileTree() {
@@ -463,11 +475,7 @@ final class DocumentStore {
 
     private static func scanWorkspace(at workspace: URL) -> WorkspaceScanResult {
         let tree = FileTreeNode.scan(workspace)
-        var media = MediaManager.screenshotURLs(in: workspace)
-        let removed = cleanOrphanedMedia(mediaFiles: media, workspace: workspace)
-        if !removed.isEmpty {
-            media.removeAll { removed.contains($0) }
-        }
+        let media = MediaManager.screenshotURLs(in: workspace)
         return WorkspaceScanResult(tree: tree, media: media)
     }
 
