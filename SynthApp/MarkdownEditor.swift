@@ -1197,7 +1197,31 @@ class FormattingTextView: NSTextView {
     // MARK: - Delete Backward
 
     override func deleteBackward(_ sender: Any?) {
-        super.deleteBackward(sender)
+        // Skip over hidden markers (font size < 1) when backspacing
+        if let storage = textStorage, selectedRange().length == 0 {
+            let cursor = selectedRange().location
+            if cursor > 0 {
+                var deleteStart = cursor - 1
+                while deleteStart > 0,
+                      let font = storage.attribute(.font, at: deleteStart, effectiveRange: nil) as? NSFont,
+                      font.pointSize < 1 {
+                    deleteStart -= 1
+                }
+                // If we found hidden chars, delete them all
+                if deleteStart < cursor - 1 {
+                    let range = NSRange(location: deleteStart, length: cursor - deleteStart)
+                    insertText("", replacementRange: range)
+                    // Fall through to update wiki link state
+                } else {
+                    super.deleteBackward(sender)
+                }
+            } else {
+                super.deleteBackward(sender)
+            }
+        } else {
+            super.deleteBackward(sender)
+        }
+
         switch wikiLinkState {
         case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             if selectedRange().location <= start {
