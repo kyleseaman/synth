@@ -6,6 +6,9 @@ struct SettingsView: View {
     @Environment(TemplateStore.self) var templateStore
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
+    @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
+    @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
+    @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
     @State private var detectedPath = ""
     @State private var showKiroPicker = false
     @State private var selectedTemplateIdentifier: UUID?
@@ -16,11 +19,12 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             generalTab.tabItem { Label("General", systemImage: "gear") }
+            fontsTab.tabItem { Label("Fonts", systemImage: "textformat") }
             contextTab.tabItem { Label("Context", systemImage: "doc.text.magnifyingglass") }
             agentsTab.tabItem { Label("Agents", systemImage: "cpu") }
             templatesTab.tabItem { Label("Templates", systemImage: "text.badge.plus") }
         }
-        .frame(width: 480, height: 400)
+        .frame(width: 720, height: 560)
         .onAppear {
             store.loadKiroConfig()
             detectedPath = KiroCliResolver.resolve() ?? "Not found"
@@ -77,6 +81,72 @@ struct SettingsView: View {
         ) { result in
             if case .success(let url) = result {
                 kiroCliPath = url.path
+            }
+        }
+    }
+
+    // MARK: - Fonts
+
+    private var fontsTab: some View {
+        List {
+            Section("Editor") {
+                HStack {
+                    Button("Use MesloLGS (Mono)") {
+                        editorFontCandidates = Theme.mesloPresetValue
+                    }
+                    Button("Use Source Serif 4 (Serif)") {
+                        editorFontCandidates = Theme.sourceSerifPresetValue
+                    }
+                    Button("Use Public Sans (Sans)") {
+                        editorFontCandidates = Theme.publicSansPresetValue
+                    }
+                }
+                .controlSize(.small)
+
+                TextField(
+                    "Font (Editor)",
+                    text: $editorFontCandidates,
+                    prompt: Text("MesloLGS-Regular, FiraCode-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+
+            Section("Terminal") {
+                TextField(
+                    "Font (Terminal)",
+                    text: $terminalFontCandidates,
+                    prompt: Text("MesloLGS-Regular, JetBrainsMono-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+
+            Section("Sidebar") {
+                TextField(
+                    "Font (Sidebar)",
+                    text: $sidebarFontCandidates,
+                    prompt: Text("SF Pro Text Regular, Inter-Regular")
+                )
+                .textFieldStyle(.roundedBorder)
+            }
+
+            Section {
+                Text(
+                    "Use comma-separated PostScript font names. "
+                    + "Blank value falls back to built-in defaults."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Button("Reset Font Overrides") {
+                    editorFontCandidates = ""
+                    terminalFontCandidates = ""
+                    sidebarFontCandidates = ""
+                }
+                .disabled(
+                    editorFontCandidates.isEmpty
+                        && terminalFontCandidates.isEmpty
+                        && sidebarFontCandidates.isEmpty
+                )
             }
         }
     }
@@ -234,7 +304,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $draftTemplateContent)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(Theme.terminalSwiftUIFont(size: 13))
                         .frame(minHeight: 180)
                         .overlay {
                             RoundedRectangle(cornerRadius: 6)

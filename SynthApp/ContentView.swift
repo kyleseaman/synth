@@ -43,7 +43,7 @@ private struct DelayedShortcutHintModifier: ViewModifier {
             .overlay(alignment: .bottom) {
                 if shouldShowHint {
                     Text(shortcutText)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .font(Theme.terminalSwiftUIFont(size: 11, weight: .semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(.thinMaterial, in: Capsule())
@@ -94,19 +94,21 @@ private extension View {
 
 struct ContentView: View {
     @Environment(DocumentStore.self) var store
+    @Environment(\.openWindow) private var openWindow
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
     @State private var hoveredSidebarMode: DetailViewMode?
 
-    private func showSettingsWindow() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-    }
-
     private var settingsToolbarButton: some CustomizableToolbarContent {
-        ToolbarItem(id: "openSettings", placement: .automatic) {
-            Button(action: showSettingsWindow) {
-                Image(systemName: "gearshape")
+        ToolbarItem(id: "toolbarSettingsLink", placement: .automatic) {
+            Button {
+                openWindow(id: "synth-settings-window")
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 16, height: 16)
             }
+            .help("Settings")
             .keyboardShortcutHint("⌘,")
         }
     }
@@ -251,6 +253,7 @@ struct ContentView: View {
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
                     }
+                    .font(Theme.sidebarSwiftUIFont(size: 13))
                     .listStyle(.sidebar)
                     .contentTransition(.identity)
                     .transaction { $0.animation = nil }
@@ -258,7 +261,7 @@ struct ContentView: View {
             }
             .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
             .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar(id: "sidebar") {
+            .toolbar(id: "sidebar-main-v2") {
                 settingsToolbarButton
                 openWorkspaceButton
             }
@@ -771,7 +774,7 @@ struct LineNumberGutter: View {
                     let yOffset = yPos - scrollOffset
                     if yOffset > -20 && yOffset < size.height + 20 {
                         let text = Text("\(lineIndex + 1)")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(Theme.terminalSwiftUIFont(size: 11))
                             .foregroundColor(Color(.tertiaryLabelColor))
                         context.draw(
                             text,

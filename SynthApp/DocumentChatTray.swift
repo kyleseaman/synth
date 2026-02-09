@@ -57,6 +57,10 @@ struct DocumentChatTray: View {
         Array(prompts.prefix(maxQuickPromptCount))
     }
 
+    static func displayedPermissionDiffText(_ text: String) -> String {
+        text
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             dragHandle
@@ -423,8 +427,8 @@ struct DocumentChatTray: View {
                 Text("Add:")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
-                Text(diff.newText.prefix(300) + (diff.newText.count > 300 ? "..." : ""))
-                    .font(.system(size: 11, design: .monospaced))
+                Text(Self.displayedPermissionDiffText(diff.newText))
+                    .font(Theme.terminalSwiftUIFont(size: 11))
                     .foregroundStyle(.green)
             }
             if !diff.oldText.isEmpty {
@@ -432,8 +436,8 @@ struct DocumentChatTray: View {
                     Text("Remove:")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
-                    Text(diff.oldText.prefix(300) + (diff.oldText.count > 300 ? "..." : ""))
-                        .font(.system(size: 11, design: .monospaced))
+                    Text(Self.displayedPermissionDiffText(diff.oldText))
+                        .font(Theme.terminalSwiftUIFont(size: 11))
                         .foregroundStyle(.red)
                         .strikethrough()
                 }

@@ -51,7 +51,7 @@ struct CalendarSidebarView: View {
                 shiftMonth(by: -1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.sidebarSwiftUIFont(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -59,7 +59,7 @@ struct CalendarSidebarView: View {
             Spacer()
 
             Text(Self.monthYearFormatter.string(from: displayedMonth))
-                .font(.system(size: 13, weight: .semibold))
+                .font(Theme.sidebarSwiftUIFont(size: 13, weight: .semibold))
 
             Spacer()
 
@@ -67,7 +67,7 @@ struct CalendarSidebarView: View {
                 shiftMonth(by: 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.sidebarSwiftUIFont(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -81,7 +81,7 @@ struct CalendarSidebarView: View {
         HStack(spacing: 0) {
             ForEach(dayLabels, id: \.self) { label in
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(Theme.sidebarSwiftUIFont(size: 10, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
             }
@@ -220,7 +220,12 @@ struct CalendarDayCell: View {
     var body: some View {
         Button(action: onSelect) {
             Text("\(dayInfo.dayNumber)")
-                .font(.system(size: 12, weight: dayInfo.isToday ? .bold : .regular))
+                .font(
+                    Theme.sidebarSwiftUIFont(
+                        size: 12,
+                        weight: dayInfo.isToday ? .bold : .regular
+                    )
+                )
                 .foregroundStyle(dayForegroundStyle)
                 .frame(width: 26, height: 26)
                 .background {

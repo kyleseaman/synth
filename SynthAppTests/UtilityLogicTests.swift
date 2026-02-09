@@ -1,5 +1,6 @@
 import XCTest
 import Darwin
+import AppKit
 @testable import Synth
 
 final class UtilityLogicTests: XCTestCase {
@@ -430,6 +431,15 @@ final class UtilityLogicTests: XCTestCase {
         let displayed = DocumentChatTray.displayedQuickPrompts(from: prompts)
 
         XCTAssertEqual(displayed, ["one", "two", "three"])
+    }
+
+    func testDocumentChatTrayDisplayedPermissionDiffTextPreservesFullContent() {
+        let fullDiffText = String(repeating: "0123456789", count: 80)
+
+        let displayed = DocumentChatTray.displayedPermissionDiffText(fullDiffText)
+
+        XCTAssertEqual(displayed.count, fullDiffText.count)
+        XCTAssertEqual(displayed, fullDiffText)
     }
 
     @MainActor
@@ -1028,5 +1038,144 @@ final class MCPServerManagerTests: XCTestCase {
 
         XCTAssertNotNil(selected)
         XCTAssertNotEqual(selected, preferredPort)
+    }
+
+    func testThemeResolveFontUsesCandidateOrder() {
+        var requestedNames: [String] = []
+        let targetSize: CGFloat = 15
+        let resolvedFont = Theme.resolveFont(
+            candidates: ["Missing-Regular", "MesloLGS-Regular", "Fallback-Regular"],
+            size: targetSize
+        ) { fontName, fontSize in
+            requestedNames.append(fontName)
+            guard fontName == "MesloLGS-Regular" else { return nil }
+            return NSFont.systemFont(ofSize: fontSize)
+        }
+
+        XCTAssertEqual(requestedNames, ["Missing-Regular", "MesloLGS-Regular"])
+        XCTAssertEqual(resolvedFont?.pointSize, targetSize)
+    }
+
+    func testThemeResolveFontReturnsNilWhenNoCandidateExists() {
+        let resolvedFont = Theme.resolveFont(
+            candidates: ["Unavailable-Regular", "Unavailable-Bold"],
+            size: 14
+        ) { _, _ in nil }
+
+        XCTAssertNil(resolvedFont)
+    }
+
+    func testThemeMesloCandidatesPreferBoldWhenRequested() {
+        let candidateNames = Theme.mesloCandidates(for: .bold)
+
+        XCTAssertEqual(candidateNames.first, "MesloLGS-Bold")
+        XCTAssertTrue(candidateNames.contains("MesloLGS-Regular"))
+    }
+
+    func testThemeParseCandidateListTrimsAndDeduplicates() {
+        let parsedCandidates = Theme.parseCandidateList(
+            " MesloLGS-Regular, , FiraCode-Regular , MesloLGS-Regular "
+        )
+
+        XCTAssertEqual(
+            parsedCandidates,
+            ["MesloLGS-Regular", "FiraCode-Regular"]
+        )
+    }
+
+    func testThemeEditorCandidateNamesPrependsUserConfiguredFonts() {
+        let suiteName = "ThemeEditorCandidates-\(UUID().uuidString)"
+        guard let defaultsStore = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated defaults suite")
+            return
+        }
+        defer { defaultsStore.removePersistentDomain(forName: suiteName) }
+        defaultsStore.set(
+            "FiraCode-Regular, Iosevka-Regular",
+            forKey: Theme.editorFontCandidatesKey
+        )
+
+        let candidateNames = Theme.editorCandidateNames(
+            weight: .regular,
+            defaults: defaultsStore
+        )
+
+        XCTAssertEqual(
+            Array(candidateNames.prefix(2)),
+            ["FiraCode-Regular", "Iosevka-Regular"]
+        )
+        XCTAssertTrue(candidateNames.contains("MesloLGS-Regular"))
+    }
+
+    func testThemeEditorCandidateNamesDeduplicatesAgainstFallbacks() {
+        let suiteName = "ThemeEditorDedup-\(UUID().uuidString)"
+        guard let defaultsStore = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create isolated defaults suite")
+            return
+        }
+        defer { defaultsStore.removePersistentDomain(forName: suiteName) }
+        defaultsStore.set(
+            "MesloLGS-Regular, FiraCode-Regular",
+            forKey: Theme.editorFontCandidatesKey
+        )
+
+        let candidateNames = Theme.editorCandidateNames(
+            weight: .regular,
+            defaults: defaultsStore
+        )
+        let mesloOccurrences = candidateNames.filter { $0 == "MesloLGS-Regular" }.count
+
+        XCTAssertEqual(mesloOccurrences, 1)
+        XCTAssertEqual(
+            Array(candidateNames.prefix(2)),
+            ["MesloLGS-Regular", "FiraCode-Regular"]
+        )
+    }
+
+    func testThemeSourceSerifCandidatesPreferSourceSerifFour() {
+        let candidateNames = Theme.sourceSerifCandidates(for: .regular)
+
+        XCTAssertEqual(candidateNames.first, "SourceSerif4-Regular")
+        XCTAssertTrue(candidateNames.contains("Source Serif 4"))
+    }
+
+    func testThemePublicSansCandidatesPreferPublicSans() {
+        let candidateNames = Theme.publicSansCandidates(for: .regular)
+
+        XCTAssertEqual(candidateNames.first, "PublicSans-Regular")
+        XCTAssertTrue(candidateNames.contains("Public Sans"))
+    }
+
+    func testThemeEditorNSFontFallsBackToSystemFontWhenCandidatesMiss() {
+        let expectedFont = NSFont.systemFont(ofSize: 13, weight: .regular)
+        let resolvedFont = Theme.editorNSFont(ofSize: 13, weight: .regular) { _, _ in nil }
+
+        XCTAssertEqual(resolvedFont.fontName, expectedFont.fontName)
+        XCTAssertEqual(resolvedFont.pointSize, expectedFont.pointSize)
+    }
+
+    func testThemeBundledFontFileNamesIncludeRequiredFamilies() {
+        let bundledFontFiles = Set(Theme.bundledFontFileNames)
+
+        XCTAssertTrue(bundledFontFiles.contains("mesloLGS_NF_regular.ttf"))
+        XCTAssertTrue(bundledFontFiles.contains("PublicSans-Regular.ttf"))
+        XCTAssertTrue(bundledFontFiles.contains("SourceSerif4-Regular.ttf"))
+    }
+
+    func testThemeRegisterFontsAttemptsEachURLAndCountsSuccesses() {
+        let fontURLs = [
+            URL(fileURLWithPath: "/tmp/font-a.ttf"),
+            URL(fileURLWithPath: "/tmp/font-b.ttf"),
+            URL(fileURLWithPath: "/tmp/font-c.ttf")
+        ]
+        var attemptedPaths: [String] = []
+
+        let successCount = Theme.registerFonts(at: fontURLs) { fontURL, _, _ in
+            attemptedPaths.append((fontURL as URL).path)
+            return (fontURL as URL).lastPathComponent != "font-b.ttf"
+        }
+
+        XCTAssertEqual(attemptedPaths, fontURLs.map(\.path))
+        XCTAssertEqual(successCount, 2)
     }
 }
