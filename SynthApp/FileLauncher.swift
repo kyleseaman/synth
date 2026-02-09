@@ -197,7 +197,7 @@ struct FileLauncher: View {
     private var resultsPanel: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0, pinnedViews: []) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                         resultRow(result: result, index: index)
                     }
@@ -207,7 +207,7 @@ struct FileLauncher: View {
                 withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
             }
         }
-        .frame(width: 420)
+        .frame(width: 420, alignment: .top)
         .frame(maxHeight: 360)
     }
 
