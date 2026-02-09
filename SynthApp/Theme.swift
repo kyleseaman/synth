@@ -1,16 +1,58 @@
 import Cocoa
+import CoreText
 import SwiftUI
 
 struct Theme {
     static let editorFontCandidatesKey = "theme.editorFontCandidates"
     static let terminalFontCandidatesKey = "theme.terminalFontCandidates"
     static let sidebarFontCandidatesKey = "theme.sidebarFontCandidates"
+    static let bundledFontFileNames = [
+        "mesloLGS_NF_regular.ttf",
+        "mesloLGS_NF_bold.ttf",
+        "mesloLGS_NF_italic.ttf",
+        "mesloLGS_NF_bold_italic.ttf",
+        "PublicSans-Regular.ttf",
+        "PublicSans-SemiBold.ttf",
+        "PublicSans-Bold.ttf",
+        "SourceSerif4-Regular.ttf",
+        "SourceSerif4-SemiBold.ttf",
+        "SourceSerif4-Bold.ttf"
+    ]
 
     static var uiFont: NSFont { sidebarNSFont(ofSize: 13) }
     static var editorFont: NSFont { editorNSFont(ofSize: 18) }
     static var monoFont: NSFont { terminalNSFont(ofSize: 12) }
     static let offWhite = NSColor.textBackgroundColor
     static let offBlack = NSColor.textColor
+
+    static func bundledFontURLs(
+        in bundle: Bundle = .main,
+        fileNames: [String] = bundledFontFileNames
+    ) -> [URL] {
+        fileNames.compactMap { fontFileName in
+            let baseName = (fontFileName as NSString).deletingPathExtension
+            let extensionName = (fontFileName as NSString).pathExtension
+            return bundle.url(forResource: baseName, withExtension: extensionName)
+        }
+    }
+
+    @discardableResult
+    static func registerFonts(
+        at fontURLs: [URL],
+        registrar: (CFURL, CTFontManagerScope, UnsafeMutablePointer<Unmanaged<CFError>?>?) -> Bool
+            = CTFontManagerRegisterFontsForURL
+    ) -> Int {
+        var registeredCount = 0
+        for fontURL in fontURLs where registrar(fontURL as CFURL, .process, nil) {
+            registeredCount += 1
+        }
+        return registeredCount
+    }
+
+    @discardableResult
+    static func registerBundledFonts(in bundle: Bundle = .main) -> Int {
+        registerFonts(at: bundledFontURLs(in: bundle))
+    }
 
     static func resolveFont(
         candidates: [String],

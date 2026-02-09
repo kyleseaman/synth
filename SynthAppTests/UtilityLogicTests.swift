@@ -1153,4 +1153,29 @@ final class MCPServerManagerTests: XCTestCase {
         XCTAssertEqual(resolvedFont.fontName, expectedFont.fontName)
         XCTAssertEqual(resolvedFont.pointSize, expectedFont.pointSize)
     }
+
+    func testThemeBundledFontFileNamesIncludeRequiredFamilies() {
+        let bundledFontFiles = Set(Theme.bundledFontFileNames)
+
+        XCTAssertTrue(bundledFontFiles.contains("mesloLGS_NF_regular.ttf"))
+        XCTAssertTrue(bundledFontFiles.contains("PublicSans-Regular.ttf"))
+        XCTAssertTrue(bundledFontFiles.contains("SourceSerif4-Regular.ttf"))
+    }
+
+    func testThemeRegisterFontsAttemptsEachURLAndCountsSuccesses() {
+        let fontURLs = [
+            URL(fileURLWithPath: "/tmp/font-a.ttf"),
+            URL(fileURLWithPath: "/tmp/font-b.ttf"),
+            URL(fileURLWithPath: "/tmp/font-c.ttf")
+        ]
+        var attemptedPaths: [String] = []
+
+        let successCount = Theme.registerFonts(at: fontURLs) { fontURL, _, _ in
+            attemptedPaths.append((fontURL as URL).path)
+            return (fontURL as URL).lastPathComponent != "font-b.ttf"
+        }
+
+        XCTAssertEqual(attemptedPaths, fontURLs.map(\.path))
+        XCTAssertEqual(successCount, 2)
+    }
 }
