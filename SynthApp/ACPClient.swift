@@ -277,14 +277,14 @@ import Observation
                     if !locationPaths.isEmpty {
                         onEditToolCompleted?(toolCallId, locationPaths)
                     }
-                    lastToolCallLocations.removeValue(forKey: toolCallId)
-                    lastToolCallDiff.removeValue(forKey: toolCallId)
-                } else if status == "failed" || status == "cancelled" {
-                    lastToolCallLocations.removeValue(forKey: toolCallId)
-                    lastToolCallDiff.removeValue(forKey: toolCallId)
                 }
 
-                if status == "completed" || status == "failed" || status == "cancelled" {
+                let isTerminalStatus = status == "completed"
+                    || status == "failed"
+                    || status == "cancelled"
+                if isTerminalStatus {
+                    lastToolCallLocations.removeValue(forKey: toolCallId)
+                    lastToolCallDiff.removeValue(forKey: toolCallId)
                     if pendingPermission?.toolCallId == toolCallId {
                         pendingPermission = nil
                     }
@@ -299,11 +299,12 @@ import Observation
     nonisolated static func locationPaths(from update: [String: AnyCodable]) -> [String] {
         guard let locations = update["locations"]?.arrayValue else { return [] }
         var parsedPaths: [String] = []
+        var seenPaths: Set<String> = []
         for locationEntry in locations {
             guard let locationDict = locationEntry.dictValue,
                   let filePath = locationDict["path"]?.stringValue,
                   !filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-            if !parsedPaths.contains(filePath) {
+            if seenPaths.insert(filePath).inserted {
                 parsedPaths.append(filePath)
             }
         }
@@ -312,7 +313,8 @@ import Observation
 
     nonisolated private static func mergeUniquePaths(_ paths: [String]) -> [String] {
         var uniquePaths: [String] = []
-        for filePath in paths where !uniquePaths.contains(filePath) {
+        var seenPaths: Set<String> = []
+        for filePath in paths where seenPaths.insert(filePath).inserted {
             uniquePaths.append(filePath)
         }
         return uniquePaths

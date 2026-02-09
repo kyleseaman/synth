@@ -921,6 +921,67 @@ final class MCPServerManagerTests: XCTestCase {
         XCTAssertNil(manager.readRuntimeLease(workspace: workspaceURL))
     }
 
+    func testRuntimeLeaseURLIsOutsideWorkspaceBoundary() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+
+        let manager = MCPServerManager()
+        let leaseURL = manager.runtimeLeaseURL(workspace: workspaceURL)
+
+        XCTAssertFalse(leaseURL.path.hasPrefix(workspaceURL.path))
+    }
+
+    func testStartDoesNotSignalProcessFromRuntimeLease() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let binaryDirectory = rootDirectory.appendingPathComponent("bin", isDirectory: true)
+        try FileManager.default.createDirectory(at: binaryDirectory, withIntermediateDirectories: true)
+        let executableURL = binaryDirectory.appendingPathComponent("synth-mcp-server")
+        try "#!/bin/sh\nsleep 10\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: executableURL.path
+        )
+
+        let originalPathEnv = getenv("PATH").map { String(cString: $0) } ?? ""
+        setenv("PATH", "\(binaryDirectory.path):\(originalPathEnv)", 1)
+        defer { setenv("PATH", originalPathEnv, 1) }
+
+        let manager = MCPServerManager()
+        manager.enableHTTPBridge = true
+        manager.healthProbe = { _ in false }
+        manager.portAvailabilityProbe = { _ in false }
+        manager.processAliveProbe = { _ in true }
+
+        var signalCount = 0
+        manager.signalProbe = { _, _ in
+            signalCount += 1
+            return 0
+        }
+
+        manager.writeRuntimeLease(
+            workspace: workspaceURL,
+            pid: 4242,
+            port: 9766,
+            commandPath: executableURL.path
+        )
+
+        manager.start(workspace: workspaceURL)
+        defer { manager.stop() }
+
+        XCTAssertEqual(signalCount, 0)
+    }
+
     func testSelectAvailablePortFallsBackFromPreferredPort() {
         let manager = MCPServerManager()
         manager.portAvailabilityProbe = { portValue in

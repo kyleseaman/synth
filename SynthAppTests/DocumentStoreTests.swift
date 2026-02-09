@@ -401,6 +401,29 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDeleteRejectsPathsOutsideWorkspaceBoundary() throws {
+        let rootDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: rootDirectory) }
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+
+        let workspaceURL = rootDirectory.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        let externalURL = rootDirectory.appendingPathComponent("outside.md")
+        try "keep".write(to: externalURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+
+        let didDelete = store.delete(externalURL)
+
+        XCTAssertFalse(didDelete)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: externalURL.path))
+    }
+
+    @MainActor
     func testRequestDeleteFolderStagesConfirmationBeforeDeleting() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,
@@ -499,6 +522,29 @@ final class DocumentStoreTests: XCTestCase {
 
         XCTAssertFalse(didDelete)
         XCTAssertFalse(store.mediaFiles.contains(missingMediaURL))
+    }
+
+    @MainActor
+    func testDeleteMediaRejectsPathsOutsideMediaDirectory() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let outsideMediaURL = workspaceURL.appendingPathComponent("outside-media.png")
+        try Data("image".utf8).write(to: outsideMediaURL)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.mediaFiles = [outsideMediaURL]
+
+        let didDelete = store.deleteMedia(outsideMediaURL)
+
+        XCTAssertFalse(didDelete)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outsideMediaURL.path))
+        XCTAssertTrue(store.mediaFiles.contains(outsideMediaURL))
     }
 
     func testFileTreeScanHidesKiroDirectoryFromSidebarTree() throws {

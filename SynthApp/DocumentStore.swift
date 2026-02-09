@@ -159,6 +159,11 @@ private enum DiskDeleteResult {
     case failed(String)
 }
 
+private enum DiskDeleteScope {
+    case workspace
+    case media
+}
+
 final class WorkspaceImageLoader: @unchecked Sendable {
     static let shared = WorkspaceImageLoader()
 
@@ -1063,7 +1068,7 @@ final class DocumentStore {
             closeTab(at: idx)
         }
 
-        switch deleteFromDisk(url) {
+        switch deleteFromDisk(url, scope: .workspace) {
         case .deleted(let deletedURL):
             resetFileTreeScanState()
             removeFileFromInMemoryTree(deletedURL)
@@ -1177,7 +1182,7 @@ final class DocumentStore {
 extension DocumentStore {
     @discardableResult
     func deleteMedia(_ mediaURL: URL) -> Bool {
-        switch deleteFromDisk(mediaURL) {
+        switch deleteFromDisk(mediaURL, scope: .media) {
         case .deleted(let deletedURL):
             resetFileTreeScanState()
             mediaFiles.removeAll { itemURL in
@@ -1221,7 +1226,11 @@ private extension DocumentStore {
         activeFileTreeScanID = UUID()
     }
 
-    func deleteFromDisk(_ sourceURL: URL) -> DiskDeleteResult {
+    func deleteFromDisk(_ sourceURL: URL, scope: DiskDeleteScope) -> DiskDeleteResult {
+        guard isDeletionTargetInAllowedScope(sourceURL, scope: scope) else {
+            return .failed("Refusing to delete outside workspace scope")
+        }
+
         let candidates = Self.deletionCandidates(for: sourceURL)
         var didFindExistingCandidate = false
         var latestErrorMessage: String?
@@ -1252,13 +1261,61 @@ private extension DocumentStore {
             if !FileManager.default.fileExists(atPath: url.path) {
                 return true
             }
-        } catch {}
+        } catch {
+            print("[DocumentStore] Failed to trash \(url.path): \(error)")
+        }
 
         do {
             try FileManager.default.removeItem(at: url)
             return !FileManager.default.fileExists(atPath: url.path)
-        } catch {}
+        } catch {
+            print("[DocumentStore] Failed to remove \(url.path): \(error)")
+        }
 
         return false
+    }
+
+    func isDeletionTargetInAllowedScope(_ sourceURL: URL, scope: DiskDeleteScope) -> Bool {
+        guard let workspace else { return false }
+
+        let workspaceURL = workspace.standardizedFileURL
+        let canonicalWorkspaceURL = Self.canonicalFileURL(workspace)
+        let mediaURL = workspaceURL.appendingPathComponent("media", isDirectory: true)
+        let canonicalMediaURL = Self.canonicalFileURL(mediaURL)
+
+        let allowedRoots: [String]
+        switch scope {
+        case .workspace:
+            allowedRoots = [
+                workspaceURL.path,
+                canonicalWorkspaceURL.path
+            ]
+        case .media:
+            allowedRoots = [
+                mediaURL.path,
+                canonicalMediaURL.path
+            ]
+        }
+
+        let uniqueRoots = Array(Set(allowedRoots))
+        let targetPaths = [
+            sourceURL.standardizedFileURL.path,
+            Self.canonicalFileURL(sourceURL).path
+        ]
+        let uniqueTargetPaths = Array(Set(targetPaths))
+
+        for targetPath in uniqueTargetPaths {
+            guard uniqueRoots.contains(where: { rootPath in
+                Self.pathIsWithinDirectory(targetPath, directoryPath: rootPath)
+            }) else {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    static func pathIsWithinDirectory(_ path: String, directoryPath: String) -> Bool {
+        path == directoryPath || path.hasPrefix(directoryPath + "/")
     }
 }

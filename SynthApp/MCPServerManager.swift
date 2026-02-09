@@ -59,19 +59,20 @@ struct MCPRuntimeLease: Codable, Equatable {
 
         if let lease = readRuntimeLease(workspace: workspace) {
             if enableHTTPBridge,
-               isProcessAlive(pid: lease.pid),
+               lease.workspacePath == workspace.path,
+               lease.commandPath == path,
                isHealthy(port: lease.port) {
-                runningProcessId = lease.pid
+                runningProcessId = nil
                 runningPort = lease.port
                 httpPort = lease.port
                 isRunning = true
                 shouldAutoRestart = true
+                process = nil
                 startHeartbeat()
                 print("[MCP] Reusing existing server on localhost:\(lease.port) for \(workspace.path)")
                 return
             }
 
-            terminateProcess(pid: lease.pid)
             removeRuntimeLease(workspace: workspace)
         }
 
@@ -137,10 +138,13 @@ struct MCPRuntimeLease: Codable, Equatable {
         cancelRestart()
         healthFailureCount = 0
 
+        var shouldRemoveLease = false
         if let proc = process, proc.isRunning {
             proc.terminate()
+            shouldRemoveLease = true
         } else if let processId = runningProcessId {
             terminateProcess(pid: processId)
+            shouldRemoveLease = true
         }
 
         process = nil
@@ -148,7 +152,7 @@ struct MCPRuntimeLease: Codable, Equatable {
         runningPort = nil
         isRunning = false
 
-        if let workspace = activeWorkspace {
+        if shouldRemoveLease, let workspace = activeWorkspace {
             removeRuntimeLease(workspace: workspace)
         }
 
@@ -177,10 +181,8 @@ struct MCPRuntimeLease: Codable, Equatable {
     // MARK: - Runtime Lease
 
     func runtimeLeaseURL(workspace: URL) -> URL {
-        workspace
-            .appendingPathComponent(".kiro")
-            .appendingPathComponent("settings")
-            .appendingPathComponent(Self.runtimeLeaseName)
+        runtimeLeaseDirectory()
+            .appendingPathComponent(Self.runtimeLeaseFilename(for: workspace))
     }
 
     func readRuntimeLease(workspace: URL) -> MCPRuntimeLease? {
@@ -198,7 +200,7 @@ struct MCPRuntimeLease: Codable, Equatable {
             startedAt: Date()
         )
         let url = runtimeLeaseURL(workspace: workspace)
-        let settingsDirectory = url.deletingLastPathComponent()
+        let settingsDirectory = runtimeLeaseDirectory()
         try? FileManager.default.createDirectory(
             at: settingsDirectory,
             withIntermediateDirectories: true
@@ -211,6 +213,27 @@ struct MCPRuntimeLease: Codable, Equatable {
     func removeRuntimeLease(workspace: URL) {
         let url = runtimeLeaseURL(workspace: workspace)
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func runtimeLeaseDirectory() -> URL {
+        let fileManager = FileManager.default
+        let appSupportDirectory = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
+        return appSupportDirectory
+            .appendingPathComponent("Synth", isDirectory: true)
+            .appendingPathComponent("mcp-runtime", isDirectory: true)
+    }
+
+    private static func runtimeLeaseFilename(for workspace: URL) -> String {
+        let normalizedPath = workspace.standardizedFileURL.path
+        let pathData = Data(normalizedPath.utf8)
+        let encodedPath = pathData.base64EncodedString()
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "=", with: "")
+        return "\(runtimeLeaseName)-\(encodedPath).json"
     }
 
     // MARK: - Port Selection
