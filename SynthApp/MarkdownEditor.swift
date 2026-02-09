@@ -1918,9 +1918,9 @@ struct MarkdownEditor: NSViewRepresentable {
             
             // Skip formatting for simple lines without markdown syntax
             let hasMarkdown = trimmed.hasPrefix("#") ||
-                trimmed.contains("[[") || trimmed.contains("@") ||
-                trimmed.contains("**") || trimmed.contains("__") ||
-                trimmed.contains("`") || trimmed.contains("![")
+                trimmed.contains("[[") || trimmed.contains("#") ||
+                trimmed.contains("@") || trimmed.contains("`") || 
+                trimmed.contains("![")
             if !hasMarkdown {
                 return
             }
