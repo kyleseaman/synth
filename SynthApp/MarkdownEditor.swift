@@ -1323,7 +1323,7 @@ class FormattingTextView: NSTextView {
             storage.replaceCharacters(in: range, with: "\(marker)\(selected)\(marker)")
             setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
         }
-        
+
         // Trigger immediate formatting
         NotificationCenter.default.post(name: .formatParagraphNow, object: self)
     }
@@ -1592,7 +1592,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.applyFormatting()
             }
             autocomplete.setupObservers()
-            
+
             // Listen for immediate format requests
             NotificationCenter.default.addObserver(
                 self,
@@ -1601,7 +1601,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 object: textView
             )
         }
-        
+
         @objc func handleFormatNow(_ notification: Notification) {
             formatTask?.cancel()
             applyFormattingToCurrentParagraph()
@@ -1835,7 +1835,7 @@ struct MarkdownEditor: NSViewRepresentable {
                   !isFormatting,
                   !textView.isResizing
             else { return }
-            
+
             // Debounce formatting to avoid lag while typing
             formatTask?.cancel()
             let task = DispatchWorkItem { [weak self] in
@@ -1920,23 +1920,23 @@ struct MarkdownEditor: NSViewRepresentable {
                 for: NSRange(location: max(cursorLoc, 0), length: 0)
             )
             let lineText = nsString.substring(with: paraRange)
-            
+
             // Skip formatting for empty or whitespace-only lines
             let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
                 return
             }
-            
+
             // Skip formatting for simple lines without markdown syntax
             let hasMarkdown = trimmed.hasPrefix("#") ||
                 trimmed.contains("[[") || trimmed.contains("#") ||
-                trimmed.contains("@") || trimmed.contains("`") || 
+                trimmed.contains("@") || trimmed.contains("`") ||
                 trimmed.contains("![") || trimmed.contains("**") ||
                 trimmed.contains("__") || trimmed.contains("*")
             if !hasMarkdown {
                 return
             }
-            
+
             isFormatting = true
             let cleanLine = MarkdownFormat.restoreImageMarkup(in: lineText)
 
