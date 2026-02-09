@@ -1304,6 +1304,7 @@ class FormattingTextView: NSTextView {
         let range = selectedRange()
         guard range.length > 0, let storage = textStorage else { return }
         let text = storage.string as NSString
+        guard range.location + range.length <= text.length else { return }
         let selected = text.substring(with: range)
         let markerLen = marker.count
 
