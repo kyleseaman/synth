@@ -1519,7 +1519,6 @@ struct MarkdownEditor: NSViewRepresentable {
             .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor
         ]
-        textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
@@ -1579,7 +1578,7 @@ struct MarkdownEditor: NSViewRepresentable {
         // Save selected range when switching away from a document
         if let lastURL = context.coordinator.lastDocumentURL,
            lastURL != currentURL {
-            store?.saveSelectedRange(textView.selectedRange())
+            store?.saveSelectedRange(textView.selectedRange(), for: lastURL)
         }
 
         let restoredString = MarkdownFormat.restoreImageMarkup(

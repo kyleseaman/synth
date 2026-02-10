@@ -803,6 +803,11 @@ final class DocumentStore {
         openFiles[currentIndex].savedSelectedRange = range
     }
 
+    func saveSelectedRange(_ range: NSRange, for url: URL) {
+        guard let index = openFiles.firstIndex(where: { $0.url == url }) else { return }
+        openFiles[index].savedSelectedRange = range
+    }
+
     func savedSelectedRange() -> NSRange? {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return nil }
         return openFiles[currentIndex].savedSelectedRange

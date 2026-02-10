@@ -202,11 +202,11 @@ struct DailyNoteEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainerInset = NSSize(width: 4, height: 8)
         textView.allowsUndo = true
+        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.delegate = context.coordinator
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.insertionPointColor = NSColor.textColor
         textView.typingAttributes = [
             .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor
