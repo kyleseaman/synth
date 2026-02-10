@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 extension Notification.Name {
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
@@ -741,6 +747,12 @@ struct EditorViewSimple: View {
             publishSelectionContext()
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
+        .onChange(of: store.openFiles[safe: store.currentIndex]?.content.string) { _, newValue in
+            // Reload when file content changes externally (e.g., Kiro agent edit)
+            if let newValue, newValue != text {
+                text = newValue
+            }
+        }
         .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
     }
