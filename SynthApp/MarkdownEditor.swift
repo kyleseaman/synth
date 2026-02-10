@@ -1916,13 +1916,22 @@ struct MarkdownEditor: NSViewRepresentable {
 
         private func formatEditedParagraph(_ editedRange: NSRange) {
             guard let textView = textView,
-                  let storage = textView.textStorage,
-                  storage.length > 0 else { return }
+                  let storage = textView.textStorage else { return }
 
-            let safeLocation = min(editedRange.location, storage.length - 1)
+            // Don't format empty documents
+            if storage.length == 0 { return }
+
+            // Preserve cursor position
+            let cursor = textView.selectedRange()
+
+            // Clamp to valid range
+            let safeLocation = min(editedRange.location, max(storage.length - 1, 0))
             let paraRange = (storage.string as NSString).paragraphRange(
-                for: NSRange(location: max(safeLocation, 0), length: 0)
+                for: NSRange(location: safeLocation, length: 0)
             )
+
+            // Validate paraRange
+            guard paraRange.location + paraRange.length <= storage.length else { return }
 
             let lineText = (storage.string as NSString).substring(with: paraRange)
             let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1985,6 +1994,15 @@ struct MarkdownEditor: NSViewRepresentable {
                 }
             }
             storage.endEditing()
+
+            // Restore cursor if it was displaced
+            let safeCursor = NSRange(
+                location: min(cursor.location, storage.length),
+                length: min(cursor.length, storage.length - min(cursor.location, storage.length))
+            )
+            if textView.selectedRange() != safeCursor {
+                textView.setSelectedRange(safeCursor)
+            }
         }
 
         private var textSyncTask: DispatchWorkItem?
