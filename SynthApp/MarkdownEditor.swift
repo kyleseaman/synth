@@ -20,12 +20,12 @@ struct MarkdownFormat: DocumentFormat {
     static let imagePattern = try! NSRegularExpression(
         pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
     )
-    private static let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
-    private static let datePattern = try! NSRegularExpression(pattern: "@(\\d{4}-\\d{2}-\\d{2})")
-    private static let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
-    private static let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
-    private static let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
-    private static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
+    static let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    static let datePattern = try! NSRegularExpression(pattern: "@(\\d{4}-\\d{2}-\\d{2})")
+    static let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
+    static let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
+    static let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
+    static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
     // swiftlint:enable force_try
 
     var noteIndex: NoteIndex?
@@ -1971,8 +1971,102 @@ struct MarkdownEditor: NSViewRepresentable {
             range editedRange: NSRange,
             changeInLength delta: Int
         ) {
-            // Don't do live formatting - it causes lag
-            // Formatting happens on document load and via debounced updates
+            // Only format on character changes, not attribute changes
+            guard editedMask.contains(.editedCharacters) else { return }
+            guard textStorage.length > 0 else { return }
+
+            let paragraphRange = (textStorage.string as NSString).paragraphRange(for: editedRange)
+            highlightParagraph(textStorage, range: paragraphRange)
+        }
+
+        private func highlightParagraph(_ storage: NSTextStorage, range paraRange: NSRange) {
+            guard paraRange.location + paraRange.length <= storage.length else { return }
+
+            let text = storage.string
+            let nsText = text as NSString
+            let lineText = nsText.substring(with: paraRange)
+            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return }
+
+            let bodyFont = Theme.editorNSFont(ofSize: 16)
+
+            // Reset to base font/color for this paragraph
+            storage.addAttributes([
+                .font: bodyFont,
+                .foregroundColor: NSColor.textColor
+            ], range: paraRange)
+
+            // Headings
+            var headingPrefixLen = 0
+            if trimmed.hasPrefix("# ") {
+                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 28, weight: .bold), range: paraRange)
+                headingPrefixLen = 2
+            } else if trimmed.hasPrefix("## ") {
+                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 22, weight: .bold), range: paraRange)
+                headingPrefixLen = 3
+            } else if trimmed.hasPrefix("### ") {
+                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 18, weight: .semibold), range: paraRange)
+                headingPrefixLen = 4
+            }
+
+            if headingPrefixLen > 0 {
+                storage.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ], range: NSRange(location: paraRange.location, length: headingPrefixLen))
+            }
+
+            // Bold **text**
+            MarkdownFormat.boldPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                guard let match = match else { return }
+                let innerRange = match.range(at: 1)
+                let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
+                storage.addAttribute(.font, value: boldFont, range: innerRange)
+                // Gray markers
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location, length: 2))
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+            }
+
+            // Italic *text*
+            MarkdownFormat.italicPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                guard let match = match else { return }
+                let innerRange = match.range(at: 1)
+                let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+                storage.addAttribute(.font, value: italicFont, range: innerRange)
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location, length: 1))
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
+            }
+
+            // Wiki links [[text]]
+            MarkdownFormat.wikiPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                guard let match = match else { return }
+                let innerRange = match.range(at: 1)
+                storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: innerRange)
+                // Gray brackets
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location, length: 2))
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+            }
+
+            // Code `text`
+            MarkdownFormat.codePattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                guard let match = match else { return }
+                let innerRange = match.range(at: 1)
+                storage.addAttributes([
+                    .font: Theme.terminalNSFont(ofSize: 14),
+                    .foregroundColor: NSColor.systemPink,
+                    .backgroundColor: NSColor.quaternaryLabelColor
+                ], range: innerRange)
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location, length: 1))
+                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                    range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
+            }
         }
 
         private var textSyncTask: DispatchWorkItem?
