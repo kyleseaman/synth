@@ -1908,13 +1908,13 @@ struct MarkdownEditor: NSViewRepresentable {
             // Reset undo break timer on each edit
             textView.resetUndoBreakTimer()
 
-            // Debounce formatting to avoid lag while typing
+            // Debounce formatting - 150ms to avoid lag while typing
             formatTask?.cancel()
             let task = DispatchWorkItem { [weak self] in
                 self?.applyFormattingToCurrentParagraph()
             }
             formatTask = task
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: task)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: task)
             debouncedTextSync()
         }
 
@@ -1999,13 +1999,17 @@ struct MarkdownEditor: NSViewRepresentable {
                 return
             }
 
-            // Skip formatting for simple lines without markdown syntax
-            let hasMarkdown = trimmed.hasPrefix("#") ||
-                trimmed.contains("[[") || trimmed.contains("#") ||
-                trimmed.contains("@") || trimmed.contains("`") ||
-                trimmed.contains("![") || trimmed.contains("**") ||
-                trimmed.contains("__") || trimmed.contains("*")
-            if !hasMarkdown {
+            // Fast check: skip formatting for plain text lines
+            // Only format if line likely has markdown (cheap string checks)
+            let needsFormat = trimmed.hasPrefix("#") ||  // heading
+                trimmed.contains("[[") ||                 // wiki link
+                trimmed.contains("![") ||                 // image
+                trimmed.contains("**") ||                 // bold
+                trimmed.contains("__") ||                 // underline
+                trimmed.contains("`") ||                  // code
+                (trimmed.contains("*") && trimmed.filter { $0 == "*" }.count >= 2) // italic needs 2+ asterisks
+
+            if !needsFormat {
                 return
             }
 
@@ -2071,7 +2075,7 @@ struct MarkdownEditor: NSViewRepresentable {
                     location: paraRange.location + range.location,
                     length: range.length
                 )
-                storage.setAttributes(attrDict, range: storageRange)
+                storage.addAttributes(attrDict, range: storageRange)
             }
 
             storage.endEditing()
