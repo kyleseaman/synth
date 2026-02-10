@@ -287,42 +287,18 @@ struct MarkdownFormat: DocumentFormat {
             ) ?? noteTitle
             // swiftlint:disable:next force_unwrapping
             let linkURL = URL(string: "synth://wiki/\(encodedTitle)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
 
-            // Broken link detection: check if target exists in noteIndex
-            // If noteIndex hasn't populated yet, assume note exists to avoid broken-link flash on load
-            let noteExists: Bool
-            if let index = noteIndex, index.isPopulated {
-                noteExists = index.findExact(noteTitle) != nil
-            } else {
-                noteExists = true
-            }
-            var linkAttrs: [NSAttributedString.Key: Any] = [
-                .font: mediumFont,
+            // Style inner text as link
+            let linkAttrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.controlAccentColor,
                 .link: linkURL,
                 .cursor: NSCursor.pointingHand
             ]
-
-            if noteExists {
-                linkAttrs[.foregroundColor] = NSColor.controlAccentColor
-            } else {
-                linkAttrs[.foregroundColor] = NSColor.systemOrange
-                linkAttrs[.underlineStyle] = NSUnderlineStyle.patternDash.rawValue
-                    | NSUnderlineStyle.single.rawValue
-                linkAttrs[.underlineColor] = NSColor.systemOrange.withAlphaComponent(0.6)
-                linkAttrs[.toolTip] = "Note not found -- click to create"
-            }
-
-            // Apply link styling to inner text (visible)
             str.addAttributes(linkAttrs, range: innerNSRange)
 
-            // Hide [[ and ]] brackets visually (keep in source for save)
-            let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear,
+            // Style [[ and ]] brackets in gray (FSNotes style)
+            let bracketAttrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.gray,
                 .link: linkURL
             ]
             let openRange = NSRange(location: fullNSRange.location, length: 2)
@@ -330,8 +306,8 @@ struct MarkdownFormat: DocumentFormat {
                 location: fullNSRange.location + fullNSRange.length - 2,
                 length: 2
             )
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttributes(bracketAttrs, range: openRange)
+            str.addAttributes(bracketAttrs, range: closeRange)
         }
 
         // MARK: @Date mentions (@2026-02-07) — styled as daily note links
