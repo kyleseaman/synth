@@ -424,14 +424,14 @@ struct MarkdownFormat: DocumentFormat {
                 baseFont, toHaveTrait: .boldFontMask
             )
             str.addAttribute(.font, value: boldFont, range: innerRange)
-            // Hide ** markers
+            // Gray ** markers (FSNotes style)
             let openRange = NSRange(location: fullRange.location, length: 2)
             let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
         }
 
-        // MARK: Italic *text* — style inner text, hide markers
+        // MARK: Italic *text* — style inner text, gray markers
         let italicRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.italicPattern.matches(in: str.string, range: italicRange).reversed() {
             let fullRange = match.range
@@ -440,14 +440,14 @@ struct MarkdownFormat: DocumentFormat {
                 baseFont, toHaveTrait: .italicFontMask
             )
             str.addAttribute(.font, value: italicFont, range: innerRange)
-            // Hide * markers
+            // Gray * markers (FSNotes style)
             let openRange = NSRange(location: fullRange.location, length: 1)
             let closeRange = NSRange(location: fullRange.location + fullRange.length - 1, length: 1)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
         }
 
-        // MARK: Underline __text__ — style inner text, hide markers
+        // MARK: Underline __text__ — style inner text, gray markers
         let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.underlinePattern.matches(in: str.string, range: underlineRange).reversed() {
             let fullRange = match.range
@@ -457,14 +457,14 @@ struct MarkdownFormat: DocumentFormat {
                 value: NSUnderlineStyle.single.rawValue,
                 range: innerRange
             )
-            // Hide __ markers
+            // Gray __ markers (FSNotes style)
             let openRange = NSRange(location: fullRange.location, length: 2)
             let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
         }
 
-        // MARK: Inline code `text` — style inner text, hide backticks
+        // MARK: Inline code `text` — style inner text, gray backticks
         let codeRange = NSRange(location: 0, length: str.string.utf16.count)
         for match in Self.codePattern.matches(in: str.string, range: codeRange).reversed() {
             let fullRange = match.range
@@ -474,11 +474,11 @@ struct MarkdownFormat: DocumentFormat {
                 .foregroundColor: NSColor.systemPink,
                 .backgroundColor: NSColor.quaternaryLabelColor
             ], range: innerRange)
-            // Hide ` markers
+            // Gray ` markers (FSNotes style)
             let openRange = NSRange(location: fullRange.location, length: 1)
             let closeRange = NSRange(location: fullRange.location + fullRange.length - 1, length: 1)
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
+            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
         }
     }
 }
@@ -1212,30 +1212,7 @@ class FormattingTextView: NSTextView {
     // MARK: - Delete Backward
 
     override func deleteBackward(_ sender: Any?) {
-        // Skip over hidden markers (font size < 1) when backspacing
-        if let storage = textStorage, selectedRange().length == 0 {
-            let cursor = selectedRange().location
-            if cursor > 0 {
-                var deleteStart = cursor - 1
-                while deleteStart > 0,
-                      let font = storage.attribute(.font, at: deleteStart, effectiveRange: nil) as? NSFont,
-                      font.pointSize < 1 {
-                    deleteStart -= 1
-                }
-                // If we found hidden chars, delete them all
-                if deleteStart < cursor - 1 {
-                    let range = NSRange(location: deleteStart, length: cursor - deleteStart)
-                    insertText("", replacementRange: range)
-                    // Fall through to update wiki link state
-                } else {
-                    super.deleteBackward(sender)
-                }
-            } else {
-                super.deleteBackward(sender)
-            }
-        } else {
-            super.deleteBackward(sender)
-        }
+        super.deleteBackward(sender)
 
         switch wikiLinkState {
         case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
