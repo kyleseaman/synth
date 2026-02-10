@@ -1018,6 +1018,17 @@ class FormattingTextView: NSTextView {
         super.paste(sender)
     }
 
+    // Regex for unordered list markers: -, *, +, •, >, –, —
+    // swiftlint:disable:next force_try
+    private static let listMarkerRegex = try! NSRegularExpression(
+        pattern: #"^([ \t]*)([-*+•>–—])( )"#
+    )
+    // Regex for ordered list: 1. 2. etc
+    // swiftlint:disable:next force_try
+    private static let numberedListRegex = try! NSRegularExpression(
+        pattern: #"^([ \t]*)(\d+)(\.[ ])"#
+    )
+
     override func insertNewline(_ sender: Any?) {
         // Dismiss wiki link popup on newline
         switch wikiLinkState {
@@ -1031,22 +1042,44 @@ class FormattingTextView: NSTextView {
         guard let storage = textStorage else { super.insertNewline(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange).trimmingCharacters(in: .newlines)
+        let nsLine = line as NSString
+        let fullRange = NSRange(location: 0, length: nsLine.length)
 
-        // Count leading tabs
-        var indent = ""
-        for char in line { if char == "\t" { indent += "\t" } else { break } }
-
-        // If current line is just a bullet (empty item), remove it instead
-        if line == "\(indent)•" {
-            storage.replaceCharacters(in: lineRange, with: "")
+        // Check for unordered list marker
+        if let match = Self.listMarkerRegex.firstMatch(in: line, range: fullRange) {
+            let prefix = nsLine.substring(with: match.range)
+            // If line is just the marker, remove it
+            if line == prefix.trimmingCharacters(in: .whitespaces) {
+                storage.replaceCharacters(in: lineRange, with: "")
+                return
+            }
+            super.insertNewline(sender)
+            insertText(prefix, replacementRange: selectedRange())
             return
         }
 
-        // If line starts with bullet, continue the list
-        if line.hasPrefix("\(indent)•") {
-            super.insertNewline(sender)
-            insertText("\(indent)• ", replacementRange: selectedRange())
-            return
+        // Check for numbered list
+        if let match = Self.numberedListRegex.firstMatch(in: line, range: fullRange) {
+            let indentRange = match.range(at: 1)
+            let numRange = match.range(at: 2)
+            let dotRange = match.range(at: 3)
+            let indent = nsLine.substring(with: indentRange)
+            let numStr = nsLine.substring(with: numRange)
+            let dot = nsLine.substring(with: dotRange)
+            let prefix = "\(indent)\(numStr)\(dot)"
+
+            // If line is just the marker, remove it
+            if line == prefix.trimmingCharacters(in: .whitespaces) {
+                storage.replaceCharacters(in: lineRange, with: "")
+                return
+            }
+            // Increment number
+            if let num = Int(numStr) {
+                let nextPrefix = "\(indent)\(num + 1)\(dot)"
+                super.insertNewline(sender)
+                insertText(nextPrefix, replacementRange: selectedRange())
+                return
+            }
         }
 
         super.insertNewline(sender)
@@ -1057,7 +1090,6 @@ class FormattingTextView: NSTextView {
         guard let str = string as? String else { return }
 
         handleAutocompleteState(for: str)
-        handleBulletConversion(for: str)
     }
 
     // MARK: - Autocomplete State Machine
@@ -1201,24 +1233,6 @@ class FormattingTextView: NSTextView {
         )
     }
 
-    // MARK: - Bullet Conversion
-
-    private func handleBulletConversion(for str: String) {
-        guard str == " ", let storage = textStorage else { return }
-        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
-        let line = (storage.string as NSString).substring(with: lineRange)
-
-        let trimmed = line.trimmingCharacters(in: .newlines)
-        var indent = ""
-        for char in trimmed { if char == "\t" { indent += "\t" } else { break } }
-        let rest = String(trimmed.dropFirst(indent.count))
-
-        if rest == "- " || rest == "* " {
-            let bulletRange = NSRange(location: lineRange.location + indent.count, length: 2)
-            storage.replaceCharacters(in: bulletRange, with: "• ")
-        }
-    }
-
     // MARK: - Delete Backward
 
     override func deleteBackward(_ sender: Any?) {
@@ -1321,12 +1335,18 @@ class FormattingTextView: NSTextView {
         }
     }
 
+    private func isListLine(_ line: String) -> Bool {
+        let range = NSRange(location: 0, length: (line as NSString).length)
+        return Self.listMarkerRegex.firstMatch(in: line, range: range) != nil
+            || Self.numberedListRegex.firstMatch(in: line, range: range) != nil
+    }
+
     override func insertTab(_ sender: Any?) {
         guard let storage = textStorage else { super.insertTab(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        if line.contains("•") {
+        if isListLine(line) {
             storage.insert(NSAttributedString(string: "\t"), at: lineRange.location)
             return
         }
@@ -1338,7 +1358,7 @@ class FormattingTextView: NSTextView {
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        if line.hasPrefix("\t") && line.contains("•") {
+        if line.hasPrefix("\t") && isListLine(line) {
             storage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
             return
         }
