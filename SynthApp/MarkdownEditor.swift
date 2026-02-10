@@ -1537,6 +1537,7 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.bindImagePasteHandler(to: textView)
         context.coordinator.bindImageOverlay(to: textView)
         textView.layoutManager?.delegate = context.coordinator
+        textView.textStorage?.delegate = context.coordinator
 
         NotificationCenter.default.addObserver(
             context.coordinator,
@@ -1611,12 +1612,14 @@ struct MarkdownEditor: NSViewRepresentable {
     // MARK: - Coordinator
 
     @MainActor
-    class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSLayoutManagerDelegate {
+    class Coordinator: NSObject,
+                       NSTextViewDelegate,
+                       @preconcurrency NSTextStorageDelegate,
+                       @preconcurrency NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
-        var isFormatting = false
         weak var store: DocumentStore?
         weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
@@ -1661,19 +1664,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.applyFormatting()
             }
             autocomplete.setupObservers()
-
-            // Listen for immediate format requests
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(handleFormatNow),
-                name: .formatParagraphNow,
-                object: textView
-            )
-        }
-
-        @objc func handleFormatNow(_ notification: Notification) {
-            formatTask?.cancel()
-            applyFormattingToCurrentParagraph()
         }
 
         // MARK: - Image Paste
@@ -1871,7 +1861,7 @@ struct MarkdownEditor: NSViewRepresentable {
             didCompleteLayoutFor textContainer: NSTextContainer?,
             atEnd layoutFinishedFlag: Bool
         ) {
-            if layoutFinishedFlag && !isFormatting {
+            if layoutFinishedFlag {
                 debouncedLinePositionUpdate()
             }
         }
@@ -1897,25 +1887,91 @@ struct MarkdownEditor: NSViewRepresentable {
             store?.saveAll()
         }
 
-        private var formatTask: DispatchWorkItem?
-
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView,
-                  !isFormatting,
-                  !textView.isResizing
-            else { return }
+            guard let textView = textView, !textView.isResizing else { return }
 
             // Reset undo break timer on each edit
             textView.resetUndoBreakTimer()
 
-            // Debounce formatting - 150ms to avoid lag while typing
-            formatTask?.cancel()
-            let task = DispatchWorkItem { [weak self] in
-                self?.applyFormattingToCurrentParagraph()
-            }
-            formatTask = task
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: task)
+            // Sync text to parent (debounced)
             debouncedTextSync()
+        }
+
+        // MARK: - NSTextStorageDelegate (FSNotes approach)
+
+        func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange,
+            changeInLength delta: Int
+        ) {
+            // Skip if only attributes changed (prevents infinite loop)
+            guard editedMask.contains(.editedCharacters) else { return }
+            guard textStorage.length > 0 else { return }
+
+            // Get paragraph range for the edit
+            let paragraphRange = (textStorage.string as NSString).paragraphRange(for: editedRange)
+
+            // Apply formatting to just this paragraph
+            applyFormattingToParagraph(in: textStorage, range: paragraphRange)
+        }
+
+        private func applyFormattingToParagraph(in storage: NSTextStorage, range paraRange: NSRange) {
+            let nsString = storage.string as NSString
+            let lineText = nsString.substring(with: paraRange)
+            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Skip empty lines
+            if trimmed.isEmpty { return }
+
+            let bodyFont = Theme.editorNSFont(ofSize: 16)
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: bodyFont,
+                .foregroundColor: NSColor.textColor
+            ]
+
+            // Check for headings
+            var headingPrefixLen = 0
+            if trimmed.hasPrefix("# ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
+                headingPrefixLen = 2
+            } else if trimmed.hasPrefix("## ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
+                headingPrefixLen = 3
+            } else if trimmed.hasPrefix("### ") {
+                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
+                headingPrefixLen = 4
+            }
+
+            // Apply base attributes
+            storage.addAttributes(attrs, range: paraRange)
+
+            // Hide heading prefix
+            if headingPrefixLen > 0 {
+                let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ]
+                let prefixRange = NSRange(location: paraRange.location, length: headingPrefixLen)
+                storage.addAttributes(hiddenAttrs, range: prefixRange)
+            }
+
+            // Apply inline formatting
+            guard let paraStr = storage.attributedSubstring(from: paraRange).mutableCopy()
+                    as? NSMutableAttributedString else { return }
+            let format = MarkdownFormat(noteIndex: store?.noteIndex)
+            format.applyInlineOnly(paraStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
+
+            // Copy attributes back
+            paraStr.enumerateAttributes(
+                in: NSRange(location: 0, length: paraStr.length)
+            ) { attrDict, range, _ in
+                let loc = paraRange.location + range.location
+                let storageRange = NSRange(location: loc, length: range.length)
+                if storageRange.location + storageRange.length <= storage.length {
+                    storage.addAttributes(attrDict, range: storageRange)
+                }
+            }
         }
 
         private var textSyncTask: DispatchWorkItem?
@@ -1950,7 +2006,6 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView = textView,
                   let storage = textView.textStorage
             else { return }
-            isFormatting = true
             let cursor = textView.selectedRange()
             let cleanText = MarkdownFormat.restoreImageMarkup(
                 in: textView.string
@@ -1974,113 +2029,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 baseFont: baseFont
             )
             textView.setSelectedRange(cursor)
-            isFormatting = false
-        }
-
-        func applyFormattingToCurrentParagraph() {
-            guard let textView = textView,
-                  let storage = textView.textStorage
-            else { return }
-            let cursor = textView.selectedRange()
-            let nsString = storage.string as NSString
-            let fullLength = nsString.length
-            guard fullLength > 0 else { return }
-
-            // Find the paragraph range around the cursor
-            let cursorLoc = min(cursor.location, fullLength - 1)
-            let paraRange = nsString.paragraphRange(
-                for: NSRange(location: max(cursorLoc, 0), length: 0)
-            )
-            let lineText = nsString.substring(with: paraRange)
-
-            // Skip formatting for empty or whitespace-only lines
-            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty {
-                return
-            }
-
-            // Fast check: skip formatting for plain text lines
-            // Only format if line likely has markdown (cheap string checks)
-            let needsFormat = trimmed.hasPrefix("#") ||  // heading
-                trimmed.contains("[[") ||                 // wiki link
-                trimmed.contains("![") ||                 // image
-                trimmed.contains("**") ||                 // bold
-                trimmed.contains("__") ||                 // underline
-                trimmed.contains("`") ||                  // code
-                (trimmed.contains("*") && trimmed.filter { $0 == "*" }.count >= 2) // italic needs 2+ asterisks
-
-            if !needsFormat {
-                return
-            }
-
-            isFormatting = true
-            let cleanLine = MarkdownFormat.restoreImageMarkup(in: lineText)
-
-            // Build attributes for this single line
-            let bodyFont = Theme.editorNSFont(ofSize: 16)
-            var attrs: [NSAttributedString.Key: Any] = [
-                .font: bodyFont, .foregroundColor: NSColor.textColor
-            ]
-
-            var headingPrefixLen = 0
-            if cleanLine.hasPrefix("# ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
-                headingPrefixLen = 2
-            } else if cleanLine.hasPrefix("## ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
-                headingPrefixLen = 3
-            } else if cleanLine.hasPrefix("### ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
-                headingPrefixLen = 4
-            }
-
-            if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
-                let para = NSMutableParagraphStyle()
-                para.minimumLineHeight = ceil(
-                    headingFont.ascender - headingFont.descender + headingFont.leading
-                )
-                attrs[.paragraphStyle] = para
-            }
-
-            // Wrap all attribute changes in beginEditing/endEditing
-            // to batch them into a single layout pass (per Christian Tietze's approach)
-            storage.beginEditing()
-
-            // Apply base attributes to the paragraph
-            storage.setAttributes(attrs, range: paraRange)
-
-            // Hide heading prefix
-            if headingPrefixLen > 0 {
-                let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear
-                ]
-                storage.addAttributes(
-                    hiddenAttrs,
-                    range: NSRange(location: paraRange.location, length: headingPrefixLen)
-                )
-            }
-
-            // Apply inline formatting to just this paragraph
-            let paraStr = storage.attributedSubstring(from: paraRange).mutableCopy()
-                as! NSMutableAttributedString // swiftlint:disable:this force_cast
-            let format = MarkdownFormat(noteIndex: store?.noteIndex)
-            format.applyInlineOnly(paraStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
-
-            // Copy inline attributes back
-            paraStr.enumerateAttributes(
-                in: NSRange(location: 0, length: paraStr.length)
-            ) { attrDict, range, _ in
-                let storageRange = NSRange(
-                    location: paraRange.location + range.location,
-                    length: range.length
-                )
-                storage.addAttributes(attrDict, range: storageRange)
-            }
-
-            storage.endEditing()
-            textView.setSelectedRange(cursor)
-            isFormatting = false
         }
 
         private func loadInlineImages(
