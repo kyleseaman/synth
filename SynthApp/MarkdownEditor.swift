@@ -1872,53 +1872,43 @@ struct MarkdownEditor: NSViewRepresentable {
 
             // Sync text to parent (debounced)
             debouncedTextSync()
+
+            // Debounced formatting - only after user stops typing
+            debouncedFormat()
         }
 
-        // MARK: - NSTextStorageDelegate
+        private var formatTask: DispatchWorkItem?
 
-        func textStorage(
-            _ textStorage: NSTextStorage,
-            didProcessEditing editedMask: NSTextStorageEditActions,
-            range editedRange: NSRange,
-            changeInLength delta: Int
-        ) {
-            // Only trigger formatting on character changes, not attribute changes
-            guard editedMask.contains(.editedCharacters) else { return }
-
-            // Defer formatting to after the current edit completes
-            DispatchQueue.main.async { [weak self] in
-                self?.formatEditedParagraph(editedRange)
+        private func debouncedFormat() {
+            formatTask?.cancel()
+            let task = DispatchWorkItem { [weak self] in
+                guard let self, let textView = self.textView else { return }
+                let cursor = textView.selectedRange()
+                self.formatCurrentParagraph()
+                // Restore cursor
+                if cursor.location <= (textView.textStorage?.length ?? 0) {
+                    textView.setSelectedRange(cursor)
+                }
             }
+            formatTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
         }
 
-        private func formatEditedParagraph(_ editedRange: NSRange) {
+        private func formatCurrentParagraph() {
             guard let textView = textView,
-                  let storage = textView.textStorage else { return }
+                  let storage = textView.textStorage,
+                  storage.length > 0 else { return }
 
-            // Don't format empty documents
-            if storage.length == 0 { return }
-
-            // Preserve cursor position
             let cursor = textView.selectedRange()
-
-            // Clamp to valid range
-            let safeLocation = min(editedRange.location, max(storage.length - 1, 0))
+            let safeLocation = min(cursor.location, max(storage.length - 1, 0))
             let paraRange = (storage.string as NSString).paragraphRange(
                 for: NSRange(location: safeLocation, length: 0)
             )
-
-            // Validate paraRange
             guard paraRange.location + paraRange.length <= storage.length else { return }
 
             let lineText = (storage.string as NSString).substring(with: paraRange)
             let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }
-
-            // Quick check - skip plain text lines
-            let hasMarkdown = trimmed.hasPrefix("#") || trimmed.contains("[[") ||
-                trimmed.contains("**") || trimmed.contains("__") ||
-                trimmed.contains("`") || trimmed.contains("![")
-            if !hasMarkdown { return }
 
             let bodyFont = Theme.editorNSFont(ofSize: 16)
             var attrs: [NSAttributedString.Key: Any] = [
@@ -1971,15 +1961,18 @@ struct MarkdownEditor: NSViewRepresentable {
                 }
             }
             storage.endEditing()
+        }
 
-            // Restore cursor if it was displaced
-            let safeCursor = NSRange(
-                location: min(cursor.location, storage.length),
-                length: min(cursor.length, storage.length - min(cursor.location, storage.length))
-            )
-            if textView.selectedRange() != safeCursor {
-                textView.setSelectedRange(safeCursor)
-            }
+        // MARK: - NSTextStorageDelegate
+
+        func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange,
+            changeInLength delta: Int
+        ) {
+            // Don't do live formatting - it causes lag
+            // Formatting happens on document load and via debounced updates
         }
 
         private var textSyncTask: DispatchWorkItem?
