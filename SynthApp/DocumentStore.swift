@@ -308,6 +308,13 @@ final class DocumentStore {
     let dailyNoteManager = DailyNoteManager()
     let mcpServer = MCPServerManager()
 
+    private let saveQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
+
     private static let meetingDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -791,6 +798,16 @@ final class DocumentStore {
         }
     }
 
+    func saveSelectedRange(_ range: NSRange) {
+        guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
+        openFiles[currentIndex].savedSelectedRange = range
+    }
+
+    func savedSelectedRange() -> NSRange? {
+        guard currentIndex >= 0 && currentIndex < openFiles.count else { return nil }
+        return openFiles[currentIndex].savedSelectedRange
+    }
+
     func save() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
         let doc = openFiles[currentIndex]
@@ -816,22 +833,30 @@ final class DocumentStore {
     }
 
     func saveAll() {
-        var didRename = false
+        // Collect documents to save on main thread
+        var docsToSave: [(url: URL, content: String, isDocx: Bool, index: Int)] = []
+        var renameOps: [(index: Int, oldURL: URL, newURL: URL)] = []
+
         for index in openFiles.indices where openFiles[index].isDirty {
             let doc = openFiles[index]
-            try? doc.save(doc.content)
+            let isDocx = doc.url.pathExtension.lowercased() == "docx"
 
-            // Rename Untitled files based on first line
-            if doc.url.lastPathComponent.hasPrefix("Untitled") {
-                if let newURL = renamedURL(for: doc) {
-                    try? FileManager.default.moveItem(at: doc.url, to: newURL)
-                    openFiles[index] = Document(url: newURL, content: doc.content)
-                    didRename = true
-                }
+            // For docx, save synchronously (needs attributed string)
+            if isDocx {
+                try? doc.save(doc.content)
+            } else {
+                docsToSave.append((doc.url, doc.content.string, isDocx, index))
             }
+
+            // Check for rename
+            if doc.url.lastPathComponent.hasPrefix("Untitled"),
+               let newURL = renamedURL(for: doc) {
+                renameOps.append((index, doc.url, newURL))
+            }
+
             openFiles[index].isDirty = false
 
-            // Incremental index updates
+            // Update indexes on main thread
             let savedURL = openFiles[index].url
             let savedContent = openFiles[index].content.string
             noteIndex.updateFile(savedURL, content: savedContent)
@@ -839,7 +864,26 @@ final class DocumentStore {
             tagIndex.updateFile(savedURL, content: savedContent)
             peopleIndex.updateFile(savedURL, content: savedContent)
         }
-        if didRename { loadFileTree() }
+
+        // Background save for plain text files
+        if !docsToSave.isEmpty {
+            saveQueue.cancelAllOperations()
+            let operation = BlockOperation { [docsToSave] in
+                for doc in docsToSave {
+                    try? doc.content.write(to: doc.url, atomically: true, encoding: .utf8)
+                }
+            }
+            saveQueue.addOperation(operation)
+        }
+
+        // Handle renames on main thread
+        for rename in renameOps {
+            try? FileManager.default.moveItem(at: rename.oldURL, to: rename.newURL)
+            let content = openFiles[rename.index].content
+            openFiles[rename.index] = Document(url: rename.newURL, content: content)
+        }
+        if !renameOps.isEmpty { loadFileTree() }
+
         dailyNoteManager.saveAll()
     }
 

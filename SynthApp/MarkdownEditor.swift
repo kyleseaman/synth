@@ -658,6 +658,37 @@ class FormattingTextView: NSTextView {
     /// Parameters: original markup string, new width in points.
     var onImageResize: ((String, Int) -> Void)?
 
+    // MARK: - Custom Caret
+    private let caretWidth: CGFloat = 2
+    private let caretColor = NSColor.controlAccentColor
+
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        var newRect = rect
+        newRect.size.width = caretWidth
+        super.drawInsertionPoint(in: newRect, color: caretColor, turnedOn: flag)
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        var expandedRect = invalidRect
+        expandedRect.size.width += caretWidth - 1
+        super.setNeedsDisplay(expandedRect)
+    }
+
+    // MARK: - Undo Break Timer
+    private var undoBreakTimer: Timer?
+
+    func resetUndoBreakTimer() {
+        undoBreakTimer?.invalidate()
+        undoBreakTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
+            self?.breakUndoCoalescing()
+        }
+    }
+
+    func invalidateUndoBreakTimer() {
+        undoBreakTimer?.invalidate()
+        undoBreakTimer = nil
+    }
+
     private lazy var imageOverlay: ImageAttachmentOverlay = {
         let overlay = ImageAttachmentOverlay()
         overlay.isHidden = true
@@ -1493,6 +1524,7 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
+        textView.layoutManager?.allowsNonContiguousLayout = true
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -1542,6 +1574,14 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.autocomplete.templateStore = templateStore
         context.coordinator.autocomplete.store = store
 
+        let currentURL = store?.currentDocumentURL
+
+        // Save selected range when switching away from a document
+        if let lastURL = context.coordinator.lastDocumentURL,
+           lastURL != currentURL {
+            store?.saveSelectedRange(textView.selectedRange())
+        }
+
         let restoredString = MarkdownFormat.restoreImageMarkup(
             in: textView.string
         )
@@ -1550,8 +1590,16 @@ struct MarkdownEditor: NSViewRepresentable {
             context.coordinator.applyFormatting()
             DispatchQueue.main.async {
                 context.coordinator.updateLinePositions()
+                // Restore saved selected range for this document
+                if let savedRange = self.store?.savedSelectedRange(),
+                   savedRange.location + savedRange.length <= textView.string.count {
+                    textView.setSelectedRange(savedRange)
+                    textView.scrollRangeToVisible(savedRange)
+                }
             }
         }
+
+        context.coordinator.lastDocumentURL = currentURL
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -1578,6 +1626,7 @@ struct MarkdownEditor: NSViewRepresentable {
         weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
+        var lastDocumentURL: URL?
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
@@ -1585,6 +1634,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         func tearDown() {
             saveTimer?.invalidate()
+            textView?.invalidateUndoBreakTimer()
             if let clipView = scrollView?.contentView {
                 NotificationCenter.default.removeObserver(
                     self,
@@ -1859,6 +1909,9 @@ struct MarkdownEditor: NSViewRepresentable {
                   !isFormatting,
                   !textView.isResizing
             else { return }
+
+            // Reset undo break timer on each edit
+            textView.resetUndoBreakTimer()
 
             // Debounce formatting to avoid lag while typing
             formatTask?.cancel()
