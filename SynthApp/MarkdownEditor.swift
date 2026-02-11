@@ -1638,7 +1638,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 self.parent.text = MarkdownFormat.restoreImageMarkup(
                     in: textView.string
                 )
-                self.applyFormatting()
+                // Don't call applyFormatting() - didProcessEditing handles it
             }
             autocomplete.setupObservers()
         }
@@ -1688,7 +1688,7 @@ struct MarkdownEditor: NSViewRepresentable {
             )
             textView.string = newText
             parent.text = newText
-            applyFormatting()
+            applyFormatting() // Need full reformat for image rendering
         }
 
         private func handleImageAction(
@@ -1703,7 +1703,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 NSPasteboard.general.writeObjects([image])
             case .delete:
                 removeImageMarkup(for: imageURL)
-                applyFormatting()
                 // Save so disk content is up to date for the check
                 store?.saveAll()
                 let refs = store?.notesReferencing(
@@ -1712,7 +1711,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 if refs.isEmpty {
                     _ = store?.deleteMedia(imageURL)
                 }
-                applyFormatting()
+                applyFormatting() // Need full reformat for image rendering
             case .open:
                 self.store?.showImageDetailModal(imageURL)
             }
@@ -1872,95 +1871,6 @@ struct MarkdownEditor: NSViewRepresentable {
 
             // Sync text to parent (debounced)
             debouncedTextSync()
-
-            // Debounced formatting - only after user stops typing
-            debouncedFormat()
-        }
-
-        private var formatTask: DispatchWorkItem?
-
-        private func debouncedFormat() {
-            formatTask?.cancel()
-            let task = DispatchWorkItem { [weak self] in
-                guard let self, let textView = self.textView else { return }
-                let cursor = textView.selectedRange()
-                self.formatCurrentParagraph()
-                // Restore cursor
-                if cursor.location <= (textView.textStorage?.length ?? 0) {
-                    textView.setSelectedRange(cursor)
-                }
-            }
-            formatTask = task
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
-        }
-
-        private func formatCurrentParagraph() {
-            guard let textView = textView,
-                  let storage = textView.textStorage,
-                  storage.length > 0 else { return }
-
-            let cursor = textView.selectedRange()
-            let safeLocation = min(cursor.location, max(storage.length - 1, 0))
-            let paraRange = (storage.string as NSString).paragraphRange(
-                for: NSRange(location: safeLocation, length: 0)
-            )
-            guard paraRange.location + paraRange.length <= storage.length else { return }
-
-            let lineText = (storage.string as NSString).substring(with: paraRange)
-            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return }
-
-            let bodyFont = Theme.editorNSFont(ofSize: 16)
-            var attrs: [NSAttributedString.Key: Any] = [
-                .font: bodyFont,
-                .foregroundColor: NSColor.textColor
-            ]
-
-            var headingPrefixLen = 0
-            if trimmed.hasPrefix("# ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
-                headingPrefixLen = 2
-            } else if trimmed.hasPrefix("## ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
-                headingPrefixLen = 3
-            } else if trimmed.hasPrefix("### ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
-                headingPrefixLen = 4
-            }
-
-            storage.beginEditing()
-            storage.addAttributes(attrs, range: paraRange)
-
-            if headingPrefixLen > 0 {
-                let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear
-                ]
-                storage.addAttributes(
-                    hiddenAttrs,
-                    range: NSRange(location: paraRange.location, length: headingPrefixLen)
-                )
-            }
-
-            // Apply inline formatting
-            guard let paraStr = storage.attributedSubstring(from: paraRange).mutableCopy()
-                    as? NSMutableAttributedString else {
-                storage.endEditing()
-                return
-            }
-            let format = MarkdownFormat(noteIndex: store?.noteIndex)
-            format.applyInlineOnly(paraStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
-
-            paraStr.enumerateAttributes(
-                in: NSRange(location: 0, length: paraStr.length)
-            ) { attrDict, range, _ in
-                let loc = paraRange.location + range.location
-                let storageRange = NSRange(location: loc, length: range.length)
-                if storageRange.location + storageRange.length <= storage.length {
-                    storage.addAttributes(attrDict, range: storageRange)
-                }
-            }
-            storage.endEditing()
         }
 
         // MARK: - NSTextStorageDelegate
