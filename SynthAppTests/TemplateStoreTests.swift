@@ -404,9 +404,9 @@ final class TemplateStoreTests: XCTestCase {
         let template = """
         # {{title}}
         Date: {{date:yyyy-MM-dd}}
-        
+
         {{cursor}}
-        
+
         Created on {{weekday}}
         """
 
