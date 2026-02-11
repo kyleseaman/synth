@@ -194,7 +194,16 @@ class AutocompleteCoordinator {
                   where: { $0.identifier == templateIdentifier }
               ) else { return }
 
-        insertTemplateContent(template.content)
+        // Get context for variable expansion
+        let title = store?.currentDocumentURL?.deletingPathExtension().lastPathComponent
+        let filename = store?.currentDocumentURL?
+            .deletingPathExtension().lastPathComponent
+
+        // Expand template with variables
+        let expanded = templateStore?.expandTemplate(template, title: title, filename: filename)
+            ?? ExpandedTemplate(content: template.content, cursorOffset: nil)
+
+        insertTemplateContent(expanded.content, cursorOffset: expanded.cursorOffset)
     }
 
     // MARK: - Completion
@@ -214,9 +223,17 @@ class AutocompleteCoordinator {
         // e.g. "Today" → "2026-02-07", "Next Monday" → "2026-02-10"
         // The rendering layer displays them relatively (@Today, etc.)
         var completionTitle = title
+        var templateCursorOffset: Int?
         if case .slashActive = previousState {
             guard let template = templateStore?.template(named: title) else { return }
-            completionTitle = template.content
+            // Get context for variable expansion
+            let docTitle = store?.currentDocumentURL?.deletingPathExtension().lastPathComponent
+            let filename = store?.currentDocumentURL?
+                .deletingPathExtension().lastPathComponent
+            let expanded = templateStore?.expandTemplate(template, title: docTitle, filename: filename)
+                ?? ExpandedTemplate(content: template.content, cursorOffset: nil)
+            completionTitle = expanded.content
+            templateCursorOffset = expanded.cursorOffset
         } else if let resolved = DailyNoteResolver.resolveDate(title),
                   title.range(
                       of: "^\\d{4}-\\d{2}-\\d{2}$",
@@ -226,7 +243,8 @@ class AutocompleteCoordinator {
         }
 
         let result = textView.completeAutocomplete(
-            title: completionTitle
+            title: completionTitle,
+            cursorOffset: templateCursorOffset
         )
         wikiLinkPopover.dismiss()
 
@@ -270,12 +288,19 @@ class AutocompleteCoordinator {
         }
     }
 
-    private func insertTemplateContent(_ content: String) {
+    private func insertTemplateContent(_ content: String, cursorOffset: Int? = nil) {
         guard let textView = textView,
               let storage = textView.textStorage else { return }
         let selectionRange = textView.selectedRange()
         storage.replaceCharacters(in: selectionRange, with: content)
-        let nextCursor = selectionRange.location + content.count
+
+        // Position cursor at {{cursor}} location if specified, otherwise at end
+        let nextCursor: Int
+        if let cursorOffset {
+            nextCursor = selectionRange.location + cursorOffset
+        } else {
+            nextCursor = selectionRange.location + content.count
+        }
         textView.setSelectedRange(NSRange(location: nextCursor, length: 0))
         onTextChange?()
     }
@@ -362,16 +387,21 @@ class AutocompleteCoordinator {
             guard let templateURL = URL(
                 string: "synth://template/\(template.identifier.uuidString)"
             ) else { return nil }
-            let shortcutLabel: String
-            if let shortcutSlot = template.shortcutSlot {
-                shortcutLabel = "Shortcut ⌥⌘\(shortcutSlot)"
-            } else {
-                shortcutLabel = "Template"
+
+            // Build a descriptive label showing category and/or shortcut
+            var labelParts: [String] = []
+            if let category = template.category {
+                labelParts.append(category)
             }
+            if let shortcutSlot = template.shortcutSlot {
+                labelParts.append("⌥⌘\(shortcutSlot)")
+            }
+            let label = labelParts.isEmpty ? "Template" : labelParts.joined(separator: " · ")
+
             return NoteSearchResult(
                 id: templateURL,
                 title: template.name,
-                relativePath: shortcutLabel,
+                relativePath: label,
                 url: templateURL
             )
         }

@@ -1,5 +1,13 @@
 import Foundation
 
+/// Context for unified indexing - holds all indexes to update
+struct IndexContext {
+    let noteIndex: NoteIndex
+    let backlinkIndex: BacklinkIndex
+    let tagIndex: TagIndex
+    let peopleIndex: PeopleIndex
+}
+
 /// Unified indexer that reads each file once and updates all indexes
 enum UnifiedIndexer {
     /// Result of scanning a single file
@@ -12,10 +20,7 @@ enum UnifiedIndexer {
     static func rebuildAll(
         fileTree: [FileTreeNode],
         workspace: URL,
-        noteIndex: NoteIndex,
-        backlinkIndex: BacklinkIndex,
-        tagIndex: TagIndex,
-        peopleIndex: PeopleIndex
+        context: IndexContext
     ) {
         let files = flattenMarkdownFiles(fileTree)
         var fileContents: [FileContent] = []
@@ -28,10 +33,10 @@ enum UnifiedIndexer {
         }
 
         // Feed to each index with pre-read content
-        noteIndex.rebuild(from: fileContents, workspace: workspace)
-        backlinkIndex.rebuild(from: fileContents)
-        tagIndex.rebuild(from: fileContents)
-        peopleIndex.rebuild(from: fileContents)
+        context.noteIndex.rebuild(from: fileContents, workspace: workspace)
+        context.backlinkIndex.rebuild(from: fileContents)
+        context.tagIndex.rebuild(from: fileContents)
+        context.peopleIndex.rebuild(from: fileContents)
     }
 
     private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {

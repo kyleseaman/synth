@@ -534,26 +534,24 @@ final class DocumentStore {
         fileTree = scanResult.tree
         mediaFiles = scanResult.media
         // Use unified indexer - reads each file once for all indexes
-        UnifiedIndexer.rebuildAll(
-            fileTree: scanResult.tree,
-            workspace: workspace,
+        let context = IndexContext(
             noteIndex: noteIndex,
             backlinkIndex: backlinkIndex,
             tagIndex: tagIndex,
             peopleIndex: peopleIndex
         )
+        UnifiedIndexer.rebuildAll(fileTree: scanResult.tree, workspace: workspace, context: context)
     }
 
     private func rebuildIndexesFromCurrentTree() {
         guard let workspace else { return }
-        UnifiedIndexer.rebuildAll(
-            fileTree: fileTree,
-            workspace: workspace,
+        let context = IndexContext(
             noteIndex: noteIndex,
             backlinkIndex: backlinkIndex,
             tagIndex: tagIndex,
             peopleIndex: peopleIndex
         )
+        UnifiedIndexer.rebuildAll(fileTree: fileTree, workspace: workspace, context: context)
     }
 
     @discardableResult

@@ -1,0 +1,100 @@
+/workspace/SynthApp/SynthApp.swift:    @State private var templateStore = TemplateStore()
+/workspace/SynthApp/SynthApp.swift:    private var templatesSortedForMenu: [SavedTemplate] {
+/workspace/SynthApp/SynthApp.swift:        templateStore.templates.sorted { firstTemplate, secondTemplate in
+/workspace/SynthApp/SynthApp.swift:    private func postTemplateInsertion(for template: SavedTemplate) {
+/workspace/SynthApp/SynthApp.swift:            userInfo: ["templateIdentifier": template.identifier.uuidString]
+/workspace/SynthApp/SynthApp.swift:    private func templateInsertButton(for template: SavedTemplate) -> some View {
+/workspace/SynthApp/SynthApp.swift:        Button("Insert \(template.name)") {
+/workspace/SynthApp/SynthApp.swift:            postTemplateInsertion(for: template)
+/workspace/SynthApp/SynthApp.swift:                .environment(templateStore)
+/workspace/SynthApp/SynthApp.swift:                if templatesSortedForMenu.isEmpty {
+/workspace/SynthApp/SynthApp.swift:                    Button("Add templates in Settings") {}
+/workspace/SynthApp/SynthApp.swift:                    ForEach(templatesSortedForMenu) { template in
+/workspace/SynthApp/SynthApp.swift:                        if let shortcutSlot = template.shortcutSlot {
+/workspace/SynthApp/SynthApp.swift:                            templateInsertButton(for: template)
+/workspace/SynthApp/SynthApp.swift:                            templateInsertButton(for: template)
+/workspace/SynthApp/SynthApp.swift:                .environment(templateStore)
+/workspace/SynthApp/SynthApp.swift:                .environment(templateStore)
+/workspace/SynthApp/SettingsView.swift:    @Environment(TemplateStore.self) var templateStore
+/workspace/SynthApp/SettingsView.swift:            templatesTab.tabItem { Label("Templates", systemImage: "text.badge.plus") }
+/workspace/SynthApp/SettingsView.swift:                selectedTemplateIdentifier = templateStore.templates.first?.identifier
+/workspace/SynthApp/SettingsView.swift:    private var templatesTab: some View {
+/workspace/SynthApp/SettingsView.swift:                Text("Use `/` in the editor to insert templates.")
+/workspace/SynthApp/SettingsView.swift:                    ForEach(templateStore.templates) { template in
+/workspace/SynthApp/SettingsView.swift:                            Text(template.name)
+/workspace/SynthApp/SettingsView.swift:                            if let shortcutSlot = template.shortcutSlot {
+/workspace/SynthApp/SettingsView.swift:                        .tag(Optional(template.identifier))
+/workspace/SynthApp/SettingsView.swift:              let template = templateStore.templates.first(
+/workspace/SynthApp/SettingsView.swift:        draftTemplateName = template.name
+/workspace/SynthApp/SettingsView.swift:        draftTemplateContent = template.content
+/workspace/SynthApp/SettingsView.swift:        draftShortcutSlot = template.shortcutSlot ?? 0
+/workspace/SynthApp/SettingsView.swift:            let didUpdate = templateStore.updateTemplate(
+/workspace/SynthApp/SettingsView.swift:        } else if let created = templateStore.addTemplate(
+/workspace/SynthApp/SettingsView.swift:        templateStore.removeTemplate(identifier: selectedTemplateIdentifier)
+/workspace/SynthApp/SettingsView.swift:        self.selectedTemplateIdentifier = templateStore.templates.first?.identifier
+/workspace/SynthApp/WikiLinkPopover.swift:        if mode != "template", currentResults.isEmpty && !currentQuery.isEmpty {
+/workspace/SynthApp/WikiLinkPopover.swift:            if mode == "template" {
+/workspace/SynthApp/WikiLinkPopover.swift:                    if !query.isEmpty && mode != "template" {
+/workspace/SynthApp/WikiLinkPopover.swift:        case "template": return "text.badge.plus"
+/workspace/SynthApp/WikiLinkPopover.swift:        case "template": return "Search templates..."
+/workspace/SynthApp/WikiLinkPopover.swift:        if mode == "template" { return "doc.badge.plus" }
+/workspace/SynthApp/WikiLinkPopover.swift:        if mode == "template" { return .brown }
+/workspace/SynthApp/WikiLinkPopover.swift:        if mode == "template" { return "/\(query)" }
+/workspace/SynthApp/WikiLinkPopover.swift:        if mode == "template" { return "Insert /\(query)" }
+/workspace/SynthApp/WikiLinkPopover.swift:        case "template": return "No templates saved"
+/workspace/SynthApp/TemplateStore.swift:struct SavedTemplate: Codable, Equatable, Identifiable {
+/workspace/SynthApp/TemplateStore.swift:@Observable final class TemplateStore {
+/workspace/SynthApp/TemplateStore.swift:    private(set) var templates: [SavedTemplate] = []
+/workspace/SynthApp/TemplateStore.swift:    func addTemplate(name: String, content: String, shortcutSlot: Int?) -> SavedTemplate? {
+/workspace/SynthApp/TemplateStore.swift:        if let existingIndex = templates.firstIndex(
+/workspace/SynthApp/TemplateStore.swift:            let existing = templates[existingIndex]
+/workspace/SynthApp/TemplateStore.swift:            let updated = SavedTemplate(
+/workspace/SynthApp/TemplateStore.swift:            templates[existingIndex] = updated
+/workspace/SynthApp/TemplateStore.swift:        let template = SavedTemplate(
+/workspace/SynthApp/TemplateStore.swift:        templates.append(template)
+/workspace/SynthApp/TemplateStore.swift:        finalizeTemplateMutation(identifier: template.identifier, slot: normalizedSlot)
+/workspace/SynthApp/TemplateStore.swift:        return template
+/workspace/SynthApp/TemplateStore.swift:        guard let templateIndex = templates.firstIndex(where: { $0.identifier == identifier }),
+/workspace/SynthApp/TemplateStore.swift:        let existing = templates[templateIndex]
+/workspace/SynthApp/TemplateStore.swift:        templates[templateIndex] = SavedTemplate(
+/workspace/SynthApp/TemplateStore.swift:        templates.removeAll { $0.identifier == identifier }
+/workspace/SynthApp/TemplateStore.swift:    func template(named name: String) -> SavedTemplate? {
+/workspace/SynthApp/TemplateStore.swift:        templates.first { $0.name.lowercased() == name.lowercased() }
+/workspace/SynthApp/TemplateStore.swift:    func templateForShortcut(_ slotNumber: Int) -> SavedTemplate? {
+/workspace/SynthApp/TemplateStore.swift:        templates.first { $0.shortcutSlot == slotNumber }
+/workspace/SynthApp/TemplateStore.swift:    func search(_ query: String) -> [SavedTemplate] {
+/workspace/SynthApp/TemplateStore.swift:            return templates
+/workspace/SynthApp/TemplateStore.swift:        return templates
+/workspace/SynthApp/TemplateStore.swift:            .compactMap { template -> (SavedTemplate, Int)? in
+/workspace/SynthApp/TemplateStore.swift:                if let score = template.name.fuzzyScore(trimmedQuery) {
+/workspace/SynthApp/TemplateStore.swift:                    return (template, score)
+/workspace/SynthApp/TemplateStore.swift:                if template.content.lowercased().contains(trimmedQuery.lowercased()) {
+/workspace/SynthApp/TemplateStore.swift:                    return (template, contentMatchScore)
+/workspace/SynthApp/TemplateStore.swift:        templates = templates.map { template in
+/workspace/SynthApp/TemplateStore.swift:            guard template.identifier != identifier, template.shortcutSlot == slot else { return template }
+/workspace/SynthApp/TemplateStore.swift:            return SavedTemplate(
+/workspace/SynthApp/TemplateStore.swift:                identifier: template.identifier,
+/workspace/SynthApp/TemplateStore.swift:                name: template.name,
+/workspace/SynthApp/TemplateStore.swift:                content: template.content,
+/workspace/SynthApp/TemplateStore.swift:                createdAt: template.createdAt,
+/workspace/SynthApp/TemplateStore.swift:                updatedAt: template.updatedAt
+/workspace/SynthApp/TemplateStore.swift:        templates.sort { firstTemplate, secondTemplate in
+/workspace/SynthApp/TemplateStore.swift:              let decoded = try? JSONDecoder().decode([SavedTemplate].self, from: data) else { return }
+/workspace/SynthApp/TemplateStore.swift:        templates = decoded
+/workspace/SynthApp/TemplateStore.swift:        guard let data = try? JSONEncoder().encode(templates) else { return }
+/workspace/SynthApp/MarkdownEditor.swift:                    userInfo: ["mode": "template", "query": ""]
+/workspace/SynthApp/MarkdownEditor.swift:    weak var templateStore: TemplateStore?
+/workspace/SynthApp/MarkdownEditor.swift:        context.coordinator.templateStore = templateStore
+/workspace/SynthApp/MarkdownEditor.swift:        context.coordinator.autocomplete.templateStore = templateStore
+/workspace/SynthApp/MarkdownEditor.swift:        context.coordinator.templateStore = templateStore
+/workspace/SynthApp/MarkdownEditor.swift:        context.coordinator.autocomplete.templateStore = templateStore
+/workspace/SynthApp/MarkdownEditor.swift:        weak var templateStore: TemplateStore?
+/workspace/SynthApp/MarkdownEditor.swift:            autocomplete.templateStore = templateStore
+/workspace/SynthApp/DailyNoteManager.swift:                let template = "# \(heading)\n\n"
+/workspace/SynthApp/DailyNoteManager.swift:                try? template.write(
+/workspace/SynthApp/DailyNoteManager.swift:        let template = "# \(heading)\n\n"
+/workspace/SynthApp/DailyNoteManager.swift:            try? template.write(
+/workspace/SynthApp/DailyNoteManager.swift:                entries[index].content = template
+/workspace/SynthApp/DocumentStore.swift:        let template = """
+/workspace/SynthApp/DocumentStore.swift:        try? template.write(to: url, atomically: true, encoding: .utf8)
+/workspace/SynthApp/ContentView.swift:    @Environment(TemplateStore.self) var templateStore

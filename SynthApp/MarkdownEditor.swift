@@ -1364,7 +1364,7 @@ class FormattingTextView: NSTextView {
         let completedDate: Bool
     }
 
-    func completeAutocomplete(title: String) -> AutocompleteResult {
+    func completeAutocomplete(title: String, cursorOffset: Int? = nil) -> AutocompleteResult {
         guard let storage = textStorage else {
             return AutocompleteResult(
                 completedWikiLink: false,
@@ -1439,8 +1439,15 @@ class FormattingTextView: NSTextView {
                 length: cursor - replaceStart
             )
             storage.replaceCharacters(in: range, with: title)
+            // Position cursor at cursorOffset if provided (for {{cursor}} support)
+            let newCursorPosition: Int
+            if let cursorOffset {
+                newCursorPosition = replaceStart + cursorOffset
+            } else {
+                newCursorPosition = replaceStart + title.count
+            }
             setSelectedRange(NSRange(
-                location: replaceStart + title.count,
+                location: newCursorPosition,
                 length: 0
             ))
 
