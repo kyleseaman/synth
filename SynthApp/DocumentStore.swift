@@ -173,7 +173,12 @@ final class WorkspaceImageLoader: @unchecked Sendable {
         attributes: .concurrent
     )
     private let stateQueue = DispatchQueue(label: "synth.workspace-image-loader.state")
-    private let imageCache = NSCache<NSString, NSImage>()
+    private let imageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 100  // Max 100 images
+        cache.totalCostLimit = 100 * 1024 * 1024  // ~100MB
+        return cache
+    }()
     private var inFlight: [String: [(NSImage?) -> Void]] = [:]
 
     private init() {}
@@ -480,9 +485,14 @@ final class DocumentStore {
         let media: [URL]
     }
 
-    private static func scanWorkspace(at workspace: URL) -> WorkspaceScanResult {
-        let tree = FileTreeNode.scan(workspace)
-        let media = MediaManager.screenshotURLs(in: workspace)
+    private static func scanWorkspace(at workspace: URL) async -> WorkspaceScanResult {
+        let tree = await FileTreeNode.scanAsync(workspace)
+        let media = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = MediaManager.screenshotURLs(in: workspace)
+                continuation.resume(returning: result)
+            }
+        }
         return WorkspaceScanResult(tree: tree, media: media)
     }
 
@@ -495,7 +505,7 @@ final class DocumentStore {
 
         fileTreeLoadTask?.cancel()
         fileTreeLoadTask = Task(priority: .userInitiated) { [weak self] in
-            let scanResult = Self.scanWorkspace(at: workspace)
+            let scanResult = await Self.scanWorkspace(at: workspace)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self = self else { return }
@@ -522,48 +532,65 @@ final class DocumentStore {
 
     private func applyScanResult(_ scanResult: WorkspaceScanResult, workspace: URL) {
         fileTree = scanResult.tree
-        noteIndex.rebuild(from: scanResult.tree, workspace: workspace)
         mediaFiles = scanResult.media
-        backlinkIndex.rebuild(fileTree: scanResult.tree)
-        tagIndex.rebuild(fileTree: scanResult.tree)
-        peopleIndex.rebuild(fileTree: scanResult.tree)
+        // Use unified indexer - reads each file once for all indexes
+        UnifiedIndexer.rebuildAll(
+            fileTree: scanResult.tree,
+            workspace: workspace,
+            noteIndex: noteIndex,
+            backlinkIndex: backlinkIndex,
+            tagIndex: tagIndex,
+            peopleIndex: peopleIndex
+        )
     }
 
     private func rebuildIndexesFromCurrentTree() {
         guard let workspace else { return }
-        noteIndex.rebuild(from: fileTree, workspace: workspace)
-        backlinkIndex.rebuild(fileTree: fileTree)
-        tagIndex.rebuild(fileTree: fileTree)
-        peopleIndex.rebuild(fileTree: fileTree)
+        UnifiedIndexer.rebuildAll(
+            fileTree: fileTree,
+            workspace: workspace,
+            noteIndex: noteIndex,
+            backlinkIndex: backlinkIndex,
+            tagIndex: tagIndex,
+            peopleIndex: peopleIndex
+        )
     }
 
     @discardableResult
     private static func cleanOrphanedMedia(
         mediaFiles: [URL], workspace: URL
     ) -> Set<URL> {
+        guard !mediaFiles.isEmpty else { return [] }
+
+        // Build set of media filenames we're checking
+        let mediaFilenames = Set(mediaFiles.map { $0.lastPathComponent })
+
+        // Single pass: collect all referenced media filenames from markdown files
+        var referencedFilenames: Set<String> = []
+        let enumerator = FileManager.default.enumerator(
+            at: workspace,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "md" else { continue }
+            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            // Check which media files are referenced in this content
+            for filename in mediaFilenames where content.contains(filename) {
+                referencedFilenames.insert(filename)
+            }
+            // Early exit if all media files are referenced
+            if referencedFilenames.count == mediaFilenames.count {
+                break
+            }
+        }
+
+        // Delete unreferenced media files
         var removed: Set<URL> = []
         for mediaURL in mediaFiles {
             let filename = mediaURL.lastPathComponent
-            var isReferenced = false
-            let enumerator = FileManager.default.enumerator(
-                at: workspace,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )
-            while let fileURL = enumerator?.nextObject() as? URL {
-                guard fileURL.pathExtension == "md",
-                      let content = try? String(
-                          contentsOf: fileURL, encoding: .utf8
-                      ),
-                      content.contains(filename)
-                else { continue }
-                isReferenced = true
-                break
-            }
-            if !isReferenced {
-                try? FileManager.default.trashItem(
-                    at: mediaURL, resultingItemURL: nil
-                )
+            if !referencedFilenames.contains(filename) {
+                try? FileManager.default.trashItem(at: mediaURL, resultingItemURL: nil)
                 removed.insert(mediaURL)
             }
         }

@@ -73,6 +73,29 @@ import Observation
         }
     }
 
+    /// Rebuild from pre-read file contents (unified indexer path)
+    func rebuild(from files: [UnifiedIndexer.FileContent]) {
+        var newPersonToFiles: [String: Set<URL>] = [:]
+        var newFileToPersons: [URL: Set<String>] = [:]
+
+        for file in files {
+            let people = scanFile(content: file.content)
+            newFileToPersons[file.url] = people
+            for person in people {
+                newPersonToFiles[person, default: []].insert(file.url)
+            }
+        }
+
+        personToFiles = newPersonToFiles
+        fileToPersons = newFileToPersons
+        // Merge discovered people into global set
+        let discovered = Set(newPersonToFiles.keys)
+        if !discovered.isEmpty {
+            globalPeople.formUnion(discovered)
+            saveGlobal()
+        }
+    }
+
     // MARK: - Incremental Update
 
     /// Incremental update for a single file on save.

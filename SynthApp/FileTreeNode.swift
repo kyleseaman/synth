@@ -15,6 +15,7 @@ struct FileTreeNode: Identifiable, Equatable {
         self.children = children
     }
 
+    /// Synchronous scan (legacy, for compatibility)
     static func scan(_ url: URL) -> [FileTreeNode] {
         let keys: [URLResourceKey] = [.isDirectoryKey]
         guard let contents = try? FileManager.default.contentsOfDirectory(
@@ -39,5 +40,15 @@ struct FileTreeNode: Identifiable, Equatable {
                 let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
                 return FileTreeNode(url: item, isDirectory: isDir, children: isDir ? scan(item) : nil)
             }
+    }
+
+    /// Async scan - runs file I/O off main thread
+    static func scanAsync(_ url: URL) async -> [FileTreeNode] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = scan(url)
+                continuation.resume(returning: result)
+            }
+        }
     }
 }

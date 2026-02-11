@@ -42,6 +42,26 @@ import Observation
         contextSnippets = newSnippets
     }
 
+    /// Rebuild from pre-read file contents (unified indexer path)
+    func rebuild(from files: [UnifiedIndexer.FileContent]) {
+        var newIncoming: [String: Set<URL>] = [:]
+        var newOutgoing: [URL: Set<String>] = [:]
+        var newSnippets: [URL: [String: String]] = [:]
+
+        for file in files {
+            let (targets, snippets) = scanFile(content: file.content)
+            newOutgoing[file.url] = targets
+            newSnippets[file.url] = snippets
+            for target in targets {
+                newIncoming[target, default: []].insert(file.url)
+            }
+        }
+
+        incomingLinks = newIncoming
+        outgoingLinks = newOutgoing
+        contextSnippets = newSnippets
+    }
+
     // MARK: - Incremental Update
 
     /// Incremental update for a single file on save. Must dispatch to main thread.
