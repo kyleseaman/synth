@@ -259,6 +259,11 @@ enum DetailViewMode: Equatable {
     case media
 }
 
+enum ChatDock: String, CaseIterable, Equatable {
+    case bottom
+    case right
+}
+
 enum ActiveModal: Equatable {
     case fileLauncher
     case linkCapture
@@ -284,6 +289,23 @@ final class DocumentStore {
     var recentFiles: [URL] = []
     var expandedFolders: Set<URL> = []
     var chatVisibleTabs: Set<URL> = []
+    var chatDock: ChatDock = .bottom {
+        didSet {
+            guard chatDock != oldValue else { return }
+            UserDefaults.standard.set(chatDock.rawValue, forKey: Self.chatDockKey)
+        }
+    }
+    var rightChatPanelWidth: CGFloat = DocumentStore.defaultChatPanelWidth {
+        didSet {
+            let clampedWidth = Self.clampedChatPanelWidth(rightChatPanelWidth)
+            if clampedWidth != rightChatPanelWidth {
+                rightChatPanelWidth = clampedWidth
+                return
+            }
+            guard rightChatPanelWidth != oldValue else { return }
+            UserDefaults.standard.set(Double(clampedWidth), forKey: Self.chatPanelWidthKey)
+        }
+    }
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
@@ -325,8 +347,23 @@ final class DocumentStore {
     @ObservationIgnored private var isFileTreeScanRunning = false
     @ObservationIgnored private var fileTreeRescanRequested = false
     @ObservationIgnored private var activeFileTreeScanID = UUID()
+    private static let chatDockKey = "chatDock"
+    private static let chatPanelWidthKey = "chatPanelWidth"
+    static let chatPanelMinWidth: CGFloat = 320
+    static let chatPanelMaxWidth: CGFloat = 720
+    static let defaultChatPanelWidth: CGFloat = 420
 
     init() {
+        chatDock = Self.resolvedChatDock(
+            rawValue: UserDefaults.standard.string(forKey: Self.chatDockKey)
+        )
+        let storedWidth = CGFloat(UserDefaults.standard.double(forKey: Self.chatPanelWidthKey))
+        if storedWidth > 0 {
+            rightChatPanelWidth = Self.clampedChatPanelWidth(storedWidth)
+        } else {
+            rightChatPanelWidth = Self.defaultChatPanelWidth
+        }
+
         loadRecentFiles()
         dailyNoteManager.onSave = { [weak self] url, content in
             self?.backlinkIndex.updateFile(url, content: content)
@@ -664,30 +701,6 @@ final class DocumentStore {
         openFiles.append(doc)
         currentIndex = openFiles.count - 1
         addToRecent(url)
-    }
-
-    // MARK: - Per-Document Chat State
-
-    func chatState(for url: URL) -> DocumentChatState {
-        if let existing = chatStates[url] { return existing }
-        let state = DocumentChatState()
-        chatStates[url] = state
-        return state
-    }
-
-    func toggleChatForCurrentTab() {
-        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
-        let url = openFiles[currentIndex].url
-        if chatVisibleTabs.contains(url) {
-            chatVisibleTabs.remove(url)
-        } else {
-            chatVisibleTabs.insert(url)
-        }
-    }
-
-    var isChatVisibleForCurrentTab: Bool {
-        guard currentIndex >= 0, currentIndex < openFiles.count else { return false }
-        return chatVisibleTabs.contains(openFiles[currentIndex].url)
     }
 
     func switchTo(_ index: Int) {
@@ -1213,6 +1226,41 @@ extension DocumentStore {
         guard activeScanID == scanID else { return false }
         guard let currentWorkspace else { return false }
         return currentWorkspace.standardizedFileURL.path == scanWorkspace.standardizedFileURL.path
+    }
+}
+
+extension DocumentStore {
+    static func resolvedChatDock(rawValue: String?) -> ChatDock {
+        guard let rawValue else { return .bottom }
+        return ChatDock(rawValue: rawValue) ?? .bottom
+    }
+
+    static func clampedChatPanelWidth(_ width: CGFloat) -> CGFloat {
+        min(max(width, chatPanelMinWidth), chatPanelMaxWidth)
+    }
+}
+
+extension DocumentStore {
+    func chatState(for url: URL) -> DocumentChatState {
+        if let existing = chatStates[url] { return existing }
+        let state = DocumentChatState()
+        chatStates[url] = state
+        return state
+    }
+
+    func toggleChatForCurrentTab() {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
+        let url = openFiles[currentIndex].url
+        if chatVisibleTabs.contains(url) {
+            chatVisibleTabs.remove(url)
+        } else {
+            chatVisibleTabs.insert(url)
+        }
+    }
+
+    var isChatVisibleForCurrentTab: Bool {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return false }
+        return chatVisibleTabs.contains(openFiles[currentIndex].url)
     }
 }
 

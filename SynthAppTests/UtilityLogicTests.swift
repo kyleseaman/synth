@@ -302,6 +302,76 @@ final class UtilityLogicTests: XCTestCase {
         XCTAssertEqual(paths, ["/tmp/one.md", "/tmp/two.md"])
     }
 
+    func testACPClientParseSlashCommandsSupportsKiroResponseShape() {
+        let result = AnyCodable([
+            "commands": AnyCodable([
+                AnyCodable([
+                    "name": AnyCodable("/explain"),
+                    "description": AnyCodable("Explain selected code"),
+                    "inputHint": AnyCodable("Explain this function")
+                ]),
+                AnyCodable([
+                    "name": AnyCodable("/test"),
+                    "description": AnyCodable("Generate tests")
+                ])
+            ])
+        ])
+
+        let commands = ACPClient.parseSlashCommands(from: result)
+
+        XCTAssertEqual(commands.count, 2)
+        XCTAssertEqual(commands[0].id, "/explain")
+        XCTAssertEqual(commands[0].name, "/explain")
+        XCTAssertEqual(commands[0].description, "Explain selected code")
+        XCTAssertEqual(commands[0].inputHint, "Explain this function")
+        XCTAssertEqual(commands[1].id, "/test")
+    }
+
+    func testACPClientParseModesReadsCurrentModeAndFallbackTitles() {
+        let result = AnyCodable([
+            "currentModeId": AnyCodable("balanced"),
+            "modes": AnyCodable([
+                AnyCodable([
+                    "id": AnyCodable("balanced"),
+                    "title": AnyCodable("Balanced")
+                ]),
+                AnyCodable([
+                    "name": AnyCodable("fast")
+                ])
+            ])
+        ])
+
+        let parsed = ACPClient.parseModes(from: result)
+
+        XCTAssertEqual(parsed.currentModeId, "balanced")
+        XCTAssertEqual(parsed.options.count, 2)
+        XCTAssertEqual(parsed.options[0], ACPModeOption(id: "balanced", title: "Balanced"))
+        XCTAssertEqual(parsed.options[1], ACPModeOption(id: "fast", title: "fast"))
+    }
+
+    func testACPClientParseModelsReadsCurrentModelAndDisplayName() {
+        let result = AnyCodable([
+            "currentModelId": AnyCodable("claude-sonnet-4"),
+            "models": AnyCodable([
+                AnyCodable([
+                    "id": AnyCodable("claude-sonnet-4"),
+                    "displayName": AnyCodable("Claude Sonnet 4")
+                ]),
+                AnyCodable([
+                    "modelId": AnyCodable("claude-haiku-4"),
+                    "name": AnyCodable("Claude Haiku 4")
+                ])
+            ])
+        ])
+
+        let parsed = ACPClient.parseModels(from: result)
+
+        XCTAssertEqual(parsed.currentModelId, "claude-sonnet-4")
+        XCTAssertEqual(parsed.options.count, 2)
+        XCTAssertEqual(parsed.options[0], ACPModelOption(id: "claude-sonnet-4", title: "Claude Sonnet 4"))
+        XCTAssertEqual(parsed.options[1], ACPModelOption(id: "claude-haiku-4", title: "Claude Haiku 4"))
+    }
+
     @MainActor
     func testDocumentChatTrayQuickPromptsFocusOnDocumentEditing() {
         let chatState = DocumentChatState()
@@ -526,6 +596,30 @@ final class UtilityLogicTests: XCTestCase {
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/other-workspace/drafts/Untitled.md"
             )
+        )
+    }
+
+    @MainActor
+    func testDocumentStoreResolvedChatDockFallsBackToBottomWhenUnknown() {
+        XCTAssertEqual(DocumentStore.resolvedChatDock(rawValue: "right"), .right)
+        XCTAssertEqual(DocumentStore.resolvedChatDock(rawValue: "bottom"), .bottom)
+        XCTAssertEqual(DocumentStore.resolvedChatDock(rawValue: "floating"), .bottom)
+        XCTAssertEqual(DocumentStore.resolvedChatDock(rawValue: nil), .bottom)
+    }
+
+    @MainActor
+    func testDocumentStoreClampedChatPanelWidthRespectsBounds() {
+        XCTAssertEqual(
+            DocumentStore.clampedChatPanelWidth(120),
+            DocumentStore.chatPanelMinWidth
+        )
+        XCTAssertEqual(
+            DocumentStore.clampedChatPanelWidth(999),
+            DocumentStore.chatPanelMaxWidth
+        )
+        XCTAssertEqual(
+            DocumentStore.clampedChatPanelWidth(420),
+            420
         )
     }
 

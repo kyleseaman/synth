@@ -1,6 +1,11 @@
 import SwiftUI
 import AppKit
 
+enum ChatTrayLayoutStyle {
+    case bottomTray
+    case rightPanel
+}
+
 struct DocumentChatTray: View {
     var chatState: DocumentChatState
     @Environment(DocumentStore.self) var store
@@ -8,6 +13,9 @@ struct DocumentChatTray: View {
     let documentContent: String
     var selectedText: String?
     var selectedLineRange: String?
+    var layoutStyle: ChatTrayLayoutStyle = .bottomTray
+    var currentDock: ChatDock = .bottom
+    var onDockChange: ((ChatDock) -> Void)?
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 300
@@ -20,6 +28,7 @@ struct DocumentChatTray: View {
     private static let preferredAgentSymbolName = "person.crop.circle"
     private static let fallbackAgentSymbolName = "person"
     private static let maxQuickPromptCount = 3
+    private static let maxSlashCommandCount = 4
     private let quickPrompts = [
         "Summarize this document into key points",
         "Rewrite this section for clarity and flow",
@@ -61,9 +70,26 @@ struct DocumentChatTray: View {
         text
     }
 
+    static func displayedSlashCommands(
+        from commands: [ACPSlashCommand],
+        inputText: String
+    ) -> [ACPSlashCommand] {
+        let normalizedInput = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedInput.hasPrefix("/") else { return [] }
+        let searchableInput = normalizedInput.lowercased()
+        return commands
+            .filter { command in
+                command.name.lowercased().contains(searchableInput)
+            }
+            .prefix(maxSlashCommandCount)
+            .map { $0 }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            dragHandle
+            if layoutStyle == .bottomTray {
+                dragHandle
+            }
             headerBar
             Divider().opacity(0.3)
             messageList
@@ -72,7 +98,8 @@ struct DocumentChatTray: View {
             quickPromptBar
             inputBar
         }
-        .frame(height: trayHeight)
+        .frame(height: layoutStyle == .bottomTray ? trayHeight : nil)
+        .frame(maxHeight: layoutStyle == .rightPanel ? .infinity : nil)
         .background(backgroundGradient)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
@@ -85,12 +112,21 @@ struct DocumentChatTray: View {
             if selectedAgent == nil {
                 selectedAgent = Self.preferredAgentName(from: store.customAgents)
             }
-            wireFileCallbacks()
+            ensureSessionStarted()
         }
         .onChange(of: store.customAgents.map(\.name)) {
             if selectedAgent == nil {
                 selectedAgent = Self.preferredAgentName(from: store.customAgents)
             }
+        }
+        .onChange(of: selectedAgent) {
+            guard chatState.messages.isEmpty,
+                  chatState.currentResponse.isEmpty,
+                  !chatState.isLoading else { return }
+            if chatState.isStarted {
+                chatState.stop()
+            }
+            ensureSessionStarted()
         }
         .onChange(of: chatState.messages.count) {
             refocusInputIfNeeded()
@@ -145,6 +181,104 @@ struct DocumentChatTray: View {
             .menuStyle(.borderlessButton)
             .buttonStyle(.plain)
 
+            Menu {
+                Button {
+                    onDockChange?(.bottom)
+                } label: {
+                    HStack {
+                        Text("Bottom")
+                        if currentDock == .bottom {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                Button {
+                    onDockChange?(.right)
+                } label: {
+                    HStack {
+                        Text("Right")
+                        if currentDock == .right {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.split.1x2")
+                        .font(.system(size: 11))
+                    Text(currentDock == .right ? "Dock: Right" : "Dock: Bottom")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.07))
+                .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+
+            if !chatState.modeOptions.isEmpty {
+                Menu {
+                    ForEach(chatState.modeOptions) { modeOption in
+                        Button(modeOption.title) {
+                            chatState.setMode(modeOption.id)
+                        }
+                    }
+                } label: {
+                    capsuleLabel(
+                        symbolName: "slider.horizontal.3",
+                        title: currentModeTitle
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
+            }
+
+            if !chatState.modelOptions.isEmpty {
+                Menu {
+                    ForEach(chatState.modelOptions) { modelOption in
+                        Button(modelOption.title) {
+                            chatState.setModel(modelOption.id)
+                        }
+                    }
+                } label: {
+                    capsuleLabel(
+                        symbolName: "cpu",
+                        title: currentModelTitle
+                    )
+                }
+                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
+            }
+
+            Button {
+                chatState.compactSession()
+            } label: {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Compact session")
+            .disabled(chatState.isLoading)
+
+            Button {
+                chatState.clearSession()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Clear chat history")
+            .disabled(chatState.isLoading)
+
             Button {
                 store.toggleChatForCurrentTab()
             } label: {
@@ -160,6 +294,36 @@ struct DocumentChatTray: View {
         .padding(.leading, 14)
         .padding(.trailing, 12)
         .padding(.vertical, 10)
+    }
+
+    private func capsuleLabel(symbolName: String, title: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbolName)
+                .font(.system(size: 11))
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.primary.opacity(0.07))
+        .clipShape(Capsule())
+    }
+
+    private var currentModeTitle: String {
+        if let currentModeId = chatState.currentModeId,
+           let modeOption = chatState.modeOptions.first(where: { $0.id == currentModeId }) {
+            return modeOption.title
+        }
+        return "Mode"
+    }
+
+    private var currentModelTitle: String {
+        if let currentModelId = chatState.currentModelId,
+           let modelOption = chatState.modelOptions.first(where: { $0.id == currentModelId }) {
+            return modelOption.title
+        }
+        return "Model"
     }
 
     private var connectionBadge: some View {
@@ -313,7 +477,42 @@ struct DocumentChatTray: View {
 
     private var quickPromptBar: some View {
         Group {
-            if Self.shouldShowChatHints(
+            let slashCommands = Self.displayedSlashCommands(
+                from: chatState.slashCommands,
+                inputText: input
+            )
+            if !slashCommands.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(slashCommands) { slashCommand in
+                        Button {
+                            input = slashCommand.inputHint ?? "\(slashCommand.name) "
+                            refocusInputIfNeeded()
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(slashCommand.name)
+                                    .font(.system(size: 10.5, weight: .semibold))
+                                if let description = slashCommand.description {
+                                    Text(description)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(RoundedRectangle(cornerRadius: 9))
+                        .disabled(chatState.isLoading)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if Self.shouldShowChatHints(
                 messageCount: chatState.messages.count,
                 currentResponse: chatState.currentResponse,
                 isLoading: chatState.isLoading
@@ -541,6 +740,17 @@ struct DocumentChatTray: View {
         url.standardizedFileURL.resolvingSymlinksInPath()
     }
 
+    private func ensureSessionStarted() {
+        let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
+        chatState.startIfNeeded(
+            cwd: workspacePath,
+            filePath: documentURL.path,
+            agent: selectedAgent,
+            mcpServerManager: store.mcpServer
+        )
+        wireFileCallbacks()
+    }
+
     private func sendMessage() {
         let prompt = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
@@ -552,14 +762,7 @@ struct DocumentChatTray: View {
         chatState.toolCalls.removeAll()
         refocusInputIfNeeded()
 
-        let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
-        chatState.startIfNeeded(
-            cwd: workspacePath,
-            filePath: documentURL.path,
-            agent: selectedAgent,
-            mcpServerManager: store.mcpServer
-        )
-        wireFileCallbacks()
+        ensureSessionStarted()
 
         guard chatState.acpClient?.isConnected == true else {
             waitAndSend(prompt: prompt, retries: 20)

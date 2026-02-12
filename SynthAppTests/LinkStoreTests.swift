@@ -424,12 +424,32 @@ final class ACPProtocolAdapterTests: XCTestCase {
         XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCall"), .toolCall)
         XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("tool_call_update"), .toolCallUpdate)
         XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("ToolCallUpdate"), .toolCallUpdate)
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("available_commands_update"),
+            .availableCommandsUpdate
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("current_mode_update"),
+            .currentModeUpdate
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("mcp_servers_initialized"),
+            .mcpServersInitialized
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("mcp_server_update"),
+            .mcpServerUpdate
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("mcp_server_response"),
+            .mcpServerResponse
+        )
         XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("turn_end"), .turnEnd)
         XCTAssertEqual(ACPProtocolAdapter.parseUpdateKind("TurnEnd"), .turnEnd)
         XCTAssertNil(ACPProtocolAdapter.parseUpdateKind("unknown_update"))
     }
 
-    func testPromptRequestUsesPromptField() {
+    func testPromptRequestUsesContentField() {
         let contentBlocks: [[String: AnyCodable]] = [[
             "type": AnyCodable("text"),
             "text": AnyCodable("Explain this file")
@@ -438,7 +458,7 @@ final class ACPProtocolAdapterTests: XCTestCase {
         let params = ACPProtocolAdapter.promptParams(sessionId: "sess_test", contentBlocks: contentBlocks)
 
         XCTAssertEqual(params["sessionId"]?.stringValue, "sess_test")
-        XCTAssertNotNil(params["prompt"]?.arrayValue)
-        XCTAssertNil(params["content"])
+        XCTAssertNotNil(params["content"]?.arrayValue)
+        XCTAssertNil(params["prompt"])
     }
 }

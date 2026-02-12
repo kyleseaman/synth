@@ -98,6 +98,7 @@ struct ContentView: View {
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
     @State private var hoveredSidebarMode: DetailViewMode?
+    @State private var rightChatResizeBaseline: CGFloat?
 
     private var settingsToolbarButton: some CustomizableToolbarContent {
         ToolbarItem(id: "toolbarSettingsLink", placement: .automatic) {
@@ -286,8 +287,24 @@ struct ContentView: View {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
                     let selectionContext = selectionByDocument[currentDoc.url]
+                    let isBottomDockVisible = store.isChatVisibleForCurrentTab
+                        && store.chatDock == .bottom
+                    let isRightDockVisible = store.isChatVisibleForCurrentTab
+                        && store.chatDock == .right
+                    let chatTrayView = DocumentChatTray(
+                        chatState: chatState,
+                        documentURL: currentDoc.url,
+                        documentContent: currentDoc.content.string,
+                        selectedText: selectionContext?.selectedText,
+                        selectedLineRange: selectionContext?.selectedLineRange,
+                        layoutStyle: isRightDockVisible ? .rightPanel : .bottomTray,
+                        currentDock: store.chatDock,
+                        onDockChange: { nextDock in
+                            store.chatDock = nextDock
+                        }
+                    )
 
-                    ZStack(alignment: .bottom) {
+                    let editorSurface = ZStack(alignment: .bottom) {
                         EditorViewSimple { documentURL, selectedText, selectedLineRange in
                             let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
                             if trimmedText.isEmpty {
@@ -299,7 +316,7 @@ struct ContentView: View {
                                 )
                             }
                         }
-                            .id(currentDoc.url)
+                        .id(currentDoc.url)
 
                         // Undo toast overlay
                         if chatState.undoSnapshot != nil {
@@ -316,21 +333,23 @@ struct ContentView: View {
                                     chatState.dismissUndo()
                                 }
                             }
-                            .padding(.bottom, store.isChatVisibleForCurrentTab ? 8 : 16)
+                            .padding(.bottom, isBottomDockVisible ? 8 : 16)
                         }
                     }
 
-                    if store.isChatVisibleForCurrentTab {
-                        DocumentChatTray(
-                            chatState: chatState,
-                            documentURL: currentDoc.url,
-                            documentContent: currentDoc.content.string,
-                            selectedText: selectionContext?.selectedText,
-                            selectedLineRange: selectionContext?.selectedLineRange
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if isRightDockVisible {
+                        HStack(spacing: 0) {
+                            editorSurface
+                            rightDockChatPanel(chatTrayView)
+                        }
+                    } else {
+                        editorSurface
+                        if isBottomDockVisible {
+                            chatTrayView
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
                 } else {
                     Text("Open a file to start editing")
@@ -485,6 +504,44 @@ struct ContentView: View {
                 }
             )
         }
+    }
+
+    private func rightDockChatPanel<PanelContent: View>(_ panelContent: PanelContent) -> some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.22))
+                .frame(width: 5)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { dragValue in
+                            if rightChatResizeBaseline == nil {
+                                rightChatResizeBaseline = store.rightChatPanelWidth
+                            }
+                            let baselineWidth = rightChatResizeBaseline ?? store.rightChatPanelWidth
+                            let proposedWidth = baselineWidth - dragValue.translation.width
+                            store.rightChatPanelWidth = DocumentStore.clampedChatPanelWidth(
+                                proposedWidth
+                            )
+                        }
+                        .onEnded { _ in
+                            rightChatResizeBaseline = nil
+                        }
+                )
+                .onHover { isHovering in
+                    if isHovering {
+                        NSCursor.resizeLeftRight.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+
+            panelContent
+                .frame(width: store.rightChatPanelWidth)
+                .padding(.trailing, 8)
+                .padding(.vertical, 8)
+        }
+        .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 }
 

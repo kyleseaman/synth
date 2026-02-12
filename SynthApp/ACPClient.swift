@@ -21,6 +21,11 @@ import Observation
     var connectionFailed = false
     var toolCalls: [ACPToolCall] = []
     var pendingPermission: ACPPermissionRequest?
+    var slashCommands: [ACPSlashCommand] = []
+    var modeOptions: [ACPModeOption] = []
+    var modelOptions: [ACPModelOption] = []
+    var currentModeId: String?
+    var currentModelId: String?
 
     @ObservationIgnored var onUpdate: ((String) -> Void)?
     @ObservationIgnored var onTurnComplete: (() -> Void)?
@@ -30,6 +35,9 @@ import Observation
     @ObservationIgnored var onToolCallUpdate: ((String, String) -> Void)?
     @ObservationIgnored var onEditToolCompleted: ((String, [String]) -> Void)?
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
+    @ObservationIgnored var onSlashCommandsUpdate: (([ACPSlashCommand]) -> Void)?
+    @ObservationIgnored var onModesUpdate: (([ACPModeOption], String?) -> Void)?
+    @ObservationIgnored var onModelsUpdate: (([ACPModelOption], String?) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
 
     func start(cwd: String, agent: String? = nil) {
@@ -102,6 +110,11 @@ import Observation
         stdin = nil
         isConnected = false
         sessionId = nil
+        slashCommands = []
+        modeOptions = []
+        modelOptions = []
+        currentModeId = nil
+        currentModelId = nil
     }
 
     // MARK: - Data Handling
@@ -218,8 +231,9 @@ import Observation
     // MARK: - Session Update Handling
 
     private func handleSessionUpdate(_ params: [String: AnyCodable]?) {
-        guard let update = params?["update"]?.dictValue,
-              let rawKind = update["sessionUpdate"]?.stringValue ?? update["type"]?.stringValue,
+        guard let rawUpdate = params?["update"]?.dictValue ?? params else { return }
+        let update = rawUpdate["update"]?.dictValue ?? rawUpdate
+        guard let rawKind = update["sessionUpdate"]?.stringValue ?? update["type"]?.stringValue,
               let kind = ACPProtocolAdapter.parseUpdateKind(rawKind) else { return }
 
         switch kind {
@@ -230,6 +244,10 @@ import Observation
             } else if let text = update["text"]?.stringValue {
                 onUpdate?(text)
             }
+
+        case .userMessageChunk:
+            // Client-originated chunk updates do not need rendering in the assistant stream.
+            break
 
         case .toolCall:
             if let toolCallId = update["toolCallId"]?.stringValue,
@@ -291,6 +309,33 @@ import Observation
                 }
             }
 
+        case .availableCommandsUpdate:
+            let commands = Self.parseSlashCommands(from: AnyCodable(update))
+            slashCommands = commands
+            onSlashCommandsUpdate?(commands)
+
+        case .currentModeUpdate:
+            let modeIdentifier = update["modeId"]?.stringValue
+                ?? update["currentModeId"]?.stringValue
+                ?? update["mode"]?.stringValue
+            if let modeIdentifier {
+                currentModeId = modeIdentifier
+                onModesUpdate?(modeOptions, currentModeId)
+            }
+
+        case .currentModelUpdate:
+            let modelIdentifier = update["modelId"]?.stringValue
+                ?? update["currentModelId"]?.stringValue
+                ?? update["model"]?.stringValue
+            if let modelIdentifier {
+                currentModelId = modelIdentifier
+                onModelsUpdate?(modelOptions, currentModelId)
+            }
+
+        case .mcpServersInitialized, .mcpServerUpdate, .mcpServerResponse:
+            // Kiro extension updates are informational for now.
+            break
+
         case .turnEnd:
             finishTurnIfNeeded()
         }
@@ -318,6 +363,118 @@ import Observation
             uniquePaths.append(filePath)
         }
         return uniquePaths
+    }
+
+    nonisolated static func parseSlashCommands(from result: AnyCodable?) -> [ACPSlashCommand] {
+        let root = result?.dictValue
+        let commandEntries = root?["commands"]?.arrayValue ?? result?.arrayValue ?? []
+        var parsedCommands: [ACPSlashCommand] = []
+        var seenIdentifiers: Set<String> = []
+
+        for commandEntry in commandEntries {
+            guard let commandDict = commandEntry.dictValue else { continue }
+            let commandName = Self.firstString(
+                in: commandDict,
+                keys: ["name", "command", "id"]
+            )
+            guard let commandName, !commandName.isEmpty else { continue }
+            let commandId = commandDict["id"]?.stringValue ?? commandName
+            guard seenIdentifiers.insert(commandId).inserted else { continue }
+            parsedCommands.append(
+                ACPSlashCommand(
+                    id: commandId,
+                    name: commandName,
+                    description: Self.firstString(in: commandDict, keys: ["description", "detail"]),
+                    inputHint: Self.firstString(in: commandDict, keys: ["inputHint", "hint"])
+                )
+            )
+        }
+
+        return parsedCommands
+    }
+
+    nonisolated static func parseModes(
+        from result: AnyCodable?
+    ) -> (options: [ACPModeOption], currentModeId: String?) {
+        let root = result?.dictValue
+        let modeEntries = root?["modes"]?.arrayValue
+            ?? root?["options"]?.arrayValue
+            ?? result?.arrayValue
+            ?? []
+        var parsedOptions: [ACPModeOption] = []
+        var seenIdentifiers: Set<String> = []
+        var activeModeId = root?["currentModeId"]?.stringValue
+            ?? root?["modeId"]?.stringValue
+
+        for modeEntry in modeEntries {
+            guard let modeDict = modeEntry.dictValue else { continue }
+            let modeId = Self.firstString(in: modeDict, keys: ["id", "modeId", "name", "title"])
+            guard let modeId, !modeId.isEmpty else { continue }
+            guard seenIdentifiers.insert(modeId).inserted else { continue }
+
+            let modeTitle = Self.firstString(
+                in: modeDict,
+                keys: ["title", "displayName", "name", "id", "modeId"]
+            ) ?? modeId
+            parsedOptions.append(ACPModeOption(id: modeId, title: modeTitle))
+
+            if activeModeId == nil, modeDict["current"]?.value as? Bool == true {
+                activeModeId = modeId
+            }
+        }
+
+        return (parsedOptions, activeModeId)
+    }
+
+    nonisolated static func parseModels(
+        from result: AnyCodable?
+    ) -> (options: [ACPModelOption], currentModelId: String?) {
+        let root = result?.dictValue
+        let modelEntries = root?["models"]?.arrayValue
+            ?? root?["options"]?.arrayValue
+            ?? result?.arrayValue
+            ?? []
+        var parsedOptions: [ACPModelOption] = []
+        var seenIdentifiers: Set<String> = []
+        var activeModelId = root?["currentModelId"]?.stringValue
+            ?? root?["modelId"]?.stringValue
+
+        for modelEntry in modelEntries {
+            guard let modelDict = modelEntry.dictValue else { continue }
+            let modelId = Self.firstString(
+                in: modelDict,
+                keys: ["id", "modelId", "name", "title", "displayName"]
+            )
+            guard let modelId, !modelId.isEmpty else { continue }
+            guard seenIdentifiers.insert(modelId).inserted else { continue }
+
+            let modelTitle = Self.firstString(
+                in: modelDict,
+                keys: ["displayName", "title", "name", "id", "modelId"]
+            ) ?? modelId
+            parsedOptions.append(ACPModelOption(id: modelId, title: modelTitle))
+
+            if activeModelId == nil, modelDict["current"]?.value as? Bool == true {
+                activeModelId = modelId
+            }
+        }
+
+        return (parsedOptions, activeModelId)
+    }
+
+    nonisolated private static func firstString(
+        in dictionary: [String: AnyCodable],
+        keys: [String]
+    ) -> String? {
+        for key in keys {
+            if let rawValue = dictionary[key]?.stringValue {
+                let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !normalizedValue.isEmpty {
+                    return normalizedValue
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: - Send Helpers
@@ -454,6 +611,7 @@ import Observation
                let sid = dict["sessionId"]?.stringValue {
                 print("[ACP] Session created: \(sid)")
                 self?.sessionId = sid
+                self?.refreshSessionInterfaces()
             } else {
                 print("[ACP] session/new response: \(result)")
                 self?.connectionFailed = true
@@ -464,6 +622,76 @@ import Observation
 
     private func buildMcpServerConfigs() -> [AnyCodable] {
         mcpServerManager?.mcpServerConfig(workspace: cwd)?.map { AnyCodable($0) } ?? []
+    }
+
+    func refreshSessionInterfaces() {
+        requestSlashCommands()
+        requestModes()
+        requestModels()
+    }
+
+    func setMode(_ modeId: String) {
+        guard let sessionParams = buildSessionParams([
+            "modeId": AnyCodable(modeId),
+            "mode": AnyCodable(modeId)
+        ]) else { return }
+        sendRequest(method: "_kiro.dev/set_mode", params: sessionParams) { [weak self] result in
+            switch result {
+            case .success:
+                self?.currentModeId = modeId
+                self?.onModesUpdate?(self?.modeOptions ?? [], self?.currentModeId)
+            case .failure(let error):
+                self?.onError?("Failed to set mode: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func setModel(_ modelId: String) {
+        guard let sessionParams = buildSessionParams([
+            "modelId": AnyCodable(modelId),
+            "model": AnyCodable(modelId)
+        ]) else { return }
+        sendRequest(method: "_kiro.dev/set_model", params: sessionParams) { [weak self] result in
+            switch result {
+            case .success:
+                self?.currentModelId = modelId
+                self?.onModelsUpdate?(self?.modelOptions ?? [], self?.currentModelId)
+            case .failure(let error):
+                self?.onError?("Failed to set model: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func compactSession(completion: ((Bool) -> Void)? = nil) {
+        guard let sessionParams = buildSessionParams() else {
+            completion?(false)
+            return
+        }
+        sendRequest(method: "_kiro.dev/compact", params: sessionParams) { [weak self] result in
+            switch result {
+            case .success:
+                completion?(true)
+            case .failure(let error):
+                self?.onError?("Failed to compact session: \(error.localizedDescription)")
+                completion?(false)
+            }
+        }
+    }
+
+    func clearSession(completion: ((Bool) -> Void)? = nil) {
+        guard let sessionParams = buildSessionParams() else {
+            completion?(false)
+            return
+        }
+        sendRequest(method: "_kiro.dev/clear", params: sessionParams) { [weak self] result in
+            switch result {
+            case .success:
+                completion?(true)
+            case .failure(let error):
+                self?.onError?("Failed to clear session: \(error.localizedDescription)")
+                completion?(false)
+            }
+        }
     }
 
     func sendPrompt(_ contentBlocks: [[String: AnyCodable]]) {
@@ -497,6 +725,65 @@ import Observation
         sendNotification(method: "session/cancel", params: [
             "sessionId": AnyCodable(sid)
         ])
+    }
+
+    private func requestSlashCommands() {
+        guard let sessionParams = buildSessionParams() else { return }
+        sendRequest(method: "_kiro.dev/list_commands", params: sessionParams) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response):
+                let commands = Self.parseSlashCommands(from: response)
+                self.slashCommands = commands
+                self.onSlashCommandsUpdate?(commands)
+            case .failure(let error):
+                print("[ACP] list_commands unavailable: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func requestModes() {
+        guard let sessionParams = buildSessionParams() else { return }
+        sendRequest(method: "_kiro.dev/get_modes", params: sessionParams) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response):
+                let parsedModes = Self.parseModes(from: response)
+                self.modeOptions = parsedModes.options
+                self.currentModeId = parsedModes.currentModeId
+                self.onModesUpdate?(parsedModes.options, parsedModes.currentModeId)
+            case .failure(let error):
+                print("[ACP] get_modes unavailable: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func requestModels() {
+        guard let sessionParams = buildSessionParams() else { return }
+        sendRequest(method: "_kiro.dev/get_models", params: sessionParams) { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let response):
+                let parsedModels = Self.parseModels(from: response)
+                self.modelOptions = parsedModels.options
+                self.currentModelId = parsedModels.currentModelId
+                self.onModelsUpdate?(parsedModels.options, parsedModels.currentModelId)
+            case .failure(let error):
+                print("[ACP] get_models unavailable: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func buildSessionParams(_ extras: [String: AnyCodable] = [:]) -> [String: AnyCodable]? {
+        guard let sessionId else {
+            onError?("Kiro session is not ready yet.")
+            return nil
+        }
+        var params: [String: AnyCodable] = ["sessionId": AnyCodable(sessionId)]
+        for (key, value) in extras {
+            params[key] = value
+        }
+        return params
     }
 
     private func finishTurnIfNeeded() {

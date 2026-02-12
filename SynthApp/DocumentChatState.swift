@@ -27,6 +27,11 @@ struct UndoSnapshot: Equatable {
     var undoSnapshot: UndoSnapshot?
     var toolCalls: [ACPToolCall] = []
     var pendingPermission: ACPPermissionRequest?
+    var slashCommands: [ACPSlashCommand] = []
+    var modeOptions: [ACPModeOption] = []
+    var modelOptions: [ACPModelOption] = []
+    var currentModeId: String?
+    var currentModelId: String?
 
     @ObservationIgnored private(set) var acpClient: ACPClient?
     @ObservationIgnored private(set) var isStarted = false
@@ -76,6 +81,20 @@ struct UndoSnapshot: Equatable {
             self?.pendingPermission = request
         }
 
+        client.onSlashCommandsUpdate = { [weak self] commands in
+            self?.slashCommands = commands
+        }
+
+        client.onModesUpdate = { [weak self] options, currentModeId in
+            self?.modeOptions = options
+            self?.currentModeId = currentModeId
+        }
+
+        client.onModelsUpdate = { [weak self] options, currentModelId in
+            self?.modelOptions = options
+            self?.currentModelId = currentModelId
+        }
+
         client.onError = { [weak self] message in
             self?.isLoading = false
             self?.messages.append(ChatMessage(role: .assistant, content: message))
@@ -89,6 +108,29 @@ struct UndoSnapshot: Equatable {
         pendingPermission = nil
     }
 
+    func setMode(_ modeId: String) {
+        acpClient?.setMode(modeId)
+        currentModeId = modeId
+    }
+
+    func setModel(_ modelId: String) {
+        acpClient?.setModel(modelId)
+        currentModelId = modelId
+    }
+
+    func compactSession() {
+        acpClient?.compactSession()
+    }
+
+    func clearSession() {
+        acpClient?.clearSession()
+        messages.removeAll()
+        currentResponse = ""
+        isLoading = false
+        toolCalls.removeAll()
+        pendingPermission = nil
+    }
+
     func stop() {
         acpClient?.stop()
         acpClient = nil
@@ -98,6 +140,12 @@ struct UndoSnapshot: Equatable {
         isLoading = false
         undoSnapshot = nil
         toolCalls.removeAll()
+        pendingPermission = nil
+        slashCommands.removeAll()
+        modeOptions.removeAll()
+        modelOptions.removeAll()
+        currentModeId = nil
+        currentModelId = nil
     }
 
     func dismissUndo() {

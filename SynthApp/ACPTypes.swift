@@ -117,10 +117,34 @@ struct ACPPermissionRequest: Identifiable {
     var diffContent: DiffContent?
 }
 
+struct ACPSlashCommand: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let description: String?
+    let inputHint: String?
+}
+
+struct ACPModeOption: Identifiable, Equatable {
+    let id: String
+    let title: String
+}
+
+struct ACPModelOption: Identifiable, Equatable {
+    let id: String
+    let title: String
+}
+
 enum ACPUpdateKind: Equatable {
     case agentMessageChunk
+    case userMessageChunk
     case toolCall
     case toolCallUpdate
+    case availableCommandsUpdate
+    case currentModeUpdate
+    case currentModelUpdate
+    case mcpServersInitialized
+    case mcpServerUpdate
+    case mcpServerResponse
     case turnEnd
 }
 
@@ -130,17 +154,31 @@ enum ACPProtocolAdapter {
     }
 
     static func parseUpdateKind(_ rawValue: String) -> ACPUpdateKind? {
-        let normalized = rawValue
-            .replacingOccurrences(of: "_", with: "")
-            .lowercased()
+        let normalized = rawValue.lowercased().filter { char in
+            char.isLetter || char.isNumber
+        }
 
         switch normalized {
         case "agentmessagechunk":
             return .agentMessageChunk
+        case "usermessagechunk":
+            return .userMessageChunk
         case "toolcall":
             return .toolCall
         case "toolcallupdate":
             return .toolCallUpdate
+        case "availablecommandsupdate":
+            return .availableCommandsUpdate
+        case "currentmodeupdate":
+            return .currentModeUpdate
+        case "currentmodelupdate":
+            return .currentModelUpdate
+        case "mcpserversinitialized":
+            return .mcpServersInitialized
+        case "mcpserverupdate":
+            return .mcpServerUpdate
+        case "mcpserverresponse":
+            return .mcpServerResponse
         case "turnend":
             return .turnEnd
         default:
@@ -154,7 +192,7 @@ enum ACPProtocolAdapter {
     ) -> [String: AnyCodable] {
         [
             "sessionId": AnyCodable(sessionId),
-            "prompt": AnyCodable(contentBlocks.map { AnyCodable($0) })
+            "content": AnyCodable(contentBlocks.map { AnyCodable($0) })
         ]
     }
 }
