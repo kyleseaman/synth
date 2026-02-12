@@ -132,11 +132,12 @@ struct FileLauncher: View {
         VStack(spacing: 0) {
             searchHeader
             Divider()
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 resultsPanel
                 Divider()
                 previewPanel
             }
+            .frame(maxHeight: 360)
         }
         .frame(width: 780)
         .background(.ultraThinMaterial)
@@ -222,7 +223,6 @@ struct FileLauncher: View {
             }
         }
         .frame(width: 420, alignment: .top)
-        .frame(maxHeight: 360)
     }
 
     @ViewBuilder
@@ -335,7 +335,6 @@ struct FileLauncher: View {
         }
         .padding(12)
         .frame(width: 360, alignment: .topLeading)
-        .frame(maxHeight: 360, alignment: .topLeading)
     }
 
     private func loadPreview(for url: URL) {
