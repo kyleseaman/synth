@@ -378,7 +378,7 @@ final class TemplateStoreTests: XCTestCase {
     func testExpandCursorPlaceholder() {
         let expanded = TemplateExpander.expand("# Title\n\n{{cursor}}\n\nFooter")
         XCTAssertEqual(expanded.content, "# Title\n\n\n\nFooter")
-        XCTAssertEqual(expanded.cursorOffset, 10) // Position after "# Title\n\n"
+        XCTAssertEqual(expanded.cursorOffset, 9) // Position after "# Title\n\n"
     }
 
     func testExpandUUID() {

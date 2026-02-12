@@ -47,6 +47,10 @@
 		3A0000000000000000000806 /* PeopleIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000126 /* PeopleIndex.swift */; };
 		3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000127 /* PeopleBrowserView.swift */; };
 		5A0000000000000000001001 /* UnifiedIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001002 /* UnifiedIndexer.swift */; };
+		5A0000000000000000001003 /* MediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001004 /* MediaManager.swift */; };
+		5A0000000000000000001005 /* WorkspaceImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001006 /* WorkspaceImageLoader.swift */; };
+		5A0000000000000000001007 /* WorkspaceWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001008 /* WorkspaceWatcher.swift */; };
+		5A0000000000000000001009 /* KiroConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A000000000000000000100A /* KiroConfigManager.swift */; };
 		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
 		4A0000000000000000000901 /* DailyNoteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000131 /* DailyNoteManager.swift */; };
 		4A0000000000000000000902 /* DailyNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000132 /* DailyNotesView.swift */; };
@@ -123,6 +127,10 @@
 		1A0000000000000000000126 /* PeopleIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000127 /* PeopleBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleBrowserView.swift; sourceTree = "<group>"; };
 		5A0000000000000000001002 /* UnifiedIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedIndexer.swift; sourceTree = "<group>"; };
+		5A0000000000000000001004 /* MediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaManager.swift; sourceTree = "<group>"; };
+		5A0000000000000000001006 /* WorkspaceImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceImageLoader.swift; sourceTree = "<group>"; };
+		5A0000000000000000001008 /* WorkspaceWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceWatcher.swift; sourceTree = "<group>"; };
+		5A000000000000000000100A /* KiroConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroConfigManager.swift; sourceTree = "<group>"; };
 		1A0000000000000000000109 /* MeetingNoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingNoteView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000131 /* DailyNoteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteManager.swift; sourceTree = "<group>"; };
 		1A0000000000000000000132 /* DailyNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNotesView.swift; sourceTree = "<group>"; };
@@ -233,6 +241,10 @@
 					1A0000000000000000000126 /* PeopleIndex.swift */,
 					1A0000000000000000000127 /* PeopleBrowserView.swift */,
 					5A0000000000000000001002 /* UnifiedIndexer.swift */,
+					5A0000000000000000001004 /* MediaManager.swift */,
+					5A0000000000000000001006 /* WorkspaceImageLoader.swift */,
+					5A0000000000000000001008 /* WorkspaceWatcher.swift */,
+					5A000000000000000000100A /* KiroConfigManager.swift */,
 					4A0000000000000000000131 /* SynthMcpResolver.swift */,
 					4A0000000000000000000132 /* MCPServerManager.swift */,
 					B1F000000000000000000300 /* Fonts */,
@@ -430,6 +442,10 @@
 				3A0000000000000000000806 /* PeopleIndex.swift in Sources */,
 				3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */,
 				5A0000000000000000001001 /* UnifiedIndexer.swift in Sources */,
+				5A0000000000000000001003 /* MediaManager.swift in Sources */,
+				5A0000000000000000001005 /* WorkspaceImageLoader.swift in Sources */,
+				5A0000000000000000001007 /* WorkspaceWatcher.swift in Sources */,
+				5A0000000000000000001009 /* KiroConfigManager.swift in Sources */,
 				4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */,
 				4A0000000000000000000906 /* MCPServerManager.swift in Sources */,
 			);

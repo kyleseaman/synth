@@ -1,157 +1,6 @@
 import SwiftUI
 import AppKit
-import ImageIO
 import Observation
-import CoreServices
-
-struct StoredMediaAsset {
-    let fileURL: URL
-    let relativePath: String
-}
-
-enum MediaManagerError: Error {
-    case imageEncodingFailed
-}
-
-enum MediaManager {
-    private static let supportedExtensions: Set<String> = [
-        "png", "jpg", "jpeg", "heic", "gif", "webp"
-    ]
-
-    private static let filenameFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter
-    }()
-
-    static func saveScreenshotImage(
-        _ image: NSImage,
-        workspaceURL: URL,
-        noteURL: URL,
-        now: Date = Date()
-    ) throws -> StoredMediaAsset {
-        let fileManager = FileManager.default
-        let mediaDirectory = workspaceURL.appendingPathComponent("media", isDirectory: true)
-        try fileManager.createDirectory(at: mediaDirectory, withIntermediateDirectories: true)
-
-        guard let imageData = image.pngDataRepresentation else {
-            throw MediaManagerError.imageEncodingFailed
-        }
-
-        let timestamp = filenameFormatter.string(from: now)
-        let baseName = "screenshot-\(timestamp)"
-        var suffixNumber = 1
-        var fileName = "\(baseName).png"
-        var fileURL = mediaDirectory.appendingPathComponent(fileName)
-
-        while fileManager.fileExists(atPath: fileURL.path) {
-            suffixNumber += 1
-            fileName = "\(baseName)-\(suffixNumber).png"
-            fileURL = mediaDirectory.appendingPathComponent(fileName)
-        }
-
-        try imageData.write(to: fileURL, options: [.atomic])
-
-        let noteDirectory = noteURL.deletingLastPathComponent()
-        let relativePath = relativePath(from: noteDirectory, to: fileURL)
-        return StoredMediaAsset(fileURL: fileURL, relativePath: relativePath)
-    }
-
-    static func screenshotURLs(in workspaceURL: URL) -> [URL] {
-        let mediaDirectory = workspaceURL.appendingPathComponent("media", isDirectory: true)
-        let properties: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey]
-
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: mediaDirectory,
-            includingPropertiesForKeys: properties
-        ) else { return [] }
-
-        return contents
-            .filter { mediaURL in
-                guard isSupportedImageFile(mediaURL) else { return false }
-                return mediaURL.deletingPathExtension()
-                    .lastPathComponent
-                    .lowercased()
-                    .contains("screenshot")
-            }
-            .sorted { firstURL, secondURL in
-                let firstValues = try? firstURL.resourceValues(forKeys: [.contentModificationDateKey])
-                let secondValues = try? secondURL.resourceValues(forKeys: [.contentModificationDateKey])
-                let firstDate = firstValues?.contentModificationDate ?? .distantPast
-                let secondDate = secondValues?.contentModificationDate ?? .distantPast
-                return firstDate > secondDate
-            }
-    }
-
-    static func relativePath(from baseDirectoryURL: URL, to destinationURL: URL) -> String {
-        let baseParts = baseDirectoryURL.standardizedFileURL.pathComponents
-        let destinationParts = destinationURL.standardizedFileURL.pathComponents
-        let sharedCount = sharedPathPrefixCount(first: baseParts, second: destinationParts)
-
-        let parentSegments = Array(repeating: "..", count: baseParts.count - sharedCount)
-        let destinationSegments = Array(destinationParts.dropFirst(sharedCount))
-        let fullSegments = parentSegments + destinationSegments
-        return fullSegments.isEmpty ? "." : fullSegments.joined(separator: "/")
-    }
-
-    static func resolvedImageURL(from path: String, baseDirectoryURL: URL?) -> URL? {
-        let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPath.isEmpty else { return nil }
-
-        if let absoluteURL = URL(string: trimmedPath), absoluteURL.scheme != nil {
-            return absoluteURL
-        }
-
-        guard let baseDirectoryURL else { return nil }
-        return URL(fileURLWithPath: trimmedPath, relativeTo: baseDirectoryURL).standardizedFileURL
-    }
-
-    static func isSupportedImageFile(_ mediaURL: URL) -> Bool {
-        let ext = mediaURL.pathExtension.lowercased()
-        guard supportedExtensions.contains(ext) else { return false }
-        let isDirectory = (try? mediaURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-        return !isDirectory
-    }
-
-    private static func sharedPathPrefixCount(first: [String], second: [String]) -> Int {
-        let countLimit = min(first.count, second.count)
-        var sharedCount = 0
-        while sharedCount < countLimit && first[sharedCount] == second[sharedCount] {
-            sharedCount += 1
-        }
-        return sharedCount
-    }
-}
-
-private extension NSImage {
-    var pngDataRepresentation: Data? {
-        guard let tiffData = tiffRepresentation,
-              let bitmapRep = NSBitmapImageRep(data: tiffData) else { return nil }
-        return bitmapRep.representation(using: .png, properties: [:])
-    }
-}
-
-private final class WorkspaceWatcherContext {
-    weak var store: DocumentStore?
-
-    init(store: DocumentStore) {
-        self.store = store
-    }
-}
-
-private let watcherContextRetain: CFAllocatorRetainCallBack = { info in
-    guard let info else { return nil }
-    let rawPointer = UnsafeMutableRawPointer(mutating: info)
-    let context = Unmanaged<WorkspaceWatcherContext>.fromOpaque(rawPointer)
-    return UnsafeRawPointer(context.retain().toOpaque())
-}
-
-private let watcherContextRelease: CFAllocatorReleaseCallBack = { info in
-    guard let info else { return }
-    let rawPointer = UnsafeMutableRawPointer(mutating: info)
-    Unmanaged<WorkspaceWatcherContext>.fromOpaque(rawPointer).release()
-}
 
 private enum DiskDeleteResult {
     case deleted(URL)
@@ -162,99 +11,6 @@ private enum DiskDeleteResult {
 private enum DiskDeleteScope {
     case workspace
     case media
-}
-
-final class WorkspaceImageLoader: @unchecked Sendable {
-    static let shared = WorkspaceImageLoader()
-
-    private let decodeQueue = DispatchQueue(
-        label: "synth.workspace-image-loader.decode",
-        qos: .userInitiated,
-        attributes: .concurrent
-    )
-    private let stateQueue = DispatchQueue(label: "synth.workspace-image-loader.state")
-    private let imageCache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 100  // Max 100 images
-        cache.totalCostLimit = 100 * 1024 * 1024  // ~100MB
-        return cache
-    }()
-    private var inFlight: [String: [(NSImage?) -> Void]] = [:]
-
-    private init() {}
-
-    func cachedImage(at imageURL: URL, maxSize: NSSize) -> NSImage? {
-        let cacheKey = key(for: imageURL, maxSize: maxSize)
-        return stateQueue.sync {
-            imageCache.object(forKey: cacheKey as NSString)
-        }
-    }
-
-    func loadImage(at imageURL: URL, maxSize: NSSize, completion: @escaping (NSImage?) -> Void) {
-        let cacheKey = key(for: imageURL, maxSize: maxSize)
-
-        if let cached = cachedImage(at: imageURL, maxSize: maxSize) {
-            completion(cached)
-            return
-        }
-
-        var shouldStartDecode = false
-        stateQueue.sync {
-            if var callbacks = inFlight[cacheKey] {
-                callbacks.append(completion)
-                inFlight[cacheKey] = callbacks
-            } else {
-                inFlight[cacheKey] = [completion]
-                shouldStartDecode = true
-            }
-        }
-
-        guard shouldStartDecode else { return }
-
-        decodeQueue.async {
-            let decoded = Self.decodeImage(at: imageURL, maxSize: maxSize)
-
-            let callbacks: [(NSImage?) -> Void] = self.stateQueue.sync {
-                if let decoded {
-                    self.imageCache.setObject(decoded, forKey: cacheKey as NSString)
-                }
-                return self.inFlight.removeValue(forKey: cacheKey) ?? []
-            }
-
-            DispatchQueue.main.async {
-                callbacks.forEach { callback in
-                    callback(decoded)
-                }
-            }
-        }
-    }
-
-    private func key(for imageURL: URL, maxSize: NSSize) -> String {
-        let width = Int(maxSize.width.rounded())
-        let height = Int(maxSize.height.rounded())
-        return "\(imageURL.path)#\(width)x\(height)"
-    }
-
-    private static func decodeImage(at imageURL: URL, maxSize: NSSize) -> NSImage? {
-        guard let source = CGImageSourceCreateWithURL(imageURL as CFURL, nil) else { return nil }
-
-        let maxPixelSize = max(Int(maxSize.width), Int(maxSize.height))
-        let options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(maxPixelSize, 1),
-            kCGImageSourceShouldCacheImmediately: true
-        ]
-
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(
-            source,
-            0,
-            options as CFDictionary
-        ) else { return nil }
-
-        let imageSize = NSSize(width: thumbnail.width, height: thumbnail.height)
-        return NSImage(cgImage: thumbnail, size: imageSize)
-    }
 }
 
 enum DetailViewMode: Equatable {
@@ -329,8 +85,7 @@ final class DocumentStore {
 
     @ObservationIgnored private var chatStates: [URL: DocumentChatState] = [:]
     @ObservationIgnored private let maxRecentFiles = 20
-    @ObservationIgnored private var fileEventStream: FSEventStreamRef?
-    @ObservationIgnored private var watcherContext: WorkspaceWatcherContext?
+    @ObservationIgnored private let watcher = WorkspaceWatcher()
     @ObservationIgnored private var fileTreeLoadTask: Task<Void, Never>?
     @ObservationIgnored private var pendingFileTreeReloadTask: Task<Void, Never>?
     @ObservationIgnored private var pendingWatcherReloadTask: Task<Void, Never>?
@@ -368,56 +123,14 @@ final class DocumentStore {
     }
 
     private func startWatching() {
-        guard let workspace = workspace else { return }
-        stopWatching()
-
-        let context = WorkspaceWatcherContext(store: self)
-        watcherContext = context
-
-        var streamContext = FSEventStreamContext(
-            version: 0,
-            info: UnsafeMutableRawPointer(Unmanaged.passRetained(context).toOpaque()),
-            retain: watcherContextRetain,
-            release: watcherContextRelease,
-            copyDescription: nil
-        )
-
-        let watchPaths = [workspace.path] as CFArray
-        let streamFlags = FSEventStreamCreateFlags(
-            kFSEventStreamCreateFlagFileEvents
-                | kFSEventStreamCreateFlagNoDefer
-                | kFSEventStreamCreateFlagUseCFTypes
-        )
-
-        guard let stream = FSEventStreamCreate(
-            kCFAllocatorDefault,
-            Self.workspaceEventCallback,
-            &streamContext,
-            watchPaths,
-            FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            0.2,
-            streamFlags
-        ) else {
-            return
-        }
-
-        FSEventStreamSetDispatchQueue(stream, DispatchQueue.main)
-        if FSEventStreamStart(stream) {
-            fileEventStream = stream
-        } else {
-            FSEventStreamInvalidate(stream)
-            FSEventStreamRelease(stream)
-            watcherContext = nil
+        guard let workspace else { return }
+        watcher.start(workspace: workspace) { [weak self] eventPaths in
+            self?.handleWorkspaceEvents(eventPaths)
         }
     }
 
     private func stopWatching() {
-        guard let stream = fileEventStream else { return }
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
-        fileEventStream = nil
-        watcherContext = nil
+        watcher.stop()
     }
 
     func loadRecentFiles() {
@@ -596,86 +309,20 @@ final class DocumentStore {
     }
 
     func loadKiroConfig() {
-        guard let workspace = workspace else { return }
-        let kiroDir = workspace.appendingPathComponent(".kiro")
-
-        // Load steering files
-        steeringFiles = []
-        let steeringDir = kiroDir.appendingPathComponent("steering")
-        if let files = try? FileManager.default.contentsOfDirectory(atPath: steeringDir.path) {
-            steeringFiles = files.filter { $0.hasSuffix(".md") }
-        }
-
-        // Load custom agents
-        customAgents = []
-        let agentsDir = kiroDir.appendingPathComponent("agents")
-        if let files = try? FileManager.default.contentsOfDirectory(at: agentsDir, includingPropertiesForKeys: nil) {
-            for file in files where file.pathExtension == "json" {
-                if let data = try? Data(contentsOf: file),
-                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    let name = (json["name"] as? String) ?? file.deletingPathExtension().lastPathComponent
-                    let desc = json["description"] as? String
-                    customAgents.append(AgentInfo(name: name, description: desc))
-                }
-            }
-        }
+        guard let workspace else { return }
+        let config = KiroConfigManager.loadConfig(workspace: workspace)
+        steeringFiles = config.steeringFiles
+        customAgents = config.agents
     }
 
     func checkKiroSetup() {
-        guard let workspace = workspace else { return }
-        let kiroDir = workspace.appendingPathComponent(".kiro")
-        needsKiroSetup = !FileManager.default.fileExists(atPath: kiroDir.path)
+        guard let workspace else { return }
+        needsKiroSetup = KiroConfigManager.needsSetup(workspace: workspace)
     }
 
     func bootstrapKiroConfig() {
-        guard let workspace = workspace else { return }
-        let kiroDir = workspace.appendingPathComponent(".kiro")
-        let steeringDir = kiroDir.appendingPathComponent("steering")
-        let agentsDir = kiroDir.appendingPathComponent("agents")
-        let fileManager = FileManager.default
-
-        try? fileManager.createDirectory(at: steeringDir, withIntermediateDirectories: true)
-        try? fileManager.createDirectory(at: agentsDir, withIntermediateDirectories: true)
-
-        // Bootstrap product.md steering file
-        let productMd = """
-        # Product Overview
-
-        Describe your project here. This file provides context to the AI.
-
-        ## Purpose
-        What does this project do?
-
-        ## Target Users
-        Who is this for?
-        """
-        let productPath = steeringDir.appendingPathComponent("product.md")
-        if !fileManager.fileExists(atPath: productPath.path) {
-            try? productMd.write(to: productPath, atomically: true, encoding: .utf8)
-        }
-
-        // Bootstrap doc-writer agent
-        let writerAgent: [String: Any] = [
-            "name": "doc-writer",
-            "description": "Document writer — drafts and generates content",
-            "prompt": """
-                You are a document writer integrated into Synth. \
-                Draft new documents, expand outlines into prose, \
-                write in various styles (technical, creative, business). \
-                Start with structure, then fill in content. \
-                Use markdown formatting. Be concise and direct.
-                """,
-            "tools": ["fs_read", "fs_write"],
-            "allowedTools": ["fs_read", "fs_write"]
-        ]
-        let writerPath = agentsDir.appendingPathComponent("doc-writer.json")
-        if !fileManager.fileExists(atPath: writerPath.path),
-           let data = try? JSONSerialization.data(
-               withJSONObject: writerAgent, options: [.prettyPrinted, .sortedKeys]
-           ) {
-            try? data.write(to: writerPath)
-        }
-
+        guard let workspace else { return }
+        KiroConfigManager.bootstrap(workspace: workspace)
         needsKiroSetup = false
         loadKiroConfig()
         loadFileTree()
@@ -1027,7 +674,7 @@ final class DocumentStore {
         guard let workspace else { return }
         let workspacePath = workspace.standardizedFileURL.path
         let shouldRefresh = eventPaths.isEmpty || eventPaths.contains { eventPath in
-            Self.shouldRefreshSidebar(forWorkspace: workspacePath, eventPath: eventPath)
+            WorkspaceWatcher.shouldRefreshSidebar(forWorkspace: workspacePath, eventPath: eventPath)
         }
         guard shouldRefresh else { return }
 
@@ -1037,39 +684,6 @@ final class DocumentStore {
             guard !Task.isCancelled else { return }
             self?.loadFileTree()
         }
-    }
-
-    static func shouldRefreshSidebar(forWorkspace workspacePath: String, eventPath: String) -> Bool {
-        let normalizedWorkspace = URL(fileURLWithPath: workspacePath).standardizedFileURL.path
-        let normalizedEvent = URL(fileURLWithPath: eventPath).standardizedFileURL.path
-        guard normalizedEvent.hasPrefix(normalizedWorkspace) else { return false }
-
-        let relativePath = String(normalizedEvent.dropFirst(normalizedWorkspace.count))
-        if relativePath == "/.kiro" || relativePath.hasPrefix("/.kiro/") {
-            return false
-        }
-        if relativePath == "/daily" || relativePath.hasPrefix("/daily/") {
-            return false
-        }
-        if relativePath == "/media" || relativePath.hasPrefix("/media/") {
-            return false
-        }
-        return true
-    }
-
-    private static let workspaceEventCallback: FSEventStreamCallback = { _, clientInfo, _, eventPathsPointer, _, _ in
-        guard let clientInfo else { return }
-        let context = Unmanaged<WorkspaceWatcherContext>
-            .fromOpaque(clientInfo)
-            .takeUnretainedValue()
-        guard let store = context.store else { return }
-
-        let eventPathArray = Unmanaged<CFArray>
-            .fromOpaque(eventPathsPointer)
-            .takeUnretainedValue() as NSArray
-        let eventPaths = eventPathArray.compactMap { $0 as? String }
-
-        store.handleWorkspaceEvents(eventPaths)
     }
 
     func closeCurrentTab() {

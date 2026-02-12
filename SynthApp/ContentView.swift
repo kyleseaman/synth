@@ -699,7 +699,10 @@ struct EditorViewSimple: View {
         HStack(spacing: 0) {
             // Editor
             HStack(spacing: 0) {
-                LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
+                LineNumberGutter(
+                    linePositions: linePositions,
+                    scrollOffset: scrollOffset
+                )
                     .frame(width: 44)
                     .background(Color(.textBackgroundColor))
 
@@ -799,6 +802,19 @@ struct LineNumberGutter: View {
             }
         }
         .clipped()
+    }
+}
+
+struct LineNumberMetrics {
+    static func clampedScrollOffset(
+        scrollOffset: CGFloat,
+        documentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        minimumHeightEpsilon: CGFloat = 0.5
+    ) -> CGFloat {
+        guard documentHeight > viewportHeight + minimumHeightEpsilon else { return 0 }
+        let maxOffset = max(0, documentHeight - viewportHeight)
+        return min(max(scrollOffset, 0), maxOffset)
     }
 }
 

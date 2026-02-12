@@ -14,6 +14,18 @@ struct MarkdownFormat: DocumentFormat {
         let attachmentRange: NSRange
     }
 
+    // MARK: - Hide Syntax Preference
+
+    /// When true, markdown syntax markers (**, *, [[, ]], `, #) are hidden
+    static var hideSyntax: Bool {
+        get { UserDefaults.standard.object(forKey: "hideSyntax") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "hideSyntax") }
+    }
+
+    /// Hidden font and color for syntax markers
+    @MainActor static var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
+    @MainActor static var hiddenColor: NSColor { NSColor.clear }
+
     // MARK: - Static Regex Patterns (compiled once)
 
     // swiftlint:disable force_try
@@ -497,6 +509,68 @@ struct RichTextFormat: DocumentFormat {
     }
 }
 
+struct EditorModelTextTracker {
+    private(set) var lastObservedModelText: String
+
+    init(initialModelText: String) {
+        self.lastObservedModelText = Self.normalizedText(initialModelText)
+    }
+
+    func hasModelTextChanged(_ modelText: String) -> Bool {
+        Self.normalizedText(modelText) != lastObservedModelText
+    }
+
+    mutating func markObserved(_ modelText: String) {
+        lastObservedModelText = Self.normalizedText(modelText)
+    }
+
+    static func normalizedText(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+    }
+
+    static func isOutOfSync(modelText: String, renderedText: String) -> Bool {
+        normalizedText(modelText) != normalizedText(renderedText)
+    }
+}
+
+struct EditorScrollMetrics {
+    static func effectiveDocumentHeight(
+        usedTextHeight: CGFloat,
+        textInset: CGFloat,
+        viewportHeight: CGFloat
+    ) -> CGFloat {
+        let usedHeightWithInsets = usedTextHeight + textInset * 2
+        return max(viewportHeight, usedHeightWithInsets)
+    }
+
+    static func clampedVerticalOffset(
+        rawOffset: CGFloat,
+        documentHeight: CGFloat,
+        viewportHeight: CGFloat
+    ) -> CGFloat {
+        let maxOffset = max(0, documentHeight - viewportHeight)
+        return min(max(rawOffset, 0), maxOffset)
+    }
+
+    static func effectiveDocumentHeight(
+        documentViewHeight: CGFloat,
+        viewportHeight: CGFloat
+    ) -> CGFloat {
+        max(viewportHeight, documentViewHeight.rounded(.up))
+    }
+}
+
+struct EditorLinePositionMetrics {
+    static func shouldIncludeTrailingEmptyLine(
+        text: String,
+        extraLineFragmentHeight: CGFloat
+    ) -> Bool {
+        text.hasSuffix("\n") && extraLineFragmentHeight > 0
+    }
+}
+
 // MARK: - Resize Grip View
 
 class ResizeGripView: NSView {
@@ -656,7 +730,9 @@ class FormattingTextView: NSTextView {
     func resetUndoBreakTimer() {
         undoBreakTimer?.invalidate()
         undoBreakTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
-            self?.breakUndoCoalescing()
+            Task { @MainActor in
+                self?.breakUndoCoalescing()
+            }
         }
     }
 
@@ -1029,8 +1105,8 @@ class FormattingTextView: NSTextView {
                 storage.replaceCharacters(in: lineRange, with: "")
                 return
             }
-            super.insertNewline(sender)
-            insertText(prefix, replacementRange: selectedRange())
+            // Single insert: newline + prefix (avoids two didProcessEditing cycles)
+            insertText("\n" + prefix, replacementRange: selectedRange())
             return
         }
 
@@ -1049,11 +1125,10 @@ class FormattingTextView: NSTextView {
                 storage.replaceCharacters(in: lineRange, with: "")
                 return
             }
-            // Increment number
+            // Increment number — single insert
             if let num = Int(numStr) {
                 let nextPrefix = "\(indent)\(num + 1)\(dot)"
-                super.insertNewline(sender)
-                insertText(nextPrefix, replacementRange: selectedRange())
+                insertText("\n" + nextPrefix, replacementRange: selectedRange())
                 return
             }
         }
@@ -1065,7 +1140,26 @@ class FormattingTextView: NSTextView {
         super.insertText(string, replacementRange: replacementRange)
         guard let str = string as? String else { return }
 
+        // Text substitution: -> becomes →
+        if str == ">" {
+            tryArrowSubstitution()
+        }
+
         handleAutocompleteState(for: str)
+    }
+
+    /// Replace "->" with "→" if just typed
+    private func tryArrowSubstitution() {
+        guard let storage = textStorage else { return }
+        let cursor = selectedRange().location
+        // Need at least 2 characters before cursor for "->"
+        guard cursor >= 2 else { return }
+        let checkRange = NSRange(location: cursor - 2, length: 2)
+        guard checkRange.location + checkRange.length <= storage.length else { return }
+        let twoChars = (storage.string as NSString).substring(with: checkRange)
+        guard twoChars == "->" else { return }
+        // Replace "->" with "→"
+        storage.replaceCharacters(in: checkRange, with: "→")
     }
 
     // MARK: - Autocomplete State Machine
@@ -1503,12 +1597,13 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
-        textView.layoutManager?.allowsNonContiguousLayout = true
+        textView.layoutManager?.allowsNonContiguousLayout = false
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
+        scrollView.verticalScrollElasticity = .none
         scrollView.documentView = textView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
@@ -1562,19 +1657,29 @@ struct MarkdownEditor: NSViewRepresentable {
             store?.saveSelectedRange(textView.selectedRange(), for: lastURL)
         }
 
-        let restoredString = MarkdownFormat.restoreImageMarkup(
-            in: textView.string
-        )
-        if !context.coordinator.isEditing && restoredString != text {
-            textView.textStorage?.setAttributedString(format.render(text))
-            context.coordinator.applyFormatting()
-            DispatchQueue.main.async {
-                context.coordinator.updateLinePositions()
-                // Restore saved selected range for this document
-                if let savedRange = self.store?.savedSelectedRange(),
-                   savedRange.location + savedRange.length <= textView.string.count {
-                    textView.setSelectedRange(savedRange)
-                    textView.scrollRangeToVisible(savedRange)
+        let didModelTextChange = context.coordinator
+            .modelTextTracker
+            .hasModelTextChanged(text)
+
+        if didModelTextChange && !context.coordinator.isEditing {
+            context.coordinator.modelTextTracker.markObserved(text)
+            let restoredString = MarkdownFormat.restoreImageMarkup(
+                in: textView.string
+            )
+            if EditorModelTextTracker.isOutOfSync(
+                modelText: text,
+                renderedText: restoredString
+            ) {
+                textView.textStorage?.setAttributedString(format.render(text))
+                context.coordinator.applyFormatting()
+                DispatchQueue.main.async {
+                    context.coordinator.updateLinePositions()
+                    // Restore saved selected range for this document
+                    if let savedRange = self.store?.savedSelectedRange(),
+                       savedRange.location + savedRange.length <= textView.string.count {
+                        textView.setSelectedRange(savedRange)
+                        textView.scrollRangeToVisible(savedRange)
+                    }
                 }
             }
         }
@@ -1609,13 +1714,63 @@ struct MarkdownEditor: NSViewRepresentable {
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
         var lastDocumentURL: URL?
+        var modelTextTracker: EditorModelTextTracker
 
-        init(_ parent: MarkdownEditor) { self.parent = parent }
+        // Cached fonts for highlightParagraph — resolved once, reused every keystroke
+        private var cachedCodeFont: NSFont?
+        private var cachedH1Font: NSFont?
+        private var cachedH2Font: NSFont?
+        private var cachedH3Font: NSFont?
+
+        struct HighlightFonts {
+            let code: NSFont
+            let heading1: NSFont
+            let heading2: NSFont
+            let heading3: NSFont
+        }
+
+        func highlightFonts() -> HighlightFonts {
+            if let code = cachedCodeFont,
+               let heading1 = cachedH1Font,
+               let heading2 = cachedH2Font,
+               let heading3 = cachedH3Font {
+                return HighlightFonts(
+                    code: code, heading1: heading1, heading2: heading2, heading3: heading3
+                )
+            }
+            let code = Theme.terminalNSFont(ofSize: 14)
+            let heading1 = Theme.editorNSFont(ofSize: 28, weight: .bold)
+            let heading2 = Theme.editorNSFont(ofSize: 22, weight: .bold)
+            let heading3 = Theme.editorNSFont(ofSize: 18, weight: .semibold)
+            cachedCodeFont = code
+            cachedH1Font = heading1
+            cachedH2Font = heading2
+            cachedH3Font = heading3
+            return HighlightFonts(
+                code: code, heading1: heading1, heading2: heading2, heading3: heading3
+            )
+        }
+
+        func invalidateFontCache() {
+            cachedCodeFont = nil
+            cachedH1Font = nil
+            cachedH2Font = nil
+            cachedH3Font = nil
+        }
+
+        init(_ parent: MarkdownEditor) {
+            self.parent = parent
+            self.modelTextTracker = EditorModelTextTracker(
+                initialModelText: parent.text
+            )
+        }
 
         deinit {}
 
         func tearDown() {
             saveTimer?.invalidate()
+            fullReformatTask?.cancel()
+            scrollOffsetUpdateTask?.cancel()
             textView?.invalidateUndoBreakTimer()
             if let clipView = scrollView?.contentView {
                 NotificationCenter.default.removeObserver(
@@ -1761,18 +1916,50 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // MARK: - Scroll Offset
 
+        private var lastReportedScrollOffset: CGFloat = 0
+        private var pendingScrollOffset: CGFloat?
+        private var scrollOffsetUpdateTask: DispatchWorkItem?
         func updateScrollOffset() {
             guard let scrollView = scrollView else { return }
-            DispatchQueue.main.async {
-                self.parent.scrollOffset = scrollView.contentView.bounds.origin.y
+            let clipBounds = scrollView.contentView.bounds
+            let viewportHeight = clipBounds.height
+            let documentViewHeight = scrollView.documentView?.bounds.height ?? viewportHeight
+            let documentHeight = EditorScrollMetrics.effectiveDocumentHeight(
+                documentViewHeight: documentViewHeight,
+                viewportHeight: viewportHeight
+            )
+            let newOffset = EditorScrollMetrics.clampedVerticalOffset(
+                rawOffset: clipBounds.origin.y,
+                documentHeight: documentHeight,
+                viewportHeight: viewportHeight
+            )
+            .rounded(.toNearestOrAwayFromZero)
+            // Only update if changed by more than 1 point to reduce SwiftUI churn
+            let didScrollOffsetChange = abs(newOffset - lastReportedScrollOffset) > 1
+            guard didScrollOffsetChange else { return }
+
+            pendingScrollOffset = newOffset
+            if scrollOffsetUpdateTask != nil { return }
+
+            let updateTask = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.scrollOffsetUpdateTask = nil
+                guard let pendingOffset = self.pendingScrollOffset else { return }
+                self.pendingScrollOffset = nil
+                self.lastReportedScrollOffset = pendingOffset
+                self.parent.scrollOffset = pendingOffset
             }
+            scrollOffsetUpdateTask = updateTask
+            DispatchQueue.main.async(execute: updateTask)
         }
 
         // MARK: - Line Positions
 
         private var lastNewlineCount = 0
+        private var isUpdatingLinePositions = false
 
         func updateLinePositions() {
+            guard !isUpdatingLinePositions else { return }
             guard let textView = textView,
                   let layoutManager = textView.layoutManager,
                   let textContainer = textView.textContainer else { return }
@@ -1788,6 +1975,9 @@ struct MarkdownEditor: NSViewRepresentable {
                 return
             }
             lastNewlineCount = newlineCount
+
+            isUpdatingLinePositions = true
+            defer { isUpdatingLinePositions = false }
 
             layoutManager.ensureLayout(for: textContainer)
 
@@ -1828,12 +2018,16 @@ struct MarkdownEditor: NSViewRepresentable {
             // Trailing newline produces an empty last line with no
             // characters — use extraLineFragmentRect for its position
             let extraRect = layoutManager.extraLineFragmentRect
-            if extraRect.height > 0 {
+            if EditorLinePositionMetrics.shouldIncludeTrailingEmptyLine(
+                text: string,
+                extraLineFragmentHeight: extraRect.height
+            ) {
                 positions.append(textInset + extraRect.midY)
             }
 
-            DispatchQueue.main.async {
-                self.parent.linePositions = positions
+            // Only update if positions actually changed
+            if positions != parent.linePositions {
+                parent.linePositions = positions
             }
         }
 
@@ -1844,9 +2038,10 @@ struct MarkdownEditor: NSViewRepresentable {
             didCompleteLayoutFor textContainer: NSTextContainer?,
             atEnd layoutFinishedFlag: Bool
         ) {
-            if layoutFinishedFlag {
-                debouncedLinePositionUpdate()
-            }
+            // Only update when ALL layout is complete — partial updates cause bounce
+            guard layoutFinishedFlag else { return }
+            guard !isUpdatingLinePositions else { return }
+            debouncedLinePositionUpdate()
         }
 
         private var linePositionTask: DispatchWorkItem?
@@ -1893,7 +2088,36 @@ struct MarkdownEditor: NSViewRepresentable {
             guard textStorage.length > 0 else { return }
 
             let paragraphRange = (textStorage.string as NSString).paragraphRange(for: editedRange)
-            highlightParagraph(textStorage, range: paragraphRange)
+
+            // For large edits (paragraph delete, paste), defer to async reformat
+            if paragraphRange.length > 500 {
+                scheduleFullReformat()
+                return
+            }
+
+            // Highlight each paragraph individually within the affected range
+            let nsString = textStorage.string as NSString
+            var scanLocation = paragraphRange.location
+            let rangeEnd = paragraphRange.location + paragraphRange.length
+            while scanLocation < rangeEnd {
+                let lineRange = nsString.paragraphRange(
+                    for: NSRange(location: scanLocation, length: 0)
+                )
+                highlightParagraph(textStorage, range: lineRange)
+                let lineEnd = lineRange.location + lineRange.length
+                scanLocation = lineEnd == scanLocation ? scanLocation + 1 : lineEnd
+            }
+        }
+
+        private var fullReformatTask: DispatchWorkItem?
+
+        private func scheduleFullReformat() {
+            fullReformatTask?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                self?.applyFormatting()
+            }
+            fullReformatTask = item
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: item)
         }
 
         private func highlightParagraph(_ storage: NSTextStorage, range paraRange: NSRange) {
@@ -1905,104 +2129,157 @@ struct MarkdownEditor: NSViewRepresentable {
             let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { return }
 
-            let bodyFont = Theme.editorNSFont(ofSize: 16)
+            // Check which syntax markers are present (avoid running unnecessary regex)
+            let hasBold = lineText.contains("**")
+            let hasItalic = !hasBold && lineText.contains("*")  // Skip if bold handles it
+            let hasWiki = lineText.contains("[[")
+            let hasCode = lineText.contains("`")
+            let isHeading = trimmed.hasPrefix("#")
 
-            // Reset to base font/color for this paragraph
-            storage.addAttributes([
-                .font: bodyFont,
-                .foregroundColor: NSColor.textColor
-            ], range: paraRange)
+            // Skip all formatting work for plain text lines (most common case)
+            guard isHeading || hasBold || hasItalic || hasWiki || hasCode else { return }
 
-            // Headings
-            var headingPrefixLen = 0
-            if trimmed.hasPrefix("# ") {
-                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 28, weight: .bold), range: paraRange)
-                headingPrefixLen = 2
-            } else if trimmed.hasPrefix("## ") {
-                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 22, weight: .bold), range: paraRange)
-                headingPrefixLen = 3
-            } else if trimmed.hasPrefix("### ") {
-                storage.addAttribute(.font, value: Theme.editorNSFont(ofSize: 18, weight: .semibold), range: paraRange)
-                headingPrefixLen = 4
+            // Batch all attribute changes to trigger only one layout pass
+            storage.beginEditing()
+            defer { storage.endEditing() }
+
+            let fonts = highlightFonts()
+
+            // Reset colors for lines with markdown
+            storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: paraRange)
+            storage.removeAttribute(.backgroundColor, range: paraRange)
+
+            // Strip bold/italic traits only if line has bold/italic markers
+            if hasBold || hasItalic {
+                storage.enumerateAttribute(.font, in: paraRange) { value, subrange, _ in
+                    guard let font = value as? NSFont else { return }
+                    let traits = font.fontDescriptor.symbolicTraits
+                    guard traits.contains(.bold) || traits.contains(.italic) else { return }
+                    let stripped = traits.subtracting([.bold, .italic])
+                    let newDesc = font.fontDescriptor.withSymbolicTraits(stripped)
+                    if let newFont = NSFont(descriptor: newDesc, size: font.pointSize) {
+                        storage.addAttribute(.font, value: newFont, range: subrange)
+                    }
+                }
             }
 
-            if headingPrefixLen > 0 {
-                storage.addAttributes([
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear
-                ], range: NSRange(location: paraRange.location, length: headingPrefixLen))
+            // Headings — these DO need a full font set
+            if isHeading {
+                var headingPrefixLen = 0
+                if trimmed.hasPrefix("# ") {
+                    storage.addAttribute(.font, value: fonts.heading1, range: paraRange)
+                    headingPrefixLen = 2
+                } else if trimmed.hasPrefix("## ") {
+                    storage.addAttribute(.font, value: fonts.heading2, range: paraRange)
+                    headingPrefixLen = 3
+                } else if trimmed.hasPrefix("### ") {
+                    storage.addAttribute(.font, value: fonts.heading3, range: paraRange)
+                    headingPrefixLen = 4
+                }
+                if headingPrefixLen > 0 {
+                    storage.addAttributes([
+                        .font: NSFont.systemFont(ofSize: 0.01),
+                        .foregroundColor: NSColor.clear
+                    ], range: NSRange(location: paraRange.location, length: headingPrefixLen))
+                }
             }
 
-            // Bold **text**
-            MarkdownFormat.boldPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                guard let match = match else { return }
-                let innerRange = match.range(at: 1)
-                let boldFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .boldFontMask)
-                storage.addAttribute(.font, value: boldFont, range: innerRange)
-                // Gray markers
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location, length: 2))
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+            // Helper to apply hidden or gray style to syntax markers
+            let hideSyntax = MarkdownFormat.hideSyntax
+            let markerAttrs: [NSAttributedString.Key: Any] = hideSyntax
+                ? [.font: MarkdownFormat.hiddenFont, .foregroundColor: MarkdownFormat.hiddenColor]
+                : [.foregroundColor: NSColor.gray]
+
+            // Bold **text** — only if ** present
+            if hasBold {
+                MarkdownFormat.boldPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                    guard let match = match else { return }
+                    let innerRange = match.range(at: 1)
+                    Self.addFontTrait(.bold, storage: storage, range: innerRange)
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location, length: 2))
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+                }
             }
 
-            // Italic *text*
-            MarkdownFormat.italicPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                guard let match = match else { return }
-                let innerRange = match.range(at: 1)
-                let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
-                storage.addAttribute(.font, value: italicFont, range: innerRange)
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location, length: 1))
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
+            // Italic *text* — only if single * present (and no **)
+            if hasItalic {
+                MarkdownFormat.italicPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                    guard let match = match else { return }
+                    let innerRange = match.range(at: 1)
+                    Self.addFontTrait(.italic, storage: storage, range: innerRange)
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location, length: 1))
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
+                }
             }
 
-            // Wiki links [[text]]
-            MarkdownFormat.wikiPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                guard let match = match else { return }
-                let innerRange = match.range(at: 1)
-                storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: innerRange)
-                // Gray brackets
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location, length: 2))
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
-                    range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+            // Wiki links [[text]] — only if [[ present
+            if hasWiki {
+                MarkdownFormat.wikiPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
+                    guard let match = match else { return }
+                    let innerRange = match.range(at: 1)
+                    storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: innerRange)
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location, length: 2))
+                    storage.addAttributes(markerAttrs,
+                        range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
+                }
             }
 
-            // Code `text`
+            // Code `text` — only if backtick present
+            guard hasCode else { return }
             MarkdownFormat.codePattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
                 guard let match = match else { return }
                 let innerRange = match.range(at: 1)
                 storage.addAttributes([
-                    .font: Theme.terminalNSFont(ofSize: 14),
+                    .font: fonts.code,
                     .foregroundColor: NSColor.systemPink,
                     .backgroundColor: NSColor.quaternaryLabelColor
                 ], range: innerRange)
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                storage.addAttributes(markerAttrs,
                     range: NSRange(location: match.range.location, length: 1))
-                storage.addAttribute(.foregroundColor, value: NSColor.gray,
+                storage.addAttributes(markerAttrs,
                     range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
+            }
+        }
+
+        private static func addFontTrait(
+            _ trait: NSFontDescriptor.SymbolicTraits,
+            storage: NSTextStorage,
+            range: NSRange
+        ) {
+            storage.enumerateAttribute(.font, in: range) { value, subrange, _ in
+                guard let font = value as? NSFont else { return }
+                let newTraits = font.fontDescriptor.symbolicTraits.union(trait)
+                let newDesc = font.fontDescriptor.withSymbolicTraits(newTraits)
+                if let newFont = NSFont(descriptor: newDesc, size: font.pointSize) {
+                    storage.addAttribute(.font, value: newFont, range: subrange)
+                }
             }
         }
 
         private var textSyncTask: DispatchWorkItem?
 
+        /// Combined debounce for text sync (fast) and save (slower)
+        /// Text syncs after 0.15s of idle, save triggers after 1s of idle
         private func debouncedTextSync() {
             textSyncTask?.cancel()
-            let item = DispatchWorkItem { [weak self] in
+            saveTimer?.invalidate()
+
+            // Fast text sync (0.15s) - updates parent.text binding
+            let syncItem = DispatchWorkItem { [weak self] in
                 guard let self, let textView = self.textView else { return }
                 self.parent.text = MarkdownFormat.restoreImageMarkup(
                     in: textView.string
                 )
             }
-            textSyncTask = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
-            scheduleSave()
-        }
+            textSyncTask = syncItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: syncItem)
 
-        private func scheduleSave() {
-            saveTimer?.invalidate()
+            // Slower save (1s) - persists to disk
             saveTimer = Timer.scheduledTimer(
                 withTimeInterval: 1.0, repeats: false
             ) { [weak self] _ in
@@ -2015,6 +2292,7 @@ struct MarkdownEditor: NSViewRepresentable {
         // MARK: - Live Formatting
 
         func applyFormatting() {
+            invalidateFontCache()
             guard let textView = textView,
                   let storage = textView.textStorage
             else { return }

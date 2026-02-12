@@ -588,7 +588,7 @@ struct DailyNoteBacklinks: View {
     }
 
     /// First meaningful content line from a file (skips headings and blanks).
-    private static func contentPreview(for url: URL) -> String {
+    nonisolated private static func contentPreview(for url: URL) -> String {
         guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return "" }
         defer { try? fileHandle.close() }
         guard let data = try? fileHandle.read(upToCount: 1024),

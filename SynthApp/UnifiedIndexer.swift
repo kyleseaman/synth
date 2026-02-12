@@ -17,26 +17,40 @@ enum UnifiedIndexer {
     }
 
     /// Rebuild all indexes from file tree, reading each file only once
+    /// File reading is parallelized for better performance on large workspaces
     static func rebuildAll(
         fileTree: [FileTreeNode],
         workspace: URL,
         context: IndexContext
     ) {
         let files = flattenMarkdownFiles(fileTree)
-        var fileContents: [FileContent] = []
-        fileContents.reserveCapacity(files.count)
 
-        // Single pass: read all files
-        for file in files {
-            guard let content = try? String(contentsOf: file.url, encoding: .utf8) else { continue }
-            fileContents.append(FileContent(url: file.url, content: content))
-        }
+        // Parallel file reading using DispatchQueue for concurrent I/O
+        let fileContents = readFilesInParallel(files)
 
         // Feed to each index with pre-read content
         context.noteIndex.rebuild(from: fileContents, workspace: workspace)
         context.backlinkIndex.rebuild(from: fileContents)
         context.tagIndex.rebuild(from: fileContents)
         context.peopleIndex.rebuild(from: fileContents)
+    }
+
+    /// Read files in parallel using a concurrent dispatch queue
+    private static func readFilesInParallel(_ files: [FileTreeNode]) -> [FileContent] {
+        guard !files.isEmpty else { return [] }
+
+        let collector = FileContentCollector(capacity: files.count)
+
+        DispatchQueue.concurrentPerform(iterations: files.count) { index in
+            let file = files[index]
+            guard let content = try? String(contentsOf: file.url, encoding: .utf8) else { return }
+            collector.store(
+                FileContent(url: file.url, content: content),
+                at: index
+            )
+        }
+
+        return collector.allFiles()
     }
 
     private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
@@ -51,5 +65,26 @@ enum UnifiedIndexer {
             }
         }
         return result
+    }
+}
+
+private final class FileContentCollector: @unchecked Sendable {
+    private var files: [UnifiedIndexer.FileContent?]
+    private let collectorLock = NSLock()
+
+    init(capacity: Int) {
+        self.files = Array(repeating: nil, count: capacity)
+    }
+
+    func store(_ file: UnifiedIndexer.FileContent, at index: Int) {
+        collectorLock.lock()
+        files[index] = file
+        collectorLock.unlock()
+    }
+
+    func allFiles() -> [UnifiedIndexer.FileContent] {
+        collectorLock.lock()
+        defer { collectorLock.unlock() }
+        return files.compactMap { $0 }
     }
 }

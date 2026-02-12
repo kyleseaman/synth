@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(TemplateStore.self) var templateStore
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
+    @AppStorage("hideSyntax") private var hideSyntax = true
     @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
     @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
     @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
@@ -46,6 +47,16 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
+            Section("Editor") {
+                Toggle("Hide syntax markers", isOn: $hideSyntax)
+                Text(
+                    "When enabled, markdown markers like **, *, [[, ]], and ` are hidden. "
+                    + "The formatted text remains visible."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Kiro CLI") {
                 TextField("Path to kiro-cli", text: $kiroCliPath, prompt: Text("Auto-detect"))
                     .textFieldStyle(.roundedBorder)

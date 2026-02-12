@@ -39,14 +39,28 @@ extension String {
         if lower.contains(queryLower) {
             return 5000 + (lower.hasPrefix(queryLower) ? 1000 : 0)
         }
+
+        // Early exit: if remaining string is shorter than remaining query, no match possible
+        let queryCount = queryLower.count
+        let stringCount = lower.count
+        if queryCount > stringCount { return nil }
+
         var score = 0
         var remainder = queryLower[...]
         var lastMatchIndex = -1
-        for (index, char) in lower.enumerated() where char == remainder.first {
-            remainder.removeFirst()
-            score += (lastMatchIndex == index - 1) ? 10 : 1
-            lastMatchIndex = index
-            if remainder.isEmpty { return score }
+        let lowerChars = Array(lower)
+
+        for (index, char) in lowerChars.enumerated() {
+            // Early exit: not enough characters left to match remaining query
+            let remainingInString = stringCount - index
+            if remainingInString < remainder.count { return nil }
+
+            if char == remainder.first {
+                remainder.removeFirst()
+                score += (lastMatchIndex == index - 1) ? 10 : 1
+                lastMatchIndex = index
+                if remainder.isEmpty { return score }
+            }
         }
         return nil
     }
