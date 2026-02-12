@@ -1,6 +1,12 @@
 import SwiftUI
 import AppKit
 
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 extension Notification.Name {
     // MARK: - Wiki Link Notifications
     static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
@@ -10,6 +16,7 @@ extension Notification.Name {
     static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
     static let showDailyDate = Notification.Name("showDailyDate")
     static let insertTemplate = Notification.Name("insertTemplate")
+    static let formatParagraphNow = Notification.Name("formatParagraphNow")
 }
 
 struct EditorSelectionContext {
@@ -692,7 +699,10 @@ struct EditorViewSimple: View {
         HStack(spacing: 0) {
             // Editor
             HStack(spacing: 0) {
-                LineNumberGutter(linePositions: linePositions, scrollOffset: scrollOffset)
+                LineNumberGutter(
+                    linePositions: linePositions,
+                    scrollOffset: scrollOffset
+                )
                     .frame(width: 44)
                     .background(Color(.textBackgroundColor))
 
@@ -740,6 +750,12 @@ struct EditorViewSimple: View {
             publishSelectionContext()
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
+        .onChange(of: store.openFiles[safe: store.currentIndex]?.content.string) { _, newValue in
+            // Reload when file content changes externally (e.g., Kiro agent edit)
+            if let newValue, newValue != text {
+                text = newValue
+            }
+        }
         .onChange(of: text) { _, _ in saveText() }
         .onAppear { loadText() }
     }
@@ -786,6 +802,19 @@ struct LineNumberGutter: View {
             }
         }
         .clipped()
+    }
+}
+
+struct LineNumberMetrics {
+    static func clampedScrollOffset(
+        scrollOffset: CGFloat,
+        documentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        minimumHeightEpsilon: CGFloat = 0.5
+    ) -> CGFloat {
+        guard documentHeight > viewportHeight + minimumHeightEpsilon else { return 0 }
+        let maxOffset = max(0, documentHeight - viewportHeight)
+        return min(max(scrollOffset, 0), maxOffset)
     }
 }
 

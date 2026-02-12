@@ -46,6 +46,23 @@ import Observation
         fileToTags = newFileToTags
     }
 
+    /// Rebuild from pre-read file contents (unified indexer path)
+    func rebuild(from files: [UnifiedIndexer.FileContent]) {
+        var newTagToFiles: [String: Set<URL>] = [:]
+        var newFileToTags: [URL: Set<String>] = [:]
+
+        for file in files {
+            let tags = scanFile(content: file.content)
+            newFileToTags[file.url] = tags
+            for tag in tags {
+                newTagToFiles[tag, default: []].insert(file.url)
+            }
+        }
+
+        tagToFiles = newTagToFiles
+        fileToTags = newFileToTags
+    }
+
     // MARK: - Incremental Update
 
     /// Incremental update for a single file on save. Must dispatch to main thread.

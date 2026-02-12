@@ -123,6 +123,28 @@ struct NoteSearchResult: Identifiable {
         isPopulated = true
     }
 
+    /// Rebuild from pre-read file contents (unified indexer path)
+    func rebuild(from files: [UnifiedIndexer.FileContent], workspace: URL?) {
+        allNotes = files.compactMap { file -> IndexedNote? in
+            let ext = file.url.pathExtension.lowercased()
+            guard Self.searchableExtensions.contains(ext) else { return nil }
+            let title = file.url.deletingPathExtension().lastPathComponent
+            let relativePath = Self.relativeDirectory(for: file.url, workspace: workspace)
+            let values = try? file.url.resourceValues(forKeys: [.contentModificationDateKey])
+            let modifiedAt = values?.contentModificationDate ?? Date.distantPast
+            return Self.makeIndexedNote(
+                url: file.url,
+                title: title,
+                relativePath: relativePath,
+                content: file.content,
+                modifiedAt: modifiedAt
+            )
+        }
+        rebuildDocumentFrequency()
+        notes = allNotes.map(\.result)
+        isPopulated = true
+    }
+
     func updateFile(_ url: URL, content: String) {
         guard let noteIndex = allNotes.firstIndex(where: { $0.result.url == url }) else { return }
         let previous = allNotes[noteIndex]

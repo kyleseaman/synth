@@ -39,14 +39,28 @@ extension String {
         if lower.contains(queryLower) {
             return 5000 + (lower.hasPrefix(queryLower) ? 1000 : 0)
         }
+
+        // Early exit: if remaining string is shorter than remaining query, no match possible
+        let queryCount = queryLower.count
+        let stringCount = lower.count
+        if queryCount > stringCount { return nil }
+
         var score = 0
         var remainder = queryLower[...]
         var lastMatchIndex = -1
-        for (index, char) in lower.enumerated() where char == remainder.first {
-            remainder.removeFirst()
-            score += (lastMatchIndex == index - 1) ? 10 : 1
-            lastMatchIndex = index
-            if remainder.isEmpty { return score }
+        let lowerChars = Array(lower)
+
+        for (index, char) in lowerChars.enumerated() {
+            // Early exit: not enough characters left to match remaining query
+            let remainingInString = stringCount - index
+            if remainingInString < remainder.count { return nil }
+
+            if char == remainder.first {
+                remainder.removeFirst()
+                score += (lastMatchIndex == index - 1) ? 10 : 1
+                lastMatchIndex = index
+                if remainder.isEmpty { return score }
+            }
         }
         return nil
     }
@@ -59,6 +73,7 @@ struct FileLauncher: View {
     @State private var selectedIndex = 0
     @State private var cachedFiles: [FileTreeNode] = []
     @State private var previewCache: [URL: String] = [:]
+    @State private var noteLookup: [URL: NoteSearchResult] = [:]
     @FocusState private var isSearchFocused: Bool
 
     var results: [LauncherResult] {
@@ -67,7 +82,6 @@ struct FileLauncher: View {
         // Strip leading @ for people-specific search.
         let isPersonQuery = trimmed.hasPrefix("@")
         let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
-        let noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
 
         if trimmed.isEmpty {
             let recentSet = Set(store.recentFiles)
@@ -118,11 +132,12 @@ struct FileLauncher: View {
         VStack(spacing: 0) {
             searchHeader
             Divider()
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 resultsPanel
                 Divider()
                 previewPanel
             }
+            .frame(maxHeight: 360)
         }
         .frame(width: 780)
         .background(.ultraThinMaterial)
@@ -131,12 +146,14 @@ struct FileLauncher: View {
         .onAppear {
             isSearchFocused = true
             cachedFiles = Self.flattenFiles(store.fileTree)
+            noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
             if let selectedNoteResult {
                 loadPreview(for: selectedNoteResult.url)
             }
         }
         .onChange(of: store.fileTree) {
             cachedFiles = Self.flattenFiles(store.fileTree)
+            noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
         }
         .onChange(of: query) { _, _ in selectedIndex = 0 }
         .onChange(of: results.count) { _, newValue in
@@ -195,7 +212,7 @@ struct FileLauncher: View {
     private var resultsPanel: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0, pinnedViews: []) {
                     ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                         resultRow(result: result, index: index)
                     }
@@ -205,8 +222,7 @@ struct FileLauncher: View {
                 withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
             }
         }
-        .frame(width: 420)
-        .frame(maxHeight: 360)
+        .frame(width: 420, alignment: .top)
     }
 
     @ViewBuilder
@@ -319,7 +335,6 @@ struct FileLauncher: View {
         }
         .padding(12)
         .frame(width: 360, alignment: .topLeading)
-        .frame(maxHeight: 360, alignment: .topLeading)
     }
 
     private func loadPreview(for url: URL) {

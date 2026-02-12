@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(TemplateStore.self) var templateStore
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
+    @AppStorage("hideSyntax") private var hideSyntax = true
     @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
     @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
     @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
@@ -15,6 +16,10 @@ struct SettingsView: View {
     @State private var draftTemplateName = ""
     @State private var draftTemplateContent = ""
     @State private var draftShortcutSlot = 0
+    @State private var draftCategory = ""
+    @State private var draftDescription = ""
+    @State private var showVariablesHelp = false
+    @State private var selectedCategoryFilter: String?
 
     var body: some View {
         TabView {
@@ -42,6 +47,16 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
+            Section("Editor") {
+                Toggle("Hide syntax markers", isOn: $hideSyntax)
+                Text(
+                    "When enabled, markdown markers like **, *, [[, ]], and ` are hidden. "
+                    + "The formatted text remains visible."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
             Section("Kiro CLI") {
                 TextField("Path to kiro-cli", text: $kiroCliPath, prompt: Text("Auto-detect"))
                     .textFieldStyle(.roundedBorder)
@@ -91,24 +106,29 @@ struct SettingsView: View {
         List {
             Section("Editor") {
                 HStack {
-                    Button("Use MesloLGS (Mono)") {
+                    Button("System (Default)") {
+                        editorFontCandidates = ""
+                    }
+                    Button("MesloLGS (Mono)") {
                         editorFontCandidates = Theme.mesloPresetValue
                     }
-                    Button("Use Source Serif 4 (Serif)") {
+                    Button("Source Serif 4 (Serif)") {
                         editorFontCandidates = Theme.sourceSerifPresetValue
                     }
-                    Button("Use Public Sans (Sans)") {
+                    Button("Public Sans (Sans)") {
                         editorFontCandidates = Theme.publicSansPresetValue
                     }
                 }
                 .controlSize(.small)
 
-                TextField(
-                    "Font (Editor)",
-                    text: $editorFontCandidates,
-                    prompt: Text("MesloLGS-Regular, FiraCode-Regular")
-                )
-                .textFieldStyle(.roundedBorder)
+                if !editorFontCandidates.isEmpty {
+                    TextField(
+                        "Font (Editor)",
+                        text: $editorFontCandidates,
+                        prompt: Text("MesloLGS-Regular, FiraCode-Regular")
+                    )
+                    .textFieldStyle(.roundedBorder)
+                }
             }
 
             Section("Terminal") {
@@ -252,15 +272,28 @@ struct SettingsView: View {
     private var templatesTab: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Use `/` in the editor to insert templates.")
+                Text("Use `/` in the editor to insert templates. Variables like {{date}} are expanded automatically.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button {
+                    showVariablesHelp.toggle()
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Show supported variables")
+                .popover(isPresented: $showVariablesHelp) {
+                    variablesHelpPopover
+                }
+
                 Button("New Template") {
                     selectedTemplateIdentifier = nil
                     draftTemplateName = ""
                     draftTemplateContent = ""
                     draftShortcutSlot = 0
+                    draftCategory = ""
+                    draftDescription = ""
                 }
             }
             .padding(.horizontal)
@@ -270,63 +303,225 @@ struct SettingsView: View {
             Divider()
 
             HStack(spacing: 0) {
-                List(selection: $selectedTemplateIdentifier) {
-                    ForEach(templateStore.templates) { template in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(template.name)
-                                .lineLimit(1)
-                            if let shortcutSlot = template.shortcutSlot {
-                                Text("⌥⌘\(shortcutSlot)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                VStack(spacing: 0) {
+                    // Category filter picker
+                    if !templateStore.categories.isEmpty {
+                        Picker("Filter", selection: $selectedCategoryFilter) {
+                            Text("All Templates").tag(nil as String?)
+                            Text("Uncategorized").tag("__uncategorized__" as String?)
+                            Divider()
+                            ForEach(templateStore.categories, id: \.self) { category in
+                                Text(category).tag(category as String?)
                             }
                         }
-                        .tag(Optional(template.identifier))
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+
+                        Divider()
+                    }
+
+                    List(selection: $selectedTemplateIdentifier) {
+                        ForEach(filteredTemplates) { template in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(template.name)
+                                    .lineLimit(1)
+                                HStack(spacing: 4) {
+                                    if let shortcutSlot = template.shortcutSlot {
+                                        Text("⌥⌘\(shortcutSlot)")
+                                            .font(.caption2)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(Color.accentColor.opacity(0.2))
+                                            .cornerRadius(3)
+                                    }
+                                    if let category = template.category {
+                                        Text(category)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if template.usageCount > 0 {
+                                        Text("×\(template.usageCount)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                            }
+                            .tag(Optional(template.identifier))
+                        }
                     }
                 }
-                .frame(width: 170)
+                .frame(width: 180)
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("Template name", text: $draftTemplateName)
-                        .textFieldStyle(.roundedBorder)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Name field
+                        TextField("Template name", text: $draftTemplateName)
+                            .textFieldStyle(.roundedBorder)
 
-                    Picker("Shortcut", selection: $draftShortcutSlot) {
-                        Text("None").tag(0)
-                        ForEach(1...9, id: \.self) { slotNumber in
-                            Text("⌥⌘\(slotNumber)").tag(slotNumber)
-                        }
-                    }
-                    .pickerStyle(.menu)
+                        // Category and shortcut row
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Category")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                categoryPicker
+                            }
 
-                    Text("Content")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextEditor(text: $draftTemplateContent)
-                        .font(Theme.terminalSwiftUIFont(size: 13))
-                        .frame(minHeight: 180)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.secondary.opacity(0.2))
-                        }
+                            Spacer()
 
-                    HStack {
-                        if selectedTemplateIdentifier != nil {
-                            Button("Delete", role: .destructive) {
-                                deleteSelectedTemplate()
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Shortcut")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Picker("Shortcut", selection: $draftShortcutSlot) {
+                                    Text("None").tag(0)
+                                    ForEach(1...9, id: \.self) { slotNumber in
+                                        Text("⌥⌘\(slotNumber)").tag(slotNumber)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
                             }
                         }
-                        Spacer()
-                        Button(selectedTemplateIdentifier == nil ? "Add Template" : "Save Changes") {
-                            saveTemplateDraft()
+
+                        // Description field
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Description (optional)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Brief description of this template", text: $draftDescription)
+                                .textFieldStyle(.roundedBorder)
                         }
-                        .disabled(isTemplateDraftInvalid)
+
+                        // Content editor
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Content")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("Use {{variable}} for dynamic content")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            TextEditor(text: $draftTemplateContent)
+                                .font(Theme.terminalSwiftUIFont(size: 13))
+                                .frame(minHeight: 120)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.secondary.opacity(0.2))
+                                }
+                        }
+
+                        // Preview section
+                        if !draftTemplateContent.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Preview")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(TemplateStore.previewExpansion(draftTemplateContent))
+                                    .font(Theme.terminalSwiftUIFont(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .padding(8)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(Color.secondary.opacity(0.05))
+                                    .cornerRadius(6)
+                            }
+                        }
+
+                        // Action buttons
+                        HStack {
+                            if selectedTemplateIdentifier != nil {
+                                Button("Delete", role: .destructive) {
+                                    deleteSelectedTemplate()
+                                }
+
+                                Button("Duplicate") {
+                                    duplicateSelectedTemplate()
+                                }
+                                .disabled(selectedTemplateIdentifier == nil)
+                            }
+                            Spacer()
+                            Button(selectedTemplateIdentifier == nil ? "Add Template" : "Save Changes") {
+                                saveTemplateDraft()
+                            }
+                            .disabled(isTemplateDraftInvalid)
+                        }
                     }
+                    .padding(12)
                 }
-                .padding(12)
             }
         }
+    }
+
+    private var filteredTemplates: [SavedTemplate] {
+        switch selectedCategoryFilter {
+        case nil:
+            return templateStore.templates
+        case "__uncategorized__":
+            return templateStore.templatesInCategory(nil)
+        case let category:
+            return templateStore.templatesInCategory(category)
+        }
+    }
+
+    private var categoryPicker: some View {
+        HStack(spacing: 4) {
+            TextField("Category", text: $draftCategory)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 120)
+
+            if !templateStore.categories.isEmpty {
+                Menu {
+                    Button("None") {
+                        draftCategory = ""
+                    }
+                    Divider()
+                    ForEach(templateStore.categories, id: \.self) { category in
+                        Button(category) {
+                            draftCategory = category
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 20)
+            }
+        }
+    }
+
+    private var variablesHelpPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Supported Variables")
+                .font(.headline)
+
+            Divider()
+
+            ForEach(TemplateExpander.supportedVariables, id: \.variable) { item in
+                HStack(alignment: .top) {
+                    Text(item.variable)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 140, alignment: .leading)
+                    Text(item.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
+            Text("Date format codes: yyyy (year), MM (month), dd (day), HH (24h), hh (12h), mm (min), ss (sec)")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding()
+        .frame(width: 400)
     }
 
     private var isTemplateDraftInvalid: Bool {
@@ -342,27 +537,38 @@ struct SettingsView: View {
             draftTemplateName = ""
             draftTemplateContent = ""
             draftShortcutSlot = 0
+            draftCategory = ""
+            draftDescription = ""
             return
         }
         draftTemplateName = template.name
         draftTemplateContent = template.content
         draftShortcutSlot = template.shortcutSlot ?? 0
+        draftCategory = template.category ?? ""
+        draftDescription = template.description ?? ""
     }
 
     private func saveTemplateDraft() {
         let shortcutSlot = draftShortcutSlot == 0 ? nil : draftShortcutSlot
+        let category = draftCategory.isEmpty ? nil : draftCategory
+        let description = draftDescription.isEmpty ? nil : draftDescription
+
         if let selectedTemplateIdentifier {
             let didUpdate = templateStore.updateTemplate(
                 identifier: selectedTemplateIdentifier,
                 name: draftTemplateName,
                 content: draftTemplateContent,
-                shortcutSlot: shortcutSlot
+                shortcutSlot: shortcutSlot,
+                category: category,
+                description: description
             )
             if !didUpdate { return }
         } else if let created = templateStore.addTemplate(
             name: draftTemplateName,
             content: draftTemplateContent,
-            shortcutSlot: shortcutSlot
+            shortcutSlot: shortcutSlot,
+            category: category,
+            description: description
         ) {
             selectedTemplateIdentifier = created.identifier
         }
@@ -372,6 +578,14 @@ struct SettingsView: View {
         guard let selectedTemplateIdentifier else { return }
         templateStore.removeTemplate(identifier: selectedTemplateIdentifier)
         self.selectedTemplateIdentifier = templateStore.templates.first?.identifier
+    }
+
+    private func duplicateSelectedTemplate() {
+        guard let selectedTemplateIdentifier else { return }
+        if let duplicated = templateStore.duplicateTemplate(identifier: selectedTemplateIdentifier) {
+            self.selectedTemplateIdentifier = duplicated.identifier
+            loadTemplateDraft()
+        }
     }
 }
 

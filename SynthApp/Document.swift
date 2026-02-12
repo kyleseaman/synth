@@ -4,6 +4,7 @@ struct Document {
     let url: URL
     var content: NSAttributedString
     var isDirty: Bool = false
+    var savedSelectedRange: NSRange?
 
     static func load(from url: URL) -> Document? {
         // Guard against very large files

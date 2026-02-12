@@ -90,7 +90,7 @@ struct Theme {
     ) -> [String] {
         configuredCandidates(
             customKey: editorFontCandidatesKey,
-            fallback: mesloCandidates(for: weight),
+            fallback: [],
             defaults: defaults
         )
     }
@@ -123,12 +123,8 @@ struct Theme {
         defaults: UserDefaults
     ) -> [String] {
         let configured = parseCandidateList(defaults.string(forKey: customKey))
-        var merged = configured
-        var seenCandidates = Set(configured)
-        for fallbackCandidate in fallback where seenCandidates.insert(fallbackCandidate).inserted {
-            merged.append(fallbackCandidate)
-        }
-        return merged
+        if !configured.isEmpty { return configured }
+        return fallback
     }
 
     static func mesloCandidates(for weight: NSFont.Weight) -> [String] {
@@ -292,11 +288,36 @@ struct Theme {
             ?? NSFont.systemFont(ofSize: size, weight: weight)
     }
 
+    private static func swiftUIFontWeight(_ weight: NSFont.Weight) -> Font.Weight {
+        switch weight {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        default: return .regular
+        }
+    }
+
+    private static func swiftUIFont(from nsFont: NSFont, size: CGFloat, weight: NSFont.Weight) -> Font {
+        if nsFont.fontName.hasPrefix(".") || nsFont.fontName.contains("SFNS") || nsFont.fontName.contains("SFPro") {
+            return .system(size: size, weight: swiftUIFontWeight(weight))
+        }
+        return Font.custom(nsFont.fontName, size: size)
+    }
+
+    static func editorSwiftUIFont(size: CGFloat, weight: NSFont.Weight = .regular) -> Font {
+        swiftUIFont(from: editorNSFont(ofSize: size, weight: weight), size: size, weight: weight)
+    }
+
     static func sidebarSwiftUIFont(size: CGFloat, weight: NSFont.Weight = .regular) -> Font {
-        Font(sidebarNSFont(ofSize: size, weight: weight))
+        swiftUIFont(from: sidebarNSFont(ofSize: size, weight: weight), size: size, weight: weight)
     }
 
     static func terminalSwiftUIFont(size: CGFloat, weight: NSFont.Weight = .regular) -> Font {
-        Font(terminalNSFont(ofSize: size, weight: weight))
+        swiftUIFont(from: terminalNSFont(ofSize: size, weight: weight), size: size, weight: weight)
     }
 }
