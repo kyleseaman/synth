@@ -492,19 +492,19 @@ final class UtilityLogicTests: XCTestCase {
         let workspacePath = "/tmp/workspace"
 
         XCTAssertFalse(
-            WorkspaceWatcher.shouldRefreshSidebar(
+            DocumentStore.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/.kiro/settings/mcp.json"
             )
         )
         XCTAssertFalse(
-            WorkspaceWatcher.shouldRefreshSidebar(
+            DocumentStore.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/daily/2026-02-08.md"
             )
         )
         XCTAssertFalse(
-            WorkspaceWatcher.shouldRefreshSidebar(
+            DocumentStore.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/media/screenshot.png"
             )
@@ -516,13 +516,13 @@ final class UtilityLogicTests: XCTestCase {
         let workspacePath = "/tmp/workspace"
 
         XCTAssertTrue(
-            WorkspaceWatcher.shouldRefreshSidebar(
+            DocumentStore.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/drafts/Untitled.md"
             )
         )
         XCTAssertFalse(
-            WorkspaceWatcher.shouldRefreshSidebar(
+            DocumentStore.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/other-workspace/drafts/Untitled.md"
             )
@@ -1101,9 +1101,10 @@ final class MCPServerManagerTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            candidateNames,
+            Array(candidateNames.prefix(2)),
             ["FiraCode-Regular", "Iosevka-Regular"]
         )
+        XCTAssertTrue(candidateNames.contains("MesloLGS-Regular"))
     }
 
     func testThemeEditorCandidateNamesDeduplicatesAgainstFallbacks() {
@@ -1122,9 +1123,11 @@ final class MCPServerManagerTests: XCTestCase {
             weight: .regular,
             defaults: defaultsStore
         )
+        let mesloOccurrences = candidateNames.filter { $0 == "MesloLGS-Regular" }.count
 
+        XCTAssertEqual(mesloOccurrences, 1)
         XCTAssertEqual(
-            candidateNames,
+            Array(candidateNames.prefix(2)),
             ["MesloLGS-Regular", "FiraCode-Regular"]
         )
     }
@@ -1176,231 +1179,134 @@ final class MCPServerManagerTests: XCTestCase {
         XCTAssertEqual(successCount, 2)
     }
 
-    func testEditorModelTextTrackerNormalizesLineEndings() {
-        let normalizedText = EditorModelTextTracker.normalizedText("first\r\nsecond\rthird\nfourth")
+    func testMarkdownRenderHidesBoldSyntaxMarkers() {
+        let renderedText = MarkdownFormat().render("**bold**")
 
-        XCTAssertEqual(normalizedText, "first\nsecond\nthird\nfourth")
-    }
+        XCTAssertEqual(renderedText.string, "**bold**")
 
-    func testEditorModelTextTrackerDetectsModelChangesUsingNormalizedText() {
-        var tracker = EditorModelTextTracker(initialModelText: "line-1\r\nline-2")
+        let openingColor = renderedText.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor
+        let closingColor = renderedText.attribute(
+            .foregroundColor,
+            at: 7,
+            effectiveRange: nil
+        ) as? NSColor
+        let innerColor = renderedText.attribute(
+            .foregroundColor,
+            at: 2,
+            effectiveRange: nil
+        ) as? NSColor
 
-        XCTAssertFalse(tracker.hasModelTextChanged("line-1\nline-2"))
-        XCTAssertTrue(tracker.hasModelTextChanged("line-1\nline-3"))
+        let openingAlpha = Double(openingColor?.alphaComponent ?? -1)
+        let closingAlpha = Double(closingColor?.alphaComponent ?? -1)
+        let innerAlpha = Double(innerColor?.alphaComponent ?? 0)
 
-        tracker.markObserved("line-1\nline-3")
-        XCTAssertFalse(tracker.hasModelTextChanged("line-1\rline-3"))
-    }
+        XCTAssertEqual(openingAlpha, 0, accuracy: 0.001)
+        XCTAssertEqual(closingAlpha, 0, accuracy: 0.001)
+        XCTAssertGreaterThan(innerAlpha, 0)
 
-    func testEditorModelTextTrackerOutOfSyncComparisonIgnoresLineEndingDifferences() {
-        let equivalentResult = EditorModelTextTracker.isOutOfSync(
-            modelText: "same\r\nvalue",
-            renderedText: "same\nvalue"
-        )
-        let mismatchResult = EditorModelTextTracker.isOutOfSync(
-            modelText: "same\nvalue",
-            renderedText: "different\nvalue"
-        )
+        let openingFont = renderedText.attribute(
+            .font,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSFont
+        let innerFont = renderedText.attribute(
+            .font,
+            at: 2,
+            effectiveRange: nil
+        ) as? NSFont
 
-        XCTAssertFalse(equivalentResult)
-        XCTAssertTrue(mismatchResult)
-    }
-
-    func testEditorScrollMetricsClampsNegativeAndOverscrollOffsets() {
-        let negativeClamped = EditorScrollMetrics.clampedVerticalOffset(
-            rawOffset: -24,
-            documentHeight: 900,
-            viewportHeight: 400
-        )
-        let overscrollClamped = EditorScrollMetrics.clampedVerticalOffset(
-            rawOffset: 700,
-            documentHeight: 900,
-            viewportHeight: 400
-        )
-        let inRangeOffset = EditorScrollMetrics.clampedVerticalOffset(
-            rawOffset: 120,
-            documentHeight: 900,
-            viewportHeight: 400
-        )
-
-        XCTAssertEqual(negativeClamped, 0)
-        XCTAssertEqual(overscrollClamped, 500)
-        XCTAssertEqual(inRangeOffset, 120)
-    }
-
-    func testEditorScrollMetricsHandlesShortDocumentHeights() {
-        let clampedOffset = EditorScrollMetrics.clampedVerticalOffset(
-            rawOffset: 40,
-            documentHeight: 200,
-            viewportHeight: 500
-        )
-
-        XCTAssertEqual(clampedOffset, 0)
-    }
-
-    func testEditorScrollMetricsEffectiveDocumentHeightUsesLaidOutTextHeight() {
-        let effectiveHeight = EditorScrollMetrics.effectiveDocumentHeight(
-            usedTextHeight: 360,
-            textInset: 20,
-            viewportHeight: 500
-        )
-
-        XCTAssertEqual(effectiveHeight, 500)
-    }
-
-    func testEditorScrollMetricsEffectiveDocumentHeightExceedsViewportWhenNeeded() {
-        let effectiveHeight = EditorScrollMetrics.effectiveDocumentHeight(
-            usedTextHeight: 1200,
-            textInset: 20,
-            viewportHeight: 500
-        )
-
-        XCTAssertEqual(effectiveHeight, 1240)
-    }
-
-    func testEditorScrollMetricsEffectiveDocumentHeightUsesDocumentViewHeight() {
-        let effectiveHeight = EditorScrollMetrics.effectiveDocumentHeight(
-            documentViewHeight: 1240.1,
-            viewportHeight: 500
-        )
-
-        XCTAssertEqual(effectiveHeight, 1241)
-    }
-
-    func testEditorLinePositionMetricsIncludesTrailingLineOnlyWhenTextEndsWithNewline() {
-        let includesTrailingLine = EditorLinePositionMetrics.shouldIncludeTrailingEmptyLine(
-            text: "first line\n",
-            extraLineFragmentHeight: 18
-        )
-        let excludesWithoutTrailingNewline = EditorLinePositionMetrics.shouldIncludeTrailingEmptyLine(
-            text: "first line",
-            extraLineFragmentHeight: 18
-        )
-        let excludesWhenNoExtraFragment = EditorLinePositionMetrics.shouldIncludeTrailingEmptyLine(
-            text: "first line\n",
-            extraLineFragmentHeight: 0
-        )
-
-        XCTAssertTrue(includesTrailingLine)
-        XCTAssertFalse(excludesWithoutTrailingNewline)
-        XCTAssertFalse(excludesWhenNoExtraFragment)
-    }
-
-    func testLineNumberMetricsClampsOffsetToVisibleContentBounds() {
-        let clampedOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: 700,
-            documentHeight: 820,
-            viewportHeight: 300
-        )
-
-        XCTAssertEqual(clampedOffset, 520)
-    }
-
-    func testLineNumberMetricsPreservesInRangeOffset() {
-        let clampedOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: 120,
-            documentHeight: 820,
-            viewportHeight: 300
-        )
-
-        XCTAssertEqual(clampedOffset, 120)
-    }
-
-    func testLineNumberMetricsReturnsZeroForShortOrEmptyContent() {
-        let shortContentOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: 90,
-            documentHeight: 280,
-            viewportHeight: 300
-        )
-        let emptyContentOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: 90,
-            documentHeight: 0,
-            viewportHeight: 300
-        )
-
-        XCTAssertEqual(shortContentOffset, 0)
-        XCTAssertEqual(emptyContentOffset, 0)
-    }
-
-    func testLineNumberMetricsClampsNegativeOffsetsToZero() {
-        let clampedOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: -32,
-            documentHeight: 820,
-            viewportHeight: 300
-        )
-
-        XCTAssertEqual(clampedOffset, 0)
-    }
-
-    func testLineNumberMetricsReturnsZeroForNearlyEqualDocumentAndViewport() {
-        let clampedOffset = LineNumberMetrics.clampedScrollOffset(
-            scrollOffset: 1,
-            documentHeight: 300.2,
-            viewportHeight: 300
-        )
-
-        XCTAssertEqual(clampedOffset, 0)
+        XCTAssertLessThan(openingFont?.pointSize ?? 1, 0.1)
+        XCTAssertGreaterThan(innerFont?.pointSize ?? 0, 1)
     }
 
     @MainActor
-    func testUnifiedIndexerRebuildAllIndexesScansMarkdownAndTextFiles() throws {
-        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
-            UUID().uuidString,
-            isDirectory: true
-        )
-        defer { try? FileManager.default.removeItem(at: workspaceURL) }
-        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+    func testToggleBoldAtInsertionPointAddsBoldWrappers() {
+        let textView = FormattingTextView(frame: .zero)
+        textView.string = "hello"
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
 
-        let alphaURL = workspaceURL.appendingPathComponent("Alpha.md")
-        let peopleURL = workspaceURL.appendingPathComponent("People.txt")
-        let imageURL = workspaceURL.appendingPathComponent("image.png")
+        textView.toggleBold()
 
-        try "# Alpha\nLink to [[People]] and #project".write(
-            to: alphaURL,
-            atomically: true,
-            encoding: .utf8
-        )
-        try "Meeting with @Alice".write(
-            to: peopleURL,
-            atomically: true,
-            encoding: .utf8
-        )
-        try Data("binary".utf8).write(to: imageURL)
+        XCTAssertEqual(textView.string, "hello****")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 7, length: 0))
+    }
 
-        let alphaNode = FileTreeNode(
-            url: alphaURL,
-            isDirectory: false,
-            children: nil
-        )
-        let peopleNode = FileTreeNode(
-            url: peopleURL,
-            isDirectory: false,
-            children: nil
-        )
-        let imageNode = FileTreeNode(
-            url: imageURL,
-            isDirectory: false,
-            children: nil
-        )
+    @MainActor
+    func testToggleBoldInsideExistingBoldTextRemovesWrappers() {
+        let textView = FormattingTextView(frame: .zero)
+        textView.string = "before **bold** after"
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
 
-        let context = IndexContext(
-            noteIndex: NoteIndex(),
-            backlinkIndex: BacklinkIndex(),
-            tagIndex: TagIndex(),
-            peopleIndex: PeopleIndex()
-        )
+        textView.toggleBold()
 
-        UnifiedIndexer.rebuildAll(
-            fileTree: [alphaNode, peopleNode, imageNode],
-            workspace: workspaceURL,
-            context: context
-        )
+        XCTAssertEqual(textView.string, "before bold after")
+    }
 
-        XCTAssertNotNil(context.noteIndex.findExact("Alpha"))
-        XCTAssertNotNil(context.noteIndex.findExact("People"))
-        XCTAssertNil(context.noteIndex.findExact("image"))
-        XCTAssertTrue(context.backlinkIndex.links(to: "people").contains(alphaURL))
-        XCTAssertTrue(context.tagIndex.notes(for: "project").contains(alphaURL))
-        XCTAssertTrue(context.peopleIndex.notes(for: "alice").contains(peopleURL))
+    func testMarkdownRenderHidesUnderscoreItalicSyntaxMarkers() {
+        let renderedText = MarkdownFormat().render("_italic_")
+
+        XCTAssertEqual(renderedText.string, "_italic_")
+
+        let openingColor = renderedText.attribute(
+            .foregroundColor,
+            at: 0,
+            effectiveRange: nil
+        ) as? NSColor
+        let closingColor = renderedText.attribute(
+            .foregroundColor,
+            at: 7,
+            effectiveRange: nil
+        ) as? NSColor
+
+        XCTAssertEqual(
+            Double(openingColor?.alphaComponent ?? -1),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            Double(closingColor?.alphaComponent ?? -1),
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testMarkdownRenderReplacesDashBulletAndRestoresMarkdown() {
+        let renderedText = MarkdownFormat().render("- task")
+
+        XCTAssertEqual(renderedText.string, "• task")
+        XCTAssertEqual(
+            renderedText.attribute(
+                MarkdownFormat.listMarkerKey,
+                at: 0,
+                effectiveRange: nil
+            ) as? String,
+            "-"
+        )
+        XCTAssertEqual(
+            MarkdownFormat.restoreMarkup(in: renderedText),
+            "- task"
+        )
+    }
+
+    func testMarkdownRenderReplacesStarBulletAndRestoresMarkdown() {
+        let renderedText = MarkdownFormat().render("* task")
+
+        XCTAssertEqual(renderedText.string, "• task")
+        XCTAssertEqual(
+            renderedText.attribute(
+                MarkdownFormat.listMarkerKey,
+                at: 0,
+                effectiveRange: nil
+            ) as? String,
+            "*"
+        )
+        XCTAssertEqual(
+            MarkdownFormat.restoreMarkup(in: renderedText),
+            "* task"
+        )
     }
 }
