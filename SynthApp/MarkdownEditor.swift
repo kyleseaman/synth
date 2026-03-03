@@ -1824,6 +1824,7 @@ struct MarkdownEditor: NSViewRepresentable {
         private var saveTimer: Timer?
         fileprivate var lastContentHash: UInt64?
         var lastHideSyntax: Bool?
+        private var lastCursorParagraph: NSRange?
         private var codeBlockRanges: [NSRange] = []
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
@@ -2156,7 +2157,10 @@ struct MarkdownEditor: NSViewRepresentable {
                     )
                 }
 
-                formatRange(formatTarget, in: storage)
+                formatRange(
+                    formatTarget, in: storage,
+                    cursorLocation: textView?.selectedRange().location
+                )
                 codeBlockRanges = Self.findCodeBlockRanges(
                     in: storage.string
                 )
@@ -2169,7 +2173,8 @@ struct MarkdownEditor: NSViewRepresentable {
         /// Apply markdown formatting to a specific range within an
         /// existing NSTextStorage, without replacing the full string.
         private func formatRange(
-            _ range: NSRange, in storage: NSTextStorage
+            _ range: NSRange, in storage: NSTextStorage,
+            cursorLocation: Int? = nil
         ) {
             let nsString = storage.string as NSString
             let bodyFont = Theme.editorNSFont(ofSize: 16)
@@ -2180,6 +2185,12 @@ struct MarkdownEditor: NSViewRepresentable {
                 .foregroundColor: NSColor.textColor,
                 .paragraphStyle: bodyParagraph
             ]
+
+            // Determine the paragraph containing the cursor so we
+            // can skip hiding syntax on the actively-edited line.
+            let cursorParagraph: NSRange? = cursorLocation.map {
+                nsString.paragraphRange(for: NSRange(location: $0, length: 0))
+            }
 
             // Reset attributes to defaults for the range
             storage.setAttributes(defaultAttrs, range: range)
@@ -2199,17 +2210,22 @@ struct MarkdownEditor: NSViewRepresentable {
             ) { _, paraRange, _, _ in
                 self.formatParagraphHeading(
                     paraRange, in: storage, bodyFont: bodyFont,
-                    bodyParagraph: bodyParagraph
+                    bodyParagraph: bodyParagraph,
+                    cursorParagraph: cursorParagraph
                 )
             }
 
             // Apply inline formatting within the range
-            formatInlineMarkdown(range, in: storage, baseFont: bodyFont)
+            formatInlineMarkdown(
+                range, in: storage, baseFont: bodyFont,
+                cursorParagraph: cursorParagraph
+            )
         }
 
         private func formatParagraphHeading(
             _ paraRange: NSRange, in storage: NSTextStorage,
-            bodyFont: NSFont, bodyParagraph: NSMutableParagraphStyle
+            bodyFont: NSFont, bodyParagraph: NSMutableParagraphStyle,
+            cursorParagraph: NSRange? = nil
         ) {
             let nsString = storage.string as NSString
             let line = nsString.substring(with: paraRange)
@@ -2249,7 +2265,11 @@ struct MarkdownEditor: NSViewRepresentable {
             let prefixRange = NSRange(
                 location: paraRange.location, length: prefixLen
             )
-            if UserDefaults.standard.bool(forKey: "hideSyntax") {
+            let onCursorLine = cursorParagraph.map {
+                NSIntersectionRange($0, paraRange).length > 0
+            } ?? false
+            if UserDefaults.standard.bool(forKey: "hideSyntax")
+                && !onCursorLine {
                 storage.addAttributes([
                     .font: NSFont.systemFont(ofSize: 0.01),
                     .foregroundColor: NSColor.clear
@@ -2266,7 +2286,7 @@ struct MarkdownEditor: NSViewRepresentable {
         // swiftlint:disable:next function_body_length
         private func formatInlineMarkdown(
             _ range: NSRange, in storage: NSTextStorage,
-            baseFont: NSFont
+            baseFont: NSFont, cursorParagraph: NSRange? = nil
         ) {
             let text = storage.string
             let shouldHide = UserDefaults.standard.bool(
@@ -2280,6 +2300,15 @@ struct MarkdownEditor: NSViewRepresentable {
                 .foregroundColor: NSColor.tertiaryLabelColor
             ]
 
+            func shouldHideAt(_ syntaxRange: NSRange) -> Bool {
+                guard shouldHide else { return false }
+                if let cursor = cursorParagraph,
+                   NSIntersectionRange(cursor, syntaxRange).length > 0 {
+                    return false
+                }
+                return true
+            }
+
             func hide(_ syntaxRange: NSRange) {
                 guard syntaxRange.location >= 0,
                       syntaxRange.length > 0,
@@ -2287,7 +2316,8 @@ struct MarkdownEditor: NSViewRepresentable {
                           <= storage.length
                 else { return }
                 storage.addAttributes(
-                    shouldHide ? hiddenAttrs : dimAttrs,
+                    shouldHideAt(syntaxRange)
+                        ? hiddenAttrs : dimAttrs,
                     range: syntaxRange
                 )
             }
@@ -2342,21 +2372,26 @@ struct MarkdownEditor: NSViewRepresentable {
                         "Note not found -- click to create"
                 }
                 storage.addAttributes(attrs, range: inner)
-                var bracketAttrs = shouldHide
+                let openBracket = NSRange(
+                    location: full.location, length: 2
+                )
+                var bracketAttrs = shouldHideAt(openBracket)
                     ? hiddenAttrs : dimAttrs
                 bracketAttrs[.link] = linkURL
                 storage.addAttributes(
                     bracketAttrs,
-                    range: NSRange(
-                        location: full.location, length: 2
-                    )
+                    range: openBracket
                 )
+                let closeBracket = NSRange(
+                    location: full.location + full.length - 2,
+                    length: 2
+                )
+                var closeBracketAttrs = shouldHideAt(closeBracket)
+                    ? hiddenAttrs : dimAttrs
+                closeBracketAttrs[.link] = linkURL
                 storage.addAttributes(
-                    bracketAttrs,
-                    range: NSRange(
-                        location: full.location + full.length - 2,
-                        length: 2
-                    )
+                    closeBracketAttrs,
+                    range: closeBracket
                 )
             }
 
@@ -2385,7 +2420,9 @@ struct MarkdownEditor: NSViewRepresentable {
                     .link: linkURL,
                     .cursor: NSCursor.pointingHand
                 ], range: inner)
-                var atAttrs = shouldHide ? hiddenAttrs : dimAttrs
+                var atAttrs = shouldHideAt(
+                    NSRange(location: full.location, length: 1)
+                ) ? hiddenAttrs : dimAttrs
                 atAttrs[.link] = linkURL
                 storage.addAttributes(
                     atAttrs,
@@ -2669,6 +2706,40 @@ struct MarkdownEditor: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = textView else { return }
+
+            // Re-format old/new cursor paragraphs so syntax hides
+            // on lines the user navigates away from and reveals on
+            // the line the cursor lands on.
+            if let storage = textView.textStorage,
+               !isFormatting,
+               UserDefaults.standard.bool(forKey: "hideSyntax") {
+                let nsString = storage.string as NSString
+                let cursor = textView.selectedRange().location
+                if cursor <= nsString.length {
+                    let newPara = nsString.paragraphRange(
+                        for: NSRange(location: cursor, length: 0)
+                    )
+                    if newPara != lastCursorParagraph {
+                        let oldPara = lastCursorParagraph
+                        lastCursorParagraph = newPara
+                        isFormatting = true
+                        if let oldPara,
+                           oldPara.location + oldPara.length
+                               <= storage.length {
+                            formatRange(
+                                oldPara, in: storage,
+                                cursorLocation: cursor
+                            )
+                        }
+                        formatRange(
+                            newPara, in: storage,
+                            cursorLocation: cursor
+                        )
+                        isFormatting = false
+                    }
+                }
+            }
+
             let range = textView.selectedRange()
             if range.length > 0 {
                 let text = (textView.string as NSString).substring(with: range)
