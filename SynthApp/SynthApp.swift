@@ -34,6 +34,7 @@ struct SynthApp: App {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
         signal(SIGPIPE, SIG_IGN)
         Theme.registerBundledFonts()
+        UserDefaults.standard.register(defaults: ["hideSyntax": true])
     }
 
     private var templatesSortedForMenu: [SavedTemplate] {

@@ -677,6 +677,7 @@ struct KiroSetupBanner: View {
 struct EditorViewSimple: View {
     @Environment(DocumentStore.self) var store
     @Environment(TemplateStore.self) var templateStore
+    @AppStorage("hideSyntax") private var hideSyntax = true
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
@@ -714,6 +715,7 @@ struct EditorViewSimple: View {
                     linePositions: $linePositions,
                     selectedText: $selectedText,
                     selectedLineRange: $selectedLineRange,
+                    hideSyntax: hideSyntax,
                     store: store,
                     templateStore: templateStore
                 )

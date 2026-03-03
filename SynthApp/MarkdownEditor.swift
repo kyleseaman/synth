@@ -16,6 +16,9 @@ struct MarkdownFormat: DocumentFormat {
 
     var noteIndex: NoteIndex?
     var baseURL: URL?
+    var hideSyntax: Bool {
+        UserDefaults.standard.bool(forKey: "hideSyntax")
+    }
 
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
@@ -58,14 +61,19 @@ struct MarkdownFormat: DocumentFormat {
 
             let lineStr = NSMutableAttributedString(string: line, attributes: attrs)
             if headingPrefixLen > 0 {
-                let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear
-                ]
-                lineStr.addAttributes(
-                    hiddenAttrs,
-                    range: NSRange(location: 0, length: headingPrefixLen)
-                )
+                let prefixRange = NSRange(location: 0, length: headingPrefixLen)
+                if hideSyntax {
+                    lineStr.addAttributes([
+                        .font: NSFont.systemFont(ofSize: 0.01),
+                        .foregroundColor: NSColor.clear
+                    ], range: prefixRange)
+                } else {
+                    lineStr.addAttribute(
+                        .foregroundColor,
+                        value: NSColor.tertiaryLabelColor,
+                        range: prefixRange
+                    )
+                }
             }
             applyListFormatting(lineStr)
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
@@ -342,13 +350,19 @@ struct MarkdownFormat: DocumentFormat {
             .font: NSFont.systemFont(ofSize: 0.01),
             .foregroundColor: NSColor.clear
         ]
+        let dimInlineAttrs: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.tertiaryLabelColor
+        ]
 
         func hideInlineSyntax(range syntaxRange: NSRange) {
             guard syntaxRange.location >= 0,
                   syntaxRange.length > 0,
                   syntaxRange.location + syntaxRange.length <= str.length
             else { return }
-            str.addAttributes(hiddenInlineAttrs, range: syntaxRange)
+            str.addAttributes(
+                hideSyntax ? hiddenInlineAttrs : dimInlineAttrs,
+                range: syntaxRange
+            )
         }
 
         // MARK: Wiki links [[Note Title]]
@@ -401,18 +415,17 @@ struct MarkdownFormat: DocumentFormat {
             str.addAttributes(linkAttrs, range: innerNSRange)
 
             // Hide [[ and ]] brackets visually (keep in source for save)
-            let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear,
-                .link: linkURL
-            ]
+            var bracketAttrs: [NSAttributedString.Key: Any] = hideSyntax
+                ? [.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear]
+                : [.foregroundColor: NSColor.tertiaryLabelColor]
+            bracketAttrs[.link] = linkURL
             let openRange = NSRange(location: fullNSRange.location, length: 2)
             let closeRange = NSRange(
                 location: fullNSRange.location + fullNSRange.length - 2,
                 length: 2
             )
-            str.addAttributes(hiddenAttrs, range: openRange)
-            str.addAttributes(hiddenAttrs, range: closeRange)
+            str.addAttributes(bracketAttrs, range: openRange)
+            str.addAttributes(bracketAttrs, range: closeRange)
         }
 
         // MARK: @Date mentions (@2026-02-07) — styled as daily note links
@@ -447,13 +460,12 @@ struct MarkdownFormat: DocumentFormat {
             str.addAttributes(linkAttrs, range: innerNSRange)
 
             // Hide the @ prefix
-            let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear,
-                .link: linkURL
-            ]
+            var atPrefixAttrs: [NSAttributedString.Key: Any] = hideSyntax
+                ? [.font: NSFont.systemFont(ofSize: 0.01), .foregroundColor: NSColor.clear]
+                : [.foregroundColor: NSColor.tertiaryLabelColor]
+            atPrefixAttrs[.link] = linkURL
             str.addAttributes(
-                hiddenAttrs,
+                atPrefixAttrs,
                 range: NSRange(
                     location: fullNSRange.location, length: 1
                 )
@@ -623,6 +635,11 @@ struct MarkdownFormat: DocumentFormat {
                 .foregroundColor: NSColor.systemPink,
                 .backgroundColor: NSColor.quaternaryLabelColor
             ], range: innerRange)
+            let fullRange = match.range
+            hideInlineSyntax(range: NSRange(location: fullRange.location, length: 1))
+            hideInlineSyntax(range: NSRange(
+                location: fullRange.location + fullRange.length - 1, length: 1
+            ))
         }
     }
 }
@@ -1679,6 +1696,7 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var linePositions: [CGFloat]
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
+    var hideSyntax: Bool
     weak var store: DocumentStore?
     weak var templateStore: TemplateStore?
 
@@ -1758,6 +1776,14 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.autocomplete.templateStore = templateStore
         context.coordinator.autocomplete.store = store
 
+        // Force re-format when hideSyntax preference changes
+        if context.coordinator.lastHideSyntax != hideSyntax {
+            context.coordinator.lastHideSyntax = hideSyntax
+            context.coordinator.lastContentHash = nil
+            context.coordinator.applyFormatting()
+            return
+        }
+
         let restoredString = MarkdownFormat.restoreMarkup(
             in: textView.attributedString()
         )
@@ -1797,6 +1823,7 @@ struct MarkdownEditor: NSViewRepresentable {
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
         fileprivate var lastContentHash: UInt64?
+        var lastHideSyntax: Bool?
         private var codeBlockRanges: [NSRange] = []
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
@@ -2218,28 +2245,39 @@ struct MarkdownEditor: NSViewRepresentable {
             storage.addAttribute(
                 .paragraphStyle, value: para, range: paraRange
             )
-            // Hide heading prefix
-            let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear
-            ]
-            storage.addAttributes(
-                hiddenAttrs,
-                range: NSRange(
-                    location: paraRange.location, length: prefixLen
-                )
+            // Hide or dim heading prefix based on preference
+            let prefixRange = NSRange(
+                location: paraRange.location, length: prefixLen
             )
+            if UserDefaults.standard.bool(forKey: "hideSyntax") {
+                storage.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ], range: prefixRange)
+            } else {
+                storage.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.tertiaryLabelColor,
+                    range: prefixRange
+                )
+            }
         }
 
-        // swiftlint:disable:next function_body_length cyclomatic_complexity
+        // swiftlint:disable:next function_body_length
         private func formatInlineMarkdown(
             _ range: NSRange, in storage: NSTextStorage,
             baseFont: NSFont
         ) {
             let text = storage.string
+            let shouldHide = UserDefaults.standard.bool(
+                forKey: "hideSyntax"
+            )
             let hiddenAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 0.01),
                 .foregroundColor: NSColor.clear
+            ]
+            let dimAttrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.tertiaryLabelColor
             ]
 
             func hide(_ syntaxRange: NSRange) {
@@ -2248,7 +2286,10 @@ struct MarkdownEditor: NSViewRepresentable {
                       syntaxRange.location + syntaxRange.length
                           <= storage.length
                 else { return }
-                storage.addAttributes(hiddenAttrs, range: syntaxRange)
+                storage.addAttributes(
+                    shouldHide ? hiddenAttrs : dimAttrs,
+                    range: syntaxRange
+                )
             }
 
             // Wiki links [[Note Title]]
@@ -2301,7 +2342,8 @@ struct MarkdownEditor: NSViewRepresentable {
                         "Note not found -- click to create"
                 }
                 storage.addAttributes(attrs, range: inner)
-                var bracketAttrs = hiddenAttrs
+                var bracketAttrs = shouldHide
+                    ? hiddenAttrs : dimAttrs
                 bracketAttrs[.link] = linkURL
                 storage.addAttributes(
                     bracketAttrs,
@@ -2343,7 +2385,7 @@ struct MarkdownEditor: NSViewRepresentable {
                     .link: linkURL,
                     .cursor: NSCursor.pointingHand
                 ], range: inner)
-                var atAttrs = hiddenAttrs
+                var atAttrs = shouldHide ? hiddenAttrs : dimAttrs
                 atAttrs[.link] = linkURL
                 storage.addAttributes(
                     atAttrs,
@@ -2516,6 +2558,14 @@ struct MarkdownEditor: NSViewRepresentable {
                     .foregroundColor: NSColor.systemPink,
                     .backgroundColor: NSColor.quaternaryLabelColor
                 ], range: inner)
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 1
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 1,
+                    length: 1
+                ))
             }
         }
 
