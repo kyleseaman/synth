@@ -1,24 +1,21 @@
 # AGENTS.md
 
 ## Project Overview
-Synth is a minimal, fast, native macOS 26 text editor with AI integration. Modern SwiftUI frontend, Rust core.
+Synth is a minimal, fast, native macOS 26 text editor with AI integration. Modern SwiftUI frontend.
 
 ## Build Commands
 ```bash
-# Rust library
-cd synth-core && cargo build --release
+# Swift app (via Xcode)
+xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Release build
 
-# Swift app (from SynthApp/)
-swiftc *.swift -import-objc-header BridgingHeader.h -L ../synth-core/target/release -lsynth_core -o Synth
+# MCP server
+cd synth-mcp-server && swift build -c release
 ```
 
 ## Testing
 ```bash
-# Rust tests
-cd synth-core && cargo test
-
-# Build and run app to verify
-./SynthApp/Synth
+# Run tests via Xcode
+xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug test CODE_SIGNING_ALLOWED=NO
 ```
 
 Write tests first, then implementation. Tests prevent hallucination and scope drift.
@@ -32,14 +29,8 @@ Write tests first, then implementation. Tests prevent hallucination and scope dr
 - Lines under 120 characters
 - Fix ALL swiftlint warnings, not just errors
 
-### Rust
-- Run `cargo fmt` before committing
-- Avoid `.unwrap()` in library code—use `Result`/`Option`
-- Document FFI functions with `///`
-
 ## Pre-commit Hooks
 Every commit runs:
-- `cargo fmt --check` (Rust)
 - `swiftlint` (Swift)
 
 **Never bypass with `--no-verify`.** Fix ALL issues first, including pre-existing warnings.
@@ -49,7 +40,7 @@ Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
 
 ## Structure
 - `SynthApp/` - Swift/SwiftUI frontend
-- `synth-core/` - Rust FFI library
+- `synth-mcp-server/` - Swift MCP server CLI
 - `.kiro/agents/` - Custom AI agents
 - `.kiro/steering/` - Project context
 

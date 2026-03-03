@@ -1,10 +1,5 @@
 import Foundation
-
-// MARK: - Logging (stderr so it doesn't interfere with stdio transport)
-
-func log(_ message: String) {
-    FileHandle.standardError.write(Data("[synth-mcp] \(message)\n".utf8))
-}
+import SynthMCPLib
 
 // MARK: - CLI Argument Parsing
 

@@ -37,6 +37,9 @@
 		1A0000000000000000000214 /* BacklinkIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000144 /* BacklinkIndexTests.swift */; };
 		1A0000000000000000000215 /* UtilityLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000145 /* UtilityLogicTests.swift */; };
 		1A0000000000000000000216 /* DocumentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000146 /* DocumentStoreTests.swift */; };
+		1A0000000000000000000219 /* KiroConfigManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000149 /* KiroConfigManagerTests.swift */; };
+		1A000000000000000000021A /* UnifiedIndexerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000014A /* UnifiedIndexerTests.swift */; };
+		1A000000000000000000021B /* ACPSessionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000014B /* ACPSessionStoreTests.swift */; };
 		2A0000000000000000000701 /* NoteIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* NoteIndex.swift */; };
 		2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* WikiLinkPopover.swift */; };
 		2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000113 /* DailyNoteResolver.swift */; };
@@ -84,9 +87,7 @@
 /* Begin PBXFileReference section */
 		1A0000000000000000000010 /* Synth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Synth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000011 /* SynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthApp.swift; sourceTree = "<group>"; };
-		1A0000000000000000000012 /* libsynth_core.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsynth_core.a; path = "synth-core/target/release/libsynth_core.a"; sourceTree = "<group>"; };
-		1A0000000000000000000013 /* BridgingHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
-		1A0000000000000000000014 /* synth_core.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = synth_core.h; path = "synth-core/synth_core.h"; sourceTree = "<group>"; };
+
 		1A0000000000000000000015 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		1A0000000000000000000016 /* Document.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Document.swift; sourceTree = "<group>"; };
 		1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
@@ -116,6 +117,9 @@
 		1A0000000000000000000144 /* BacklinkIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacklinkIndexTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000145 /* UtilityLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityLogicTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000146 /* DocumentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentStoreTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000149 /* KiroConfigManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroConfigManagerTests.swift; sourceTree = "<group>"; };
+		1A000000000000000000014A /* UnifiedIndexerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedIndexerTests.swift; sourceTree = "<group>"; };
+		1A000000000000000000014B /* ACPSessionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPSessionStoreTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000147 /* TemplateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateStore.swift; sourceTree = "<group>"; };
 		1A0000000000000000000148 /* TemplateStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemplateStoreTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000111 /* NoteIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteIndex.swift; sourceTree = "<group>"; };
@@ -251,7 +255,7 @@
 					4A0000000000000000000131 /* SynthMcpResolver.swift */,
 					4A0000000000000000000132 /* MCPServerManager.swift */,
 					B1F000000000000000000300 /* Fonts */,
-					1A0000000000000000000013 /* BridgingHeader.h */,
+
 				);
 				path = SynthApp;
 				sourceTree = "<group>";
@@ -284,6 +288,9 @@
 				1A0000000000000000000144 /* BacklinkIndexTests.swift */,
 				1A0000000000000000000145 /* UtilityLogicTests.swift */,
 				1A0000000000000000000146 /* DocumentStoreTests.swift */,
+				1A0000000000000000000149 /* KiroConfigManagerTests.swift */,
+				1A000000000000000000014A /* UnifiedIndexerTests.swift */,
+				1A000000000000000000014B /* ACPSessionStoreTests.swift */,
 				1A0000000000000000000106 /* Info.plist */,
 			);
 			path = SynthAppTests;
@@ -292,8 +299,6 @@
 		1A0000000000000000000005 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				1A0000000000000000000012 /* libsynth_core.a */,
-				1A0000000000000000000014 /* synth_core.h */,
 				1A0000000000000000000107 /* XCTest.framework */,
 			);
 			name = Frameworks;
@@ -315,7 +320,6 @@
 				isa = PBXNativeTarget;
 				buildConfigurationList = 1A0000000000000000000020 /* Build configuration list for PBXNativeTarget "Synth" */;
 				buildPhases = (
-					1A0000000000000000000030 /* Build Rust */,
 					1A000000000000000000000C /* Sources */,
 					1A000000000000000000000D /* Frameworks */,
 					B1F000000000000000000400 /* Resources */,
@@ -384,21 +388,6 @@
 /* End PBXProject section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		1A0000000000000000000030 /* Build Rust */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Build Rust";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/bash;
-			shellScript = "\"$PROJECT_DIR/scripts/build-rust.sh\"\n";
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -467,6 +456,9 @@
 				1A0000000000000000000214 /* BacklinkIndexTests.swift in Sources */,
 				1A0000000000000000000215 /* UtilityLogicTests.swift in Sources */,
 				1A0000000000000000000216 /* DocumentStoreTests.swift in Sources */,
+				1A0000000000000000000219 /* KiroConfigManagerTests.swift in Sources */,
+				1A000000000000000000021A /* UnifiedIndexerTests.swift in Sources */,
+				1A000000000000000000021B /* ACPSessionStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -577,14 +569,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/synth-core";
 				INFOPLIST_FILE = SynthApp/Info.plist;
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/synth-core/target/release";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				OTHER_LDFLAGS = "-lsynth_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = SynthApp/BridgingHeader.h;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
@@ -596,14 +584,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/synth-core";
 				INFOPLIST_FILE = SynthApp/Info.plist;
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/synth-core/target/release";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				OTHER_LDFLAGS = "-lsynth_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.synth.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_OBJC_BRIDGING_HEADER = SynthApp/BridgingHeader.h;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;

@@ -58,34 +58,29 @@ A native macOS 26 text editor built for writers who think in links, tags, and da
 
 ## Architecture
 
-Modern SwiftUI (macOS 26) frontend with a Rust core linked via C FFI.
+Modern SwiftUI (macOS 26) frontend.
 
 - **SwiftUI** — all views, state management (`@Observable`), and navigation
 - **AppKit** — only for `FormattingTextView` (NSTextView subclass for rich text editing) and `WikiLinkPopover` (NSPopover for positioned autocomplete)
-- **Rust** — document processing via `synth-core` static library
 - **MCP server** — Swift CLI tool providing workspace tools over JSON-RPC 2.0 (stdio + HTTP/SSE)
 
 ## Build
 
 ```bash
-# Rust core (must be first)
-cd synth-core && cargo build --release
-
 # MCP server
 cd synth-mcp-server && swift build -c release
 
-# Swift app
-cd SynthApp && swiftc *.swift -import-objc-header BridgingHeader.h \
-  -L ../synth-core/target/release -I ../synth-core -lsynth_core -o Synth
-
-# Run
-./SynthApp/Synth
+# Swift app (via Xcode)
+open Synth.xcodeproj
 ```
 
-Or open `Synth.xcodeproj` in Xcode.
+Or from the command line:
+
+```bash
+xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Release build
+```
 
 ## Requirements
 
 - macOS 26
-- Rust toolchain (for synth-core)
 - Xcode 26 or Swift 6 toolchain

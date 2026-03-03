@@ -3,7 +3,6 @@
 ## Defensive Coding
 
 All code changes must pass pre-commit hooks before committing. The hooks run:
-- `cargo fmt --check` for Rust
 - `swiftlint` for Swift
 
 If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
@@ -27,13 +26,6 @@ If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
 - Use `.fileImporter()` for file pickers, `.alert()` for dialogs, `@Environment(\.openURL)` for URLs.
 - AppKit exceptions: FormattingTextView (NSTextView) and WikiLinkPopover (NSPopover) only.
 
-## Rust Style
-
-- Run `cargo fmt` before committing.
-- Use `Result` and `Option` properly—avoid `.unwrap()` in library code.
-- Document public FFI functions with `///` comments.
-- Keep unsafe blocks minimal and well-documented.
-
 ## Git Workflow
 
 - Commit early and often.
@@ -45,6 +37,5 @@ If a commit fails, fix the issues first. Never bypass hooks with `--no-verify`.
 ## Testing
 
 - Write tests for new functionality.
-- Run `cargo test` for Rust changes.
 - Ensure the app builds and runs after changes.
 - Write tests first, then implementation. Tests prevent hallucination and scope drift.

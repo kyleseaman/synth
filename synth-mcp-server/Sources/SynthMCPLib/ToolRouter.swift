@@ -2,29 +2,29 @@ import Foundation
 
 // MARK: - Tool Definition
 
-struct ToolDefinition {
-    let name: String
-    let description: String
-    let inputSchema: AnyCodableValue
-    let handler: ([String: AnyCodableValue]) -> AnyCodableValue
+public struct ToolDefinition {
+    public let name: String
+    public let description: String
+    public let inputSchema: AnyCodableValue
+    public let handler: ([String: AnyCodableValue]) -> AnyCodableValue
 }
 
 // MARK: - Tool Router
 
-class ToolRouter {
+public class ToolRouter {
     private var tools: [String: ToolDefinition] = [:]
-    let workspacePath: String
+    public let workspacePath: String
 
-    init(workspacePath: String) {
+    public init(workspacePath: String) {
         self.workspacePath = workspacePath
         registerAllTools()
     }
 
-    func register(_ tool: ToolDefinition) {
+    public func register(_ tool: ToolDefinition) {
         tools[tool.name] = tool
     }
 
-    func listTools() -> [AnyCodableValue] {
+    public func listTools() -> [AnyCodableValue] {
         tools.values.sorted(by: { $0.name < $1.name }).map { tool in
             .object([
                 "name": .string(tool.name),
@@ -34,7 +34,7 @@ class ToolRouter {
         }
     }
 
-    func callTool(name: String, arguments: [String: AnyCodableValue]) -> AnyCodableValue {
+    public func callTool(name: String, arguments: [String: AnyCodableValue]) -> AnyCodableValue {
         guard let tool = tools[name] else {
             return toolError("Unknown tool: \(name)")
         }
@@ -55,7 +55,7 @@ class ToolRouter {
 
 // MARK: - Helpers
 
-func toolResult(_ text: String) -> AnyCodableValue {
+public func toolResult(_ text: String) -> AnyCodableValue {
     .object([
         "content": .array([
             .object([
@@ -66,7 +66,7 @@ func toolResult(_ text: String) -> AnyCodableValue {
     ])
 }
 
-func toolError(_ message: String) -> AnyCodableValue {
+public func toolError(_ message: String) -> AnyCodableValue {
     .object([
         "content": .array([
             .object([
@@ -78,7 +78,7 @@ func toolError(_ message: String) -> AnyCodableValue {
     ])
 }
 
-func resolvePath(_ relativePath: String, workspace: String) -> String? {
+public func resolvePath(_ relativePath: String, workspace: String) -> String? {
     let fullPath: String
     if relativePath.hasPrefix("/") {
         fullPath = relativePath
@@ -95,7 +95,7 @@ func resolvePath(_ relativePath: String, workspace: String) -> String? {
     return resolved
 }
 
-func jsonSchema(
+public func jsonSchema(
     type: String = "object",
     properties: [String: AnyCodableValue],
     required: [String] = []
@@ -110,14 +110,14 @@ func jsonSchema(
     return .object(schema)
 }
 
-func propertySchema(type: String, description: String) -> AnyCodableValue {
+public func propertySchema(type: String, description: String) -> AnyCodableValue {
     .object([
         "type": .string(type),
         "description": .string(description)
     ])
 }
 
-func propertySchemaWithDefault(type: String, description: String, defaultValue: AnyCodableValue) -> AnyCodableValue {
+public func propertySchemaWithDefault(type: String, description: String, defaultValue: AnyCodableValue) -> AnyCodableValue {
     .object([
         "type": .string(type),
         "description": .string(description),
@@ -125,7 +125,7 @@ func propertySchemaWithDefault(type: String, description: String, defaultValue: 
     ])
 }
 
-func enumSchema(description: String, values: [String]) -> AnyCodableValue {
+public func enumSchema(description: String, values: [String]) -> AnyCodableValue {
     .object([
         "type": .string("string"),
         "description": .string(description),

@@ -492,19 +492,19 @@ final class UtilityLogicTests: XCTestCase {
         let workspacePath = "/tmp/workspace"
 
         XCTAssertFalse(
-            DocumentStore.shouldRefreshSidebar(
+            WorkspaceWatcher.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/.kiro/settings/mcp.json"
             )
         )
         XCTAssertFalse(
-            DocumentStore.shouldRefreshSidebar(
+            WorkspaceWatcher.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/daily/2026-02-08.md"
             )
         )
         XCTAssertFalse(
-            DocumentStore.shouldRefreshSidebar(
+            WorkspaceWatcher.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/media/screenshot.png"
             )
@@ -516,13 +516,13 @@ final class UtilityLogicTests: XCTestCase {
         let workspacePath = "/tmp/workspace"
 
         XCTAssertTrue(
-            DocumentStore.shouldRefreshSidebar(
+            WorkspaceWatcher.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/workspace/drafts/Untitled.md"
             )
         )
         XCTAssertFalse(
-            DocumentStore.shouldRefreshSidebar(
+            WorkspaceWatcher.shouldRefreshSidebar(
                 forWorkspace: workspacePath,
                 eventPath: "/tmp/other-workspace/drafts/Untitled.md"
             )
@@ -1104,7 +1104,7 @@ final class MCPServerManagerTests: XCTestCase {
             Array(candidateNames.prefix(2)),
             ["FiraCode-Regular", "Iosevka-Regular"]
         )
-        XCTAssertTrue(candidateNames.contains("MesloLGS-Regular"))
+        XCTAssertEqual(candidateNames.count, 2)
     }
 
     func testThemeEditorCandidateNamesDeduplicatesAgainstFallbacks() {
@@ -1308,5 +1308,403 @@ final class MCPServerManagerTests: XCTestCase {
             MarkdownFormat.restoreMarkup(in: renderedText),
             "* task"
         )
+    }
+}
+
+// MARK: - NoteIndex Incremental Tests
+
+extension NoteIndexTests {
+    func testAddFileAddsToIndex() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let fileURL = workspaceURL.appendingPathComponent("Added.md")
+        try "added content".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: [FileTreeNode](), workspace: workspaceURL)
+        noteIndex.addFile(fileURL, content: "added content", workspace: workspaceURL)
+
+        XCTAssertNotNil(noteIndex.findExact("Added"))
+    }
+
+    func testRemoveFileRemovesFromIndex() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let fileURL = workspaceURL.appendingPathComponent("Remove.md")
+        try "content".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: [FileTreeNode](), workspace: workspaceURL)
+        noteIndex.addFile(fileURL, content: "content", workspace: workspaceURL)
+        XCTAssertNotNil(noteIndex.findExact("Remove"))
+
+        noteIndex.removeFile(fileURL)
+        XCTAssertNil(noteIndex.findExact("Remove"))
+    }
+}
+
+// MARK: - AutocompleteCoordinator Tests
+
+extension UtilityLogicTests {
+    @MainActor
+    func testOrdinalDateStringFormatsCorrectly() {
+        let calendar = Calendar.current
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 2
+        components.day = 1
+        components.hour = 12
+        guard let firstDate = calendar.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        let result = AutocompleteCoordinator.ordinalDateString(from: firstDate)
+        XCTAssertTrue(result.contains("1st"))
+
+        components.day = 2
+        guard let secondDate = calendar.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        XCTAssertTrue(AutocompleteCoordinator.ordinalDateString(from: secondDate).contains("2nd"))
+
+        components.day = 3
+        guard let thirdDate = calendar.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        XCTAssertTrue(AutocompleteCoordinator.ordinalDateString(from: thirdDate).contains("3rd"))
+
+        components.day = 11
+        guard let eleventhDate = calendar.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        XCTAssertTrue(AutocompleteCoordinator.ordinalDateString(from: eleventhDate).contains("11th"))
+
+        components.day = 21
+        guard let twentyFirstDate = calendar.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        XCTAssertTrue(
+            AutocompleteCoordinator.ordinalDateString(from: twentyFirstDate).contains("21st")
+        )
+    }
+}
+
+// MARK: - FileLauncher Static Method Tests
+
+extension UtilityLogicTests {
+    func testCleanPreviewTextStripsWhitespaceAndEmptyLines() {
+        let input = "  hello  \n\n  world  \n"
+        let result = FileLauncher.cleanPreviewText(input)
+        XCTAssertEqual(result, "hello\nworld")
+    }
+
+    func testFocusedSnippetReturnsContextAroundMatch() {
+        let content = String(repeating: "prefix ", count: 50)
+            + "KEYWORD here"
+            + String(repeating: " suffix", count: 50)
+        let result = FileLauncher.focusedSnippet(
+            from: content, query: "keyword", fallback: ""
+        )
+        XCTAssertTrue(result.contains("KEYWORD"))
+    }
+
+    func testFocusedSnippetFallsBackWhenNoMatch() {
+        let result = FileLauncher.focusedSnippet(
+            from: "no match here", query: "missing", fallback: "fallback text"
+        )
+        XCTAssertEqual(result, "fallback text")
+    }
+}
+
+// MARK: - String.fnv1a Tests
+
+extension UtilityLogicTests {
+    func testFnv1aHashConsistency() {
+        let hash1 = "hello".fnv1a
+        let hash2 = "hello".fnv1a
+        XCTAssertEqual(hash1, hash2)
+    }
+
+    func testFnv1aHashUniqueness() {
+        XCTAssertNotEqual("hello".fnv1a, "world".fnv1a)
+    }
+
+    func testFnv1aEmptyString() {
+        let hash = "".fnv1a
+        XCTAssertEqual(hash, 0xcbf29ce484222325)
+    }
+}
+
+// MARK: - FileEvent Tests
+
+extension UtilityLogicTests {
+    func testFileEventFlagProperties() {
+        let fileCreatedFlags = FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemIsFile | kFSEventStreamEventFlagItemCreated
+        )
+        let event = FileEvent(path: "/tmp/test.md", flags: fileCreatedFlags)
+
+        XCTAssertTrue(event.isFile)
+        XCTAssertTrue(event.isCreated)
+        XCTAssertTrue(event.fileCreated)
+        XCTAssertFalse(event.isDirectory)
+        XCTAssertFalse(event.isRemoved)
+        XCTAssertFalse(event.isModified)
+    }
+
+    func testFileEventDirectoryFlags() {
+        let dirRemovedFlags = FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemIsDir | kFSEventStreamEventFlagItemRemoved
+        )
+        let event = FileEvent(path: "/tmp/folder", flags: dirRemovedFlags)
+
+        XCTAssertTrue(event.isDirectory)
+        XCTAssertTrue(event.isRemoved)
+        XCTAssertTrue(event.dirRemoved)
+        XCTAssertFalse(event.isFile)
+    }
+
+    func testFileEventURLProperty() {
+        let event = FileEvent(path: "/tmp/test.md", flags: 0)
+        XCTAssertEqual(event.url, URL(fileURLWithPath: "/tmp/test.md"))
+    }
+}
+
+// MARK: - DocumentChatState Tests
+
+extension UtilityLogicTests {
+    @MainActor
+    func testDocumentChatStateNewChatResetsState() {
+        let state = DocumentChatState()
+        state.messages.append(ChatMessage(role: .user, content: "hello"))
+        state.currentResponse = "partial"
+        state.toolCalls.append(ACPToolCall(id: "t1", title: "test"))
+        state.statusMessage = "working"
+
+        state.newChat()
+
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertEqual(state.currentResponse, "")
+        XCTAssertTrue(state.toolCalls.isEmpty)
+        XCTAssertNil(state.pendingPermission)
+        XCTAssertNil(state.statusMessage)
+        XCTAssertTrue(state.pendingImages.isEmpty)
+    }
+
+    @MainActor
+    func testDocumentChatStateAddAndRemoveImage() {
+        let state = DocumentChatState()
+        let image = NSImage(size: NSSize(width: 1, height: 1))
+
+        state.addImage(image, label: "test")
+        XCTAssertEqual(state.pendingImages.count, 1)
+        XCTAssertEqual(state.pendingImages.first?.label, "test")
+
+        let imageId = state.pendingImages.first?.id ?? UUID()
+        state.removeImage(id: imageId)
+        XCTAssertTrue(state.pendingImages.isEmpty)
+    }
+
+    @MainActor
+    func testDocumentChatStateDismissUndo() {
+        let state = DocumentChatState()
+        state.undoSnapshot = UndoSnapshot(
+            url: URL(fileURLWithPath: "/tmp/test.md"),
+            content: "old",
+            timestamp: Date()
+        )
+
+        state.dismissUndo()
+        XCTAssertNil(state.undoSnapshot)
+    }
+}
+
+// MARK: - ACPProtocolAdapter Additional Tests
+
+extension UtilityLogicTests {
+    func testParseUpdateKindAvailableCommandsUpdate() {
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("available_commands_update"),
+            .availableCommandsUpdate
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("AvailableCommandsUpdate"),
+            .availableCommandsUpdate
+        )
+    }
+
+    func testParseUpdateKindCurrentModeUpdate() {
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("current_mode_update"),
+            .currentModeUpdate
+        )
+        XCTAssertEqual(
+            ACPProtocolAdapter.parseUpdateKind("CurrentModeUpdate"),
+            .currentModeUpdate
+        )
+    }
+}
+
+// MARK: - AnyCodable Double Tests
+
+extension UtilityLogicTests {
+    func testAnyCodableEncodesAndDecodesDouble() throws {
+        let payload: [String: AnyCodable] = ["value": AnyCodable(3.14)]
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode([String: AnyCodable].self, from: data)
+        let decodedValue = decoded["value"]?.value as? Double
+        XCTAssertNotNil(decodedValue)
+        XCTAssertEqual(decodedValue ?? 0, 3.14, accuracy: 0.001)
+    }
+}
+
+// MARK: - DailyNoteManager.displayDate Tests
+
+extension UtilityLogicTests {
+    @MainActor
+    func testDailyNoteManagerDisplayDate() {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 3
+        components.day = 15
+        components.hour = 12
+        guard let date = Calendar.current.date(from: components) else {
+            XCTFail("Failed to create date")
+            return
+        }
+        let result = DailyNoteManager.displayDate(date)
+        XCTAssertTrue(result.contains("March"))
+        XCTAssertTrue(result.contains("15"))
+        XCTAssertTrue(result.contains("2026"))
+    }
+}
+
+// MARK: - FileTreeNode.scan Filtering Tests
+
+extension UtilityLogicTests {
+    func testFileTreeNodeScanFiltersHiddenDailyAndMedia() throws {
+        let workspace = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+
+        let hiddenDir = workspace.appendingPathComponent(".hidden", isDirectory: true)
+        let dailyDir = workspace.appendingPathComponent("daily", isDirectory: true)
+        let mediaDir = workspace.appendingPathComponent("media", isDirectory: true)
+        let visibleFile = workspace.appendingPathComponent("visible.md")
+
+        try FileManager.default.createDirectory(at: hiddenDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: dailyDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: mediaDir, withIntermediateDirectories: true)
+        try "content".write(to: visibleFile, atomically: true, encoding: .utf8)
+        try "hidden".write(
+            to: hiddenDir.appendingPathComponent("file.md"),
+            atomically: true, encoding: .utf8
+        )
+        try "daily".write(
+            to: dailyDir.appendingPathComponent("2026-01-01.md"),
+            atomically: true, encoding: .utf8
+        )
+
+        let nodes = FileTreeNode.scan(workspace)
+        let names = Set(nodes.map(\.name))
+
+        XCTAssertTrue(names.contains("visible.md"))
+        XCTAssertFalse(names.contains(".hidden"))
+        XCTAssertFalse(names.contains("daily"))
+        XCTAssertFalse(names.contains("media"))
+    }
+}
+
+// MARK: - MarkdownFormat Additional Rendering Tests
+
+extension DocumentModelTests {
+    func testMarkdownRenderHeadingSizes() {
+        let formatter = MarkdownFormat()
+        let heading1 = formatter.render("# Big")
+        let heading2 = formatter.render("## Medium")
+        let heading3 = formatter.render("### Small")
+
+        let font1 = heading1.attribute(.font, at: 2, effectiveRange: nil) as? NSFont
+        let font2 = heading2.attribute(.font, at: 3, effectiveRange: nil) as? NSFont
+        let font3 = heading3.attribute(.font, at: 4, effectiveRange: nil) as? NSFont
+
+        XCTAssertNotNil(font1)
+        XCTAssertNotNil(font2)
+        XCTAssertNotNil(font3)
+        XCTAssertGreaterThan(font1?.pointSize ?? 0, font2?.pointSize ?? 0)
+        XCTAssertGreaterThan(font2?.pointSize ?? 0, font3?.pointSize ?? 0)
+    }
+
+    func testMarkdownRenderInlineCode() {
+        let rendered = MarkdownFormat().render("use `code` here")
+        // Inner text between backticks should be styled with systemPink
+        let codeStart = (rendered.string as NSString).range(of: "code").location
+        guard codeStart != NSNotFound else {
+            XCTFail("Code text not found")
+            return
+        }
+        let codeColor = rendered.attribute(
+            .foregroundColor, at: codeStart, effectiveRange: nil
+        ) as? NSColor
+        XCTAssertEqual(codeColor, NSColor.systemPink)
+    }
+
+    func testMarkdownRenderNumberedListReplacement() {
+        let rendered = MarkdownFormat().render("1. first item")
+        // Numbered lists get a visual replacement
+        XCTAssertTrue(rendered.string.contains("first item"))
+    }
+
+    func testMarkdownRenderWikiLink() {
+        let rendered = MarkdownFormat().render("See [[My Note]] here")
+        // Wiki links should have a link attribute
+        var hasLink = false
+        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) {
+            value, _, _ in
+            if value != nil { hasLink = true }
+        }
+        XCTAssertTrue(hasLink)
+    }
+
+    func testMarkdownRenderTagHighlighting() {
+        let rendered = MarkdownFormat().render("tagged #swift here")
+        let tagStart = (rendered.string as NSString).range(of: "#swift").location
+        guard tagStart != NSNotFound else {
+            XCTFail("Tag not found in rendered text")
+            return
+        }
+        let tagColor = rendered.attribute(
+            .foregroundColor, at: tagStart, effectiveRange: nil
+        ) as? NSColor
+        XCTAssertNotNil(tagColor)
+    }
+
+    func testMarkdownRestoreMarkupNumberedList() {
+        let rendered = MarkdownFormat().render("1. item")
+        let restored = MarkdownFormat.restoreMarkup(in: rendered)
+        XCTAssertTrue(restored.hasPrefix("1.") || restored.contains("item"))
+    }
+
+    func testMarkdownRenderBlockquote() {
+        let rendered = MarkdownFormat().render("> quoted text")
+        XCTAssertTrue(rendered.string.contains("quoted text"))
+    }
+
+    func testMarkdownRenderCheckbox() {
+        let unchecked = MarkdownFormat().render("- [ ] todo")
+        let checked = MarkdownFormat().render("- [x] done")
+        XCTAssertTrue(unchecked.string.contains("todo"))
+        XCTAssertTrue(checked.string.contains("done"))
     }
 }

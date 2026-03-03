@@ -9,19 +9,13 @@
 - `.fileImporter()` for file pickers (not NSOpenPanel), `.alert()` for dialogs (not NSAlert)
 - `@Environment(\.openURL)` for opening URLs (not NSWorkspace.shared.open)
 
-## Core
-- Rust for document processing (synth-core)
-- FFI bridge via C headers (synth_core.h)
-- docx-rs for Word document handling
-
 ## AI Integration
 - Kiro CLI subprocess invocation
 - Custom agents in `.kiro/agents/`
 
 ## Build Tools
 - Xcode / swiftc for Swift compilation
-- Cargo for Rust builds
-- Pre-commit hooks for quality gates (cargo fmt --check, swiftlint)
+- Pre-commit hooks for quality gates (swiftlint)
 
 ## Key Patterns
 - **State management**: DocumentStore (`@Observable`) is the single source of truth

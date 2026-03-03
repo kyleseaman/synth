@@ -109,3 +109,59 @@ final class TagAndPeopleIndexTests: XCTestCase {
         XCTAssertTrue(index.notes(for: "carol").isEmpty)
     }
 }
+
+// MARK: - TagIndex Additional Tests
+
+extension TagAndPeopleIndexTests {
+    func testTagIndexSearchFuzzyMatching() {
+        let index = TagIndex()
+        let fileURL = URL(fileURLWithPath: "/tmp/fuzzy-tag.md")
+        index.updateFile(fileURL, content: "#project #programming")
+
+        let results = index.search("prog")
+        XCTAssertTrue(results.contains { $0.name == "programming" })
+    }
+
+    func testTagIndexAllTagsSortedByFrequency() {
+        let index = TagIndex()
+        let firstURL = URL(fileURLWithPath: "/tmp/tag-freq-1.md")
+        let secondURL = URL(fileURLWithPath: "/tmp/tag-freq-2.md")
+        index.updateFile(firstURL, content: "#common #rare")
+        index.updateFile(secondURL, content: "#common")
+
+        let allTags = index.allTags
+        XCTAssertEqual(allTags.first?.name, "common")
+        XCTAssertEqual(allTags.first?.count, 2)
+    }
+
+    func testTagIndexAddFileAndRemoveFile() {
+        let index = TagIndex()
+        let fileURL = URL(fileURLWithPath: "/tmp/tag-add.md")
+
+        index.addFile(fileURL, content: "#added")
+        XCTAssertTrue(index.notes(for: "added").contains(fileURL))
+
+        index.removeFile(fileURL)
+        XCTAssertTrue(index.notes(for: "added").isEmpty)
+    }
+
+    func testPeopleIndexSearchFuzzyMatching() {
+        let index = PeopleIndex()
+        let fileURL = URL(fileURLWithPath: "/tmp/fuzzy-people.md")
+        index.updateFile(fileURL, content: "@alexander")
+
+        let results = index.search("alex")
+        XCTAssertTrue(results.contains { $0.name == "alexander" })
+    }
+
+    func testPeopleIndexAddFileAndRemoveFile() {
+        let index = PeopleIndex()
+        let fileURL = URL(fileURLWithPath: "/tmp/people-add.md")
+
+        index.addFile(fileURL, content: "@charlie")
+        XCTAssertTrue(index.notes(for: "charlie").contains(fileURL))
+
+        index.removeFile(fileURL)
+        XCTAssertTrue(index.notes(for: "charlie").isEmpty)
+    }
+}

@@ -5,9 +5,19 @@ let package = Package(
     name: "synth-mcp-server",
     platforms: [.macOS(.v13)],
     targets: [
+        .target(
+            name: "SynthMCPLib",
+            path: "Sources/SynthMCPLib"
+        ),
         .executableTarget(
             name: "synth-mcp-server",
-            path: "Sources"
+            dependencies: ["SynthMCPLib"],
+            path: "Sources/SynthMCPServer"
+        ),
+        .testTarget(
+            name: "SynthMCPTests",
+            dependencies: ["SynthMCPLib"],
+            path: "Tests"
         )
     ]
 )

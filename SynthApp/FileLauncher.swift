@@ -371,7 +371,7 @@ struct FileLauncher: View {
         return content.isEmpty ? note.preview : content
     }
 
-    nonisolated private static func cleanPreviewText(_ text: String) -> String {
+    nonisolated static func cleanPreviewText(_ text: String) -> String {
         text
             .components(separatedBy: .newlines)
             .map { line in
@@ -386,7 +386,7 @@ struct FileLauncher: View {
             .joined(separator: "\n")
     }
 
-    nonisolated private static func focusedSnippet(
+    nonisolated static func focusedSnippet(
         from content: String,
         query: String,
         fallback: String

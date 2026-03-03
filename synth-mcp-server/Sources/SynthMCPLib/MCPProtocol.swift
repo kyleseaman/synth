@@ -2,27 +2,27 @@ import Foundation
 
 // MARK: - JSON-RPC 2.0 Types
 
-struct JsonRpcRequest: Codable {
-    let jsonrpc: String
-    let id: JsonRpcId?
-    let method: String
-    let params: AnyCodableValue?
+public struct JsonRpcRequest: Codable {
+    public let jsonrpc: String
+    public let id: JsonRpcId?
+    public let method: String
+    public let params: AnyCodableValue?
 }
 
-struct JsonRpcResponse: Codable {
-    let jsonrpc: String
-    let id: JsonRpcId?
-    let result: AnyCodableValue?
-    let error: JsonRpcError?
+public struct JsonRpcResponse: Codable {
+    public let jsonrpc: String
+    public let id: JsonRpcId?
+    public let result: AnyCodableValue?
+    public let error: JsonRpcError?
 
-    init(id: JsonRpcId?, result: AnyCodableValue) {
+    public init(id: JsonRpcId?, result: AnyCodableValue) {
         self.jsonrpc = "2.0"
         self.id = id
         self.result = result
         self.error = nil
     }
 
-    init(id: JsonRpcId?, error: JsonRpcError) {
+    public init(id: JsonRpcId?, error: JsonRpcError) {
         self.jsonrpc = "2.0"
         self.id = id
         self.result = nil
@@ -30,16 +30,16 @@ struct JsonRpcResponse: Codable {
     }
 }
 
-struct JsonRpcError: Codable {
-    let code: Int
-    let message: String
+public struct JsonRpcError: Codable {
+    public let code: Int
+    public let message: String
 }
 
-enum JsonRpcId: Codable, Equatable {
+public enum JsonRpcId: Codable, Equatable {
     case int(Int)
     case string(String)
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let intVal = try? container.decode(Int.self) {
             self = .int(intVal)
@@ -53,7 +53,7 @@ enum JsonRpcId: Codable, Equatable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .int(let val): try container.encode(val)
@@ -64,7 +64,7 @@ enum JsonRpcId: Codable, Equatable {
 
 // MARK: - Flexible JSON Value
 
-enum AnyCodableValue: Codable {
+public enum AnyCodableValue: Codable {
     case null
     case bool(Bool)
     case int(Int)
@@ -73,7 +73,7 @@ enum AnyCodableValue: Codable {
     case array([AnyCodableValue])
     case object([String: AnyCodableValue])
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             self = .null
@@ -97,7 +97,7 @@ enum AnyCodableValue: Codable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .null: try container.encodeNil()
@@ -110,32 +110,32 @@ enum AnyCodableValue: Codable {
         }
     }
 
-    var stringValue: String? {
+    public var stringValue: String? {
         if case .string(let val) = self { return val }
         return nil
     }
 
-    var intValue: Int? {
+    public var intValue: Int? {
         if case .int(let val) = self { return val }
         return nil
     }
 
-    var boolValue: Bool? {
+    public var boolValue: Bool? {
         if case .bool(let val) = self { return val }
         return nil
     }
 
-    var arrayValue: [AnyCodableValue]? {
+    public var arrayValue: [AnyCodableValue]? {
         if case .array(let val) = self { return val }
         return nil
     }
 
-    var objectValue: [String: AnyCodableValue]? {
+    public var objectValue: [String: AnyCodableValue]? {
         if case .object(let val) = self { return val }
         return nil
     }
 
-    subscript(key: String) -> AnyCodableValue? {
+    public subscript(key: String) -> AnyCodableValue? {
         if case .object(let dict) = self { return dict[key] }
         return nil
     }
@@ -143,14 +143,14 @@ enum AnyCodableValue: Codable {
 
 // MARK: - MCP Protocol Handler
 
-class MCPProtocolHandler {
-    let toolRouter: ToolRouter
+public class MCPProtocolHandler {
+    public let toolRouter: ToolRouter
 
-    init(toolRouter: ToolRouter) {
+    public init(toolRouter: ToolRouter) {
         self.toolRouter = toolRouter
     }
 
-    func handleMessage(_ data: Data) -> Data? {
+    public func handleMessage(_ data: Data) -> Data? {
         guard let request = try? JSONDecoder().decode(JsonRpcRequest.self, from: data) else {
             let errorResponse = JsonRpcResponse(
                 id: nil,
