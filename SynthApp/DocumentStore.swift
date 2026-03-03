@@ -751,8 +751,7 @@ final class DocumentStore {
                 if event.dirCreated || event.dirRemoved
                     || event.dirRenamed {
                     pendingWatcherReloadTask?.cancel()
-                    pendingWatcherReloadTask = Task {
-                        @MainActor [weak self] in
+                    pendingWatcherReloadTask = Task { @MainActor [weak self] in
                         try? await Task.sleep(
                             nanoseconds: 200_000_000
                         )
