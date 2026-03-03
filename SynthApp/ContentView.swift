@@ -17,6 +17,7 @@ extension Notification.Name {
     static let showDailyDate = Notification.Name("showDailyDate")
     static let insertTemplate = Notification.Name("insertTemplate")
     static let formatParagraphNow = Notification.Name("formatParagraphNow")
+    static let reloadEditor = Notification.Name("reloadEditor")
 }
 
 struct EditorSelectionContext {

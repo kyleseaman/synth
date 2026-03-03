@@ -163,6 +163,51 @@ struct NoteSearchResult: Identifiable {
         notes = allNotes.map(\.result)
     }
 
+    func addFile(_ url: URL, content: String, workspace: URL?) {
+        let ext = url.pathExtension.lowercased()
+        guard Self.searchableExtensions.contains(ext) else { return }
+        // Don't add duplicates
+        guard !allNotes.contains(where: { $0.result.url == url }) else {
+            updateFile(url, content: content)
+            return
+        }
+        let title = url.deletingPathExtension().lastPathComponent
+        let relativePath = Self.relativeDirectory(
+            for: url, workspace: workspace
+        )
+        let values = try? url.resourceValues(
+            forKeys: [.contentModificationDateKey]
+        )
+        let modifiedAt = values?.contentModificationDate ?? Date()
+        let indexed = Self.makeIndexedNote(
+            url: url, title: title, relativePath: relativePath,
+            content: content, modifiedAt: modifiedAt
+        )
+        allNotes.append(indexed)
+        let tokens = uniqueTokens(for: indexed)
+        for token in tokens {
+            documentFrequency[token, default: 0] += 1
+        }
+        notes = allNotes.map(\.result)
+    }
+
+    func removeFile(_ url: URL) {
+        guard let idx = allNotes.firstIndex(
+            where: { $0.result.url == url }
+        ) else { return }
+        let removed = allNotes.remove(at: idx)
+        let tokens = uniqueTokens(for: removed)
+        for token in tokens {
+            let count = documentFrequency[token] ?? 0
+            if count <= 1 {
+                documentFrequency.removeValue(forKey: token)
+            } else {
+                documentFrequency[token] = count - 1
+            }
+        }
+        notes = allNotes.map(\.result)
+    }
+
     func search(_ query: String) -> [NoteSearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedQuery.isEmpty {

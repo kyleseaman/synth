@@ -65,6 +65,25 @@ import Observation
 
     // MARK: - Incremental Update
 
+    func addFile(_ url: URL, content: String) {
+        let tags = scanFile(content: content)
+        fileToTags[url] = tags
+        for tag in tags {
+            tagToFiles[tag, default: []].insert(url)
+        }
+    }
+
+    func removeFile(_ url: URL) {
+        if let oldTags = fileToTags.removeValue(forKey: url) {
+            for tag in oldTags {
+                tagToFiles[tag]?.remove(url)
+                if tagToFiles[tag]?.isEmpty == true {
+                    tagToFiles.removeValue(forKey: tag)
+                }
+            }
+        }
+    }
+
     /// Incremental update for a single file on save. Must dispatch to main thread.
     func updateFile(_ url: URL, content: String) {
         let tags = scanFile(content: content)

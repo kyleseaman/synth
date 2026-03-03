@@ -92,6 +92,8 @@ final class DocumentStore {
     @ObservationIgnored private var isFileTreeScanRunning = false
     @ObservationIgnored private var fileTreeRescanRequested = false
     @ObservationIgnored private var activeFileTreeScanID = UUID()
+    /// Tracks recent saves to skip self-triggered FSEvents.
+    @ObservationIgnored private var recentSaves: [URL: Date] = [:]
 
     init() {
         loadRecentFiles()
@@ -124,8 +126,8 @@ final class DocumentStore {
 
     private func startWatching() {
         guard let workspace else { return }
-        watcher.start(workspace: workspace) { [weak self] eventPaths in
-            self?.handleWorkspaceEvents(eventPaths)
+        watcher.start(workspace: workspace) { [weak self] events in
+            self?.handleWorkspaceEvents(events)
         }
     }
 
@@ -500,9 +502,12 @@ final class DocumentStore {
         }
         openFiles[currentIndex].isDirty = false
 
+        // Mark save to skip self-triggered FSEvent
+        let savedURL = openFiles[currentIndex].url
+        recentSaves[savedURL] = Date()
+
         // Incremental index updates after save
         let savedContent = openFiles[currentIndex].content.string
-        let savedURL = openFiles[currentIndex].url
         noteIndex.updateFile(savedURL, content: savedContent)
         backlinkIndex.updateFile(savedURL, content: savedContent)
         tagIndex.updateFile(savedURL, content: savedContent)
@@ -533,8 +538,9 @@ final class DocumentStore {
 
             openFiles[index].isDirty = false
 
-            // Update indexes on main thread
+            // Mark save + update indexes
             let savedURL = openFiles[index].url
+            recentSaves[savedURL] = Date()
             let savedContent = openFiles[index].content.string
             noteIndex.updateFile(savedURL, content: savedContent)
             backlinkIndex.updateFile(savedURL, content: savedContent)
@@ -670,19 +676,161 @@ final class DocumentStore {
         }
     }
 
-    private func handleWorkspaceEvents(_ eventPaths: [String]) {
+    private func handleWorkspaceEvents(_ events: [FileEvent]) {
         guard let workspace else { return }
         let workspacePath = workspace.standardizedFileURL.path
-        let shouldRefresh = eventPaths.isEmpty || eventPaths.contains { eventPath in
-            WorkspaceWatcher.shouldRefreshSidebar(forWorkspace: workspacePath, eventPath: eventPath)
-        }
-        guard shouldRefresh else { return }
 
-        pendingWatcherReloadTask?.cancel()
-        pendingWatcherReloadTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            guard !Task.isCancelled else { return }
-            self?.loadFileTree()
+        // Clean stale recent saves
+        let staleThreshold = Date().addingTimeInterval(-2)
+        recentSaves = recentSaves.filter { $0.value > staleThreshold }
+
+        // Filter to relevant events
+        let relevant = events.filter { event in
+            WorkspaceWatcher.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: event.path
+            )
+        }
+        guard !relevant.isEmpty else { return }
+
+        // Fallback to full rescan for large batches
+        if relevant.count > 20 {
+            pendingWatcherReloadTask?.cancel()
+            pendingWatcherReloadTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+                self?.loadFileTree()
+            }
+            return
+        }
+
+        let indexContext = IndexContext(
+            noteIndex: noteIndex,
+            backlinkIndex: backlinkIndex,
+            tagIndex: tagIndex,
+            peopleIndex: peopleIndex
+        )
+        let validExtensions: Set<String> = ["md", "txt"]
+        var treeChanged = false
+
+        for event in relevant {
+            let url = event.url
+
+            // Skip self-triggered events
+            if let saveDate = recentSaves[url],
+               Date().timeIntervalSince(saveDate) < 0.5 {
+                continue
+            }
+
+            // Directory events → targeted subtree rescan
+            if event.isDirectory {
+                if event.dirCreated || event.dirRemoved
+                    || event.dirRenamed {
+                    pendingWatcherReloadTask?.cancel()
+                    pendingWatcherReloadTask = Task {
+                        @MainActor [weak self] in
+                        try? await Task.sleep(
+                            nanoseconds: 200_000_000
+                        )
+                        guard !Task.isCancelled else { return }
+                        self?.loadFileTree()
+                    }
+                    return
+                }
+                continue
+            }
+
+            // File events
+            let ext = url.pathExtension.lowercased()
+            let isIndexable = validExtensions.contains(ext)
+
+            if event.fileRemoved {
+                removeFileFromInMemoryTree(url)
+                treeChanged = true
+                if isIndexable {
+                    UnifiedIndexer.removeFile(
+                        url, context: indexContext
+                    )
+                }
+                // Close tab if open
+                if let tabIdx = openFiles.firstIndex(
+                    where: { $0.url == url }
+                ) {
+                    closeTab(at: tabIdx)
+                }
+                continue
+            }
+
+            if event.fileRenamed {
+                // Rename = remove old + create new (FSNotes pattern)
+                let exists = FileManager.default.fileExists(
+                    atPath: url.path
+                )
+                if exists {
+                    addFileToInMemoryTree(url)
+                    treeChanged = true
+                    if isIndexable,
+                       let content = try? String(
+                           contentsOf: url, encoding: .utf8
+                       ) {
+                        UnifiedIndexer.addFile(
+                            url, content: content,
+                            workspace: workspace,
+                            context: indexContext
+                        )
+                    }
+                } else {
+                    removeFileFromInMemoryTree(url)
+                    treeChanged = true
+                    if isIndexable {
+                        UnifiedIndexer.removeFile(
+                            url, context: indexContext
+                        )
+                    }
+                }
+                continue
+            }
+
+            if event.fileCreated {
+                addFileToInMemoryTree(url)
+                treeChanged = true
+                if isIndexable,
+                   let content = try? String(
+                       contentsOf: url, encoding: .utf8
+                   ) {
+                    UnifiedIndexer.addFile(
+                        url, content: content,
+                        workspace: workspace,
+                        context: indexContext
+                    )
+                }
+                continue
+            }
+
+            if event.fileModified {
+                if isIndexable,
+                   let content = try? String(
+                       contentsOf: url, encoding: .utf8
+                   ) {
+                    UnifiedIndexer.updateFile(
+                        url, content: content,
+                        context: indexContext
+                    )
+                }
+                // Reload editor if this file is currently open
+                if openFiles.contains(where: { $0.url == url }) {
+                    reloadOpenDocumentFromDisk(url)
+                    NotificationCenter.default.post(
+                        name: .reloadEditor, object: nil
+                    )
+                }
+                continue
+            }
+        }
+
+        if treeChanged {
+            // Bump version to trigger sidebar refresh
+            fileTreeVersion &+= 1
         }
     }
 

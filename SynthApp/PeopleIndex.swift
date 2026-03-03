@@ -98,6 +98,29 @@ import Observation
 
     // MARK: - Incremental Update
 
+    func addFile(_ url: URL, content: String) {
+        let people = scanFile(content: content)
+        fileToPersons[url] = people
+        for person in people {
+            personToFiles[person, default: []].insert(url)
+        }
+        if !people.isEmpty {
+            globalPeople.formUnion(people)
+            saveGlobal()
+        }
+    }
+
+    func removeFile(_ url: URL) {
+        if let oldPeople = fileToPersons.removeValue(forKey: url) {
+            for person in oldPeople {
+                personToFiles[person]?.remove(url)
+                if personToFiles[person]?.isEmpty == true {
+                    personToFiles.removeValue(forKey: person)
+                }
+            }
+        }
+    }
+
     /// Incremental update for a single file on save.
     func updateFile(_ url: URL, content: String) {
         let people = scanFile(content: content)

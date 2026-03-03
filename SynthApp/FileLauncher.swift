@@ -23,6 +23,16 @@ enum LauncherResult: Identifiable {
 }
 
 extension String {
+    /// FNV-1a 64-bit hash for fast content change detection.
+    var fnv1a: UInt64 {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in self.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return hash
+    }
+
     /// Capitalize the first letter of each word.
     var titleCased: String {
         self.split(separator: " ")
