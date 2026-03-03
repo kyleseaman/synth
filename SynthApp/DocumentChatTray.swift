@@ -18,6 +18,8 @@ struct DocumentChatTray: View {
 
     private let minHeight: CGFloat = 180
     private let maxHeight: CGFloat = 720
+    private let minWidth: CGFloat = 280
+    private let maxWidth: CGFloat = 640
     private static let preferredAgentIdentifier = "synth-writer"
     private static let preferredAgentSymbolName = "person.crop.circle"
     private static let fallbackAgentSymbolName = "person"
@@ -64,28 +66,49 @@ struct DocumentChatTray: View {
     }
 
     private var isTrailing: Bool { store.chatPlacement == .trailing }
+    private let glassCornerRadius: CGFloat = 18
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !isTrailing { dragHandle }
-            headerBar
-            Divider().opacity(0.3)
-            messageList
-            statusBanner
-            permissionBar
-            selectionIndicator
-            quickPromptBar
-            inputBar
+        HStack(spacing: 0) {
+            if isTrailing { sideDragHandle }
+            VStack(spacing: 0) {
+                if !isTrailing { dragHandle }
+                headerBar
+                Divider().opacity(0.3)
+                messageList
+                statusBanner
+                permissionBar
+                selectionIndicator
+                quickPromptBar
+                inputBar
+            }
         }
         .frame(height: isTrailing ? nil : trayHeight)
         .frame(maxHeight: isTrailing ? .infinity : nil)
-        .background(backgroundGradient)
-        .clipShape(RoundedRectangle(cornerRadius: isTrailing ? 0 : 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: isTrailing ? 0 : 14)
-                .stroke(Color.white.opacity(0.12), lineWidth: isTrailing ? 0 : 1)
+        .background {
+            if isTrailing {
+                Color.clear
+            } else {
+                backgroundGradient
+            }
+        }
+        .glassEffect(
+            isTrailing ? .regular : .identity,
+            in: RoundedRectangle(cornerRadius: glassCornerRadius)
         )
-        .shadow(color: .black.opacity(isTrailing ? 0 : 0.22), radius: 16, y: -3)
+        .clipShape(RoundedRectangle(cornerRadius: isTrailing ? glassCornerRadius : 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: isTrailing ? glassCornerRadius : 14)
+                .stroke(
+                    Color.white.opacity(isTrailing ? 0 : 0.12),
+                    lineWidth: isTrailing ? 0 : 1
+                )
+        )
+        .shadow(
+            color: .black.opacity(isTrailing ? 0.18 : 0.22),
+            radius: isTrailing ? 12 : 16,
+            y: isTrailing ? 0 : -3
+        )
         .onAppear {
             refocusInputIfNeeded()
             if selectedAgent == nil {
@@ -94,6 +117,7 @@ struct DocumentChatTray: View {
             wireFileCallbacks()
             wireOAuthCallback()
             attachEditorImage()
+            autoConnect()
         }
         .onChange(of: store.customAgents.map(\.name)) {
             if selectedAgent == nil {
@@ -108,6 +132,9 @@ struct DocumentChatTray: View {
         }
         .onChange(of: chatState.isLoading) {
             refocusInputIfNeeded()
+            if !chatState.isLoading {
+                _ = store.reloadOpenDocumentFromDisk(documentURL)
+            }
         }
         .onChange(of: selectedImageURL) {
             attachEditorImage()
@@ -131,63 +158,50 @@ struct DocumentChatTray: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Collaborate with Assistant")
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Assistant")
                     .font(.system(size: 13, weight: .semibold))
-                HStack(spacing: 8) {
-                    Label(documentURL.lastPathComponent, systemImage: "doc.text")
+                connectionBadge
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
+                    }
+                } label: {
+                    Image(systemName: store.chatPlacement == .bottom
+                          ? "rectangle.righthalf.inset.filled"
+                          : "rectangle.bottomhalf.inset.filled")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    connectionBadge
+                        .frame(width: 18, height: 18)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
+                .help(store.chatPlacement == .bottom ? "Move to Side" : "Move to Bottom")
+
+                Button {
+                    store.toggleChatForCurrentTab()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
-
-            Spacer()
-
-            modePicker
-
-            Button {
-                chatState.newChat()
-            } label: {
-                Image(systemName: "plus.message")
+            HStack(spacing: 8) {
+                Label(documentURL.lastPathComponent, systemImage: "doc.text")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                modePicker
             }
-            .buttonStyle(.plain)
-            .help("New Chat")
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
-                }
-            } label: {
-                Image(systemName: store.chatPlacement == .bottom
-                      ? "rectangle.righthalf.inset.filled"
-                      : "rectangle.bottomhalf.inset.filled")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help(store.chatPlacement == .bottom ? "Move to Side" : "Move to Bottom")
-
-            Button {
-                store.toggleChatForCurrentTab()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.leading, 14)
         .padding(.trailing, 12)
@@ -317,6 +331,28 @@ struct DocumentChatTray: View {
             .onHover { isHovering in
                 if isHovering {
                     NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+    }
+
+    private var sideDragHandle: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { gesture in
+                        let nextWidth = store.chatWidth - gesture.translation.width
+                        store.chatWidth = min(max(nextWidth, minWidth), maxWidth)
+                    }
+            )
+            .onHover { isHovering in
+                if isHovering {
+                    NSCursor.resizeLeftRight.push()
                 } else {
                     NSCursor.pop()
                 }
@@ -598,6 +634,18 @@ struct DocumentChatTray: View {
     }
 
     // MARK: - Actions
+
+    private func autoConnect() {
+        let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
+        chatState.startIfNeeded(
+            cwd: workspacePath,
+            filePath: documentURL.path,
+            agent: selectedAgent,
+            mcpServerManager: store.mcpServer,
+            documentURL: documentURL
+        )
+        wireFileCallbacks()
+    }
 
     private func wireOAuthCallback() {
         chatState.onOAuthRequest = { [openURL] url in

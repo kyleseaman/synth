@@ -661,6 +661,10 @@ import Observation
             return true
         }
         guard shouldFinish else { return }
+        for idx in toolCalls.indices where toolCalls[idx].status != "completed"
+            && toolCalls[idx].status != "failed" {
+            toolCalls[idx].status = "completed"
+        }
         onTurnComplete?()
     }
 }

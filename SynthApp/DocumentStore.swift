@@ -51,6 +51,7 @@ final class DocumentStore {
     var expandedFolders: Set<URL> = []
     var chatVisibleTabs: Set<URL> = []
     var chatPlacement: ChatPlacement = .bottom
+    var chatWidth: CGFloat = 360
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []

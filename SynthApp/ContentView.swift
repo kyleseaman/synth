@@ -342,8 +342,13 @@ struct ContentView: View {
                         HStack(spacing: 0) {
                             editorBlock
                             chatView
-                                .frame(width: 380)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .frame(width: store.chatWidth)
+                                .padding(.vertical, 8)
+                                .padding(.trailing, 8)
+                                .transition(
+                                    .move(edge: .trailing)
+                                    .combined(with: .opacity)
+                                )
                         }
                     } else {
                         editorBlock

@@ -82,12 +82,13 @@ struct ChatBubble: View {
 
             MarkdownText(message.content)
                 .font(.system(size: 13))
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(
                     message.role == .user
                         ? Color.accentColor.opacity(0.18)
-                        : Color.primary.opacity(0.06)
+                        : Color(nsColor: .textBackgroundColor).opacity(0.55)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
@@ -185,7 +186,7 @@ struct StreamingBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.primary.opacity(0.06))
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.55))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             Spacer(minLength: 70)
         }
