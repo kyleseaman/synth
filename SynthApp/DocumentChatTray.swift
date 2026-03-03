@@ -109,6 +109,20 @@ struct DocumentChatTray: View {
         .onChange(of: selectedImageURL) {
             attachEditorImage()
         }
+        .onChange(of: selectedAgent) {
+            guard chatState.isStarted else { return }
+            chatState.stop()
+            let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
+            chatState.startIfNeeded(
+                cwd: workspacePath,
+                filePath: documentURL.path,
+                agent: selectedAgent,
+                mcpServerManager: store.mcpServer,
+                documentURL: documentURL
+            )
+            wireFileCallbacks()
+            wireOAuthCallback()
+        }
     }
 
     // MARK: - Header
