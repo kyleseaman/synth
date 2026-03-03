@@ -19,6 +19,7 @@
 		1A000000000000000000004A /* ACPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001E /* ACPClient.swift */; };
 		1A000000000000000000004B /* DocumentChatState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000001F /* DocumentChatState.swift */; };
 		1A000000000000000000004C /* ACPTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000025 /* ACPTypes.swift */; };
+		1A0000000000000000000605 /* ACPSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000604 /* ACPSessionStore.swift */; };
 		1A000000000000000000004D /* ChatBubbles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000026 /* ChatBubbles.swift */; };
 		1A000000000000000000004E /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000027 /* ChatInputBar.swift */; };
 		1A000000000000000000004F /* FileTreeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000028 /* FileTreeNode.swift */; };
@@ -97,6 +98,7 @@
 		1A000000000000000000001E /* ACPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPClient.swift; sourceTree = "<group>"; };
 		1A000000000000000000001F /* DocumentChatState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentChatState.swift; sourceTree = "<group>"; };
 		1A0000000000000000000025 /* ACPTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPTypes.swift; sourceTree = "<group>"; };
+		1A0000000000000000000604 /* ACPSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACPSessionStore.swift; sourceTree = "<group>"; };
 		1A0000000000000000000026 /* ChatBubbles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatBubbles.swift; sourceTree = "<group>"; };
 		1A0000000000000000000027 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
 		1A0000000000000000000028 /* FileTreeNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeNode.swift; sourceTree = "<group>"; };
@@ -221,6 +223,7 @@
 				1A000000000000000000001E /* ACPClient.swift */,
 				1A000000000000000000001F /* DocumentChatState.swift */,
 				1A0000000000000000000025 /* ACPTypes.swift */,
+				1A0000000000000000000604 /* ACPSessionStore.swift */,
 				1A0000000000000000000026 /* ChatBubbles.swift */,
 				1A0000000000000000000027 /* ChatInputBar.swift */,
 				1A0000000000000000000028 /* FileTreeNode.swift */,
@@ -422,6 +425,7 @@
 				1A000000000000000000004A /* ACPClient.swift in Sources */,
 				1A000000000000000000004B /* DocumentChatState.swift in Sources */,
 				1A000000000000000000004C /* ACPTypes.swift in Sources */,
+				1A0000000000000000000605 /* ACPSessionStore.swift in Sources */,
 				1A000000000000000000004D /* ChatBubbles.swift in Sources */,
 				1A000000000000000000004E /* ChatInputBar.swift in Sources */,
 				1A000000000000000000004F /* FileTreeNode.swift in Sources */,

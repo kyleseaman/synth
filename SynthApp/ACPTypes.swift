@@ -117,11 +117,33 @@ struct ACPPermissionRequest: Identifiable {
     var diffContent: DiffContent?
 }
 
+// MARK: - ACP Session Modes
+
+struct ACPSessionMode: Identifiable {
+    let id: String
+    let name: String
+    let description: String?
+}
+
+// MARK: - ACP Slash Commands
+
+struct ACPSlashCommand: Identifiable {
+    var id: String { name }
+    let name: String
+    let description: String
+    let inputHint: String?
+}
+
+// MARK: - ACP Update Kinds
+
 enum ACPUpdateKind: Equatable {
     case agentMessageChunk
+    case userMessageChunk
     case toolCall
     case toolCallUpdate
     case turnEnd
+    case availableCommandsUpdate
+    case currentModeUpdate
 }
 
 enum ACPProtocolAdapter {
@@ -137,12 +159,18 @@ enum ACPProtocolAdapter {
         switch normalized {
         case "agentmessagechunk":
             return .agentMessageChunk
+        case "usermessagechunk":
+            return .userMessageChunk
         case "toolcall":
             return .toolCall
         case "toolcallupdate":
             return .toolCallUpdate
         case "turnend":
             return .turnEnd
+        case "availablecommandsupdate":
+            return .availableCommandsUpdate
+        case "currentmodeupdate":
+            return .currentModeUpdate
         default:
             return nil
         }

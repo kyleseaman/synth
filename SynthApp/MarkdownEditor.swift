@@ -1796,7 +1796,7 @@ struct MarkdownEditor: NSViewRepresentable {
         weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
-        private var lastContentHash: UInt64?
+        fileprivate var lastContentHash: UInt64?
         private var codeBlockRanges: [NSRange] = []
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
@@ -2107,6 +2107,7 @@ struct MarkdownEditor: NSViewRepresentable {
             range editedRange: NSRange,
             changeInLength delta: Int
         ) {
+            nonisolated(unsafe) let storage = textStorage
             MainActor.assumeIsolated {
                 guard editedMask.contains(.editedCharacters),
                       !isFormatting
@@ -2114,25 +2115,25 @@ struct MarkdownEditor: NSViewRepresentable {
                 isFormatting = true
                 defer { isFormatting = false }
 
-                let nsString = textStorage.string as NSString
+                let nsString = storage.string as NSString
                 var formatTarget = nsString.paragraphRange(
                     for: editedRange
                 )
 
                 // Extend to full code block if edit touches one
                 if let blockRange = codeBlockContaining(
-                    editedRange, in: textStorage.string
+                    editedRange, in: storage.string
                 ) {
                     formatTarget = NSUnionRange(
                         formatTarget, blockRange
                     )
                 }
 
-                formatRange(formatTarget, in: textStorage)
+                formatRange(formatTarget, in: storage)
                 codeBlockRanges = Self.findCodeBlockRanges(
-                    in: textStorage.string
+                    in: storage.string
                 )
-                lastContentHash = textStorage.string.fnv1a
+                lastContentHash = storage.string.fnv1a
             }
         }
 

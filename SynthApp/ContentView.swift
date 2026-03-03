@@ -334,7 +334,8 @@ struct ContentView: View {
                             documentURL: currentDoc.url,
                             documentContent: currentDoc.content.string,
                             selectedText: selectionContext?.selectedText,
-                            selectedLineRange: selectionContext?.selectedLineRange
+                            selectedLineRange: selectionContext?.selectedLineRange,
+                            selectedImageURL: nil
                         )
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)

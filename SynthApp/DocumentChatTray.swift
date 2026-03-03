@@ -4,10 +4,12 @@ import AppKit
 struct DocumentChatTray: View {
     var chatState: DocumentChatState
     @Environment(DocumentStore.self) var store
+    @Environment(\.openURL) private var openURL
     let documentURL: URL
     let documentContent: String
     var selectedText: String?
     var selectedLineRange: String?
+    var selectedImageURL: URL?
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 300
@@ -67,6 +69,7 @@ struct DocumentChatTray: View {
             headerBar
             Divider().opacity(0.3)
             messageList
+            statusBanner
             permissionBar
             selectionIndicator
             quickPromptBar
@@ -86,6 +89,8 @@ struct DocumentChatTray: View {
                 selectedAgent = Self.preferredAgentName(from: store.customAgents)
             }
             wireFileCallbacks()
+            wireOAuthCallback()
+            attachEditorImage()
         }
         .onChange(of: store.customAgents.map(\.name)) {
             if selectedAgent == nil {
@@ -100,6 +105,9 @@ struct DocumentChatTray: View {
         }
         .onChange(of: chatState.isLoading) {
             refocusInputIfNeeded()
+        }
+        .onChange(of: selectedImageURL) {
+            attachEditorImage()
         }
     }
 
@@ -120,6 +128,70 @@ struct DocumentChatTray: View {
 
             Spacer()
 
+            modePicker
+
+            Button {
+                chatState.newChat()
+            } label: {
+                Image(systemName: "plus.message")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("New Chat")
+
+            Button {
+                store.toggleChatForCurrentTab()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 12)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var modePicker: some View {
+        let modes = chatState.availableModes
+        if !modes.isEmpty {
+            Menu {
+                ForEach(modes) { mode in
+                    Button {
+                        chatState.setMode(mode.id)
+                    } label: {
+                        HStack {
+                            Text(mode.name)
+                            if chatState.currentModeId == mode.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: Self.agentSymbolName())
+                        .font(.system(size: 11))
+                    Text(currentModeName)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.primary.opacity(0.07))
+                .clipShape(Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
+        } else {
             Menu {
                 Button("Auto (Workspace Default)") { selectedAgent = nil }
                 if !store.customAgents.isEmpty {
@@ -144,22 +216,15 @@ struct DocumentChatTray: View {
             }
             .menuStyle(.borderlessButton)
             .buttonStyle(.plain)
-
-            Button {
-                store.toggleChatForCurrentTab()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-        .padding(.vertical, 10)
+    }
+
+    private var currentModeName: String {
+        if let modeId = chatState.currentModeId,
+           let mode = chatState.availableModes.first(where: { $0.id == modeId }) {
+            return mode.name
+        }
+        return "Agent"
     }
 
     private var connectionBadge: some View {
@@ -446,6 +511,25 @@ struct DocumentChatTray: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // MARK: - Status Banner
+
+    @ViewBuilder
+    private var statusBanner: some View {
+        if let status = chatState.statusMessage {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(Color.accentColor.opacity(0.08))
+        }
+    }
+
     // MARK: - Input Bar
 
     private var inputBar: some View {
@@ -453,7 +537,15 @@ struct DocumentChatTray: View {
             input: $input,
             onSend: sendMessage,
             isInputFocused: $isInputFocused,
-            isDisabled: chatState.isLoading
+            isDisabled: chatState.isLoading,
+            availableCommands: chatState.availableCommands,
+            pendingImages: chatState.pendingImages,
+            onPasteImage: { image in
+                chatState.addImage(image, label: "Pasted image")
+            },
+            onRemoveImage: { imageId in
+                chatState.removeImage(id: imageId)
+            }
         )
     }
 
@@ -472,6 +564,23 @@ struct DocumentChatTray: View {
     }
 
     // MARK: - Actions
+
+    private func wireOAuthCallback() {
+        chatState.onOAuthRequest = { [openURL] url in
+            openURL(url)
+        }
+    }
+
+    private func attachEditorImage() {
+        guard let imageURL = selectedImageURL,
+              let image = NSImage(contentsOf: imageURL) else { return }
+        let alreadyAttached = chatState.pendingImages.contains {
+            $0.label == imageURL.lastPathComponent
+        }
+        if !alreadyAttached {
+            chatState.addImage(image, label: imageURL.lastPathComponent)
+        }
+    }
 
     private func wireFileCallbacks() {
         chatState.onEditToolCompleted = { [weak store] locationPaths in
@@ -557,7 +666,8 @@ struct DocumentChatTray: View {
             cwd: workspacePath,
             filePath: documentURL.path,
             agent: selectedAgent,
-            mcpServerManager: store.mcpServer
+            mcpServerManager: store.mcpServer,
+            documentURL: documentURL
         )
         wireFileCallbacks()
 
@@ -595,6 +705,18 @@ struct DocumentChatTray: View {
 
     private func buildContentBlocks(prompt: String) -> [[String: AnyCodable]] {
         var blocks: [[String: AnyCodable]] = []
+
+        // Image content blocks
+        for chatImage in chatState.pendingImages {
+            if let base64 = chatImage.image.pngBase64 {
+                blocks.append([
+                    "type": AnyCodable("image"),
+                    "mimeType": AnyCodable("image/png"),
+                    "data": AnyCodable(base64)
+                ])
+            }
+        }
+        chatState.pendingImages.removeAll()
 
         if let selection = selectedText, !selection.isEmpty {
             let label = selectedLineRange ?? "selection"
