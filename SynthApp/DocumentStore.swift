@@ -61,6 +61,8 @@ final class DocumentStore {
     var pendingDeleteName: String = ""
     var pendingDeleteIsDirectory = false
     var showWorkspacePicker = false
+    var showDocxExport = false
+    var docxExportData: Data?
 
     let noteIndex = NoteIndex()
     let backlinkIndex = BacklinkIndex()
@@ -512,6 +514,22 @@ final class DocumentStore {
         backlinkIndex.updateFile(savedURL, content: savedContent)
         tagIndex.updateFile(savedURL, content: savedContent)
         peopleIndex.updateFile(savedURL, content: savedContent)
+    }
+
+    func exportAsDocx() {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
+        let doc = openFiles[currentIndex]
+        let plainText = MarkdownFormat.restoreMarkup(in: doc.content)
+        let rendered = MarkdownFormat().render(plainText)
+        let range = NSRange(location: 0, length: rendered.length)
+        let attrs: [NSAttributedString.DocumentAttributeKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.officeOpenXML
+        ]
+        guard let data = try? rendered.data(
+            from: range, documentAttributes: attrs
+        ) else { return }
+        docxExportData = data
+        showDocxExport = true
     }
 
     func saveAll() {

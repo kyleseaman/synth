@@ -98,6 +98,9 @@ struct SynthApp: App {
                     .keyboardShortcut("o")
                 Button("Save") { store.save() }
                     .keyboardShortcut("s")
+                Button("Export as Word Document...") { store.exportAsDocx() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(store.openFiles.isEmpty)
                 Divider()
                 Button("Close Tab") { store.closeCurrentTab() }
                     .keyboardShortcut("w")

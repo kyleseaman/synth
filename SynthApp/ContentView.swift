@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 extension Array {
     subscript(safe index: Int) -> Element? {
@@ -471,6 +472,16 @@ struct ContentView: View {
             if case .success(let url) = result {
                 store.setWorkspace(url)
             }
+        }
+        // swiftlint:disable:next force_unwrapping
+        .fileExporter(
+            isPresented: $store.showDocxExport,
+            document: store.docxExportData.map { DocxExportDocument(data: $0) },
+            contentType: UTType(filenameExtension: "docx")!,
+            defaultFilename: store.currentDocumentURL?
+                .deletingPathExtension().lastPathComponent.appending(".docx") ?? "Export.docx"
+        ) { _ in
+            store.docxExportData = nil
         }
         .sheet(item: $store.imageDetailURL) { mediaURL in
             MediaDetailView(
