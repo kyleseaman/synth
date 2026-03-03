@@ -295,8 +295,17 @@ struct ContentView: View {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
                     let selectionContext = selectionByDocument[currentDoc.url]
+                    let chatVisible = store.isChatVisibleForCurrentTab
+                    let chatView = DocumentChatTray(
+                        chatState: chatState,
+                        documentURL: currentDoc.url,
+                        documentContent: currentDoc.content.string,
+                        selectedText: selectionContext?.selectedText,
+                        selectedLineRange: selectionContext?.selectedLineRange,
+                        selectedImageURL: nil
+                    )
 
-                    ZStack(alignment: .bottom) {
+                    let editorBlock = ZStack(alignment: .bottom) {
                         EditorViewSimple { documentURL, selectedText, selectedLineRange in
                             let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
                             if trimmedText.isEmpty {
@@ -325,22 +334,26 @@ struct ContentView: View {
                                     chatState.dismissUndo()
                                 }
                             }
-                            .padding(.bottom, store.isChatVisibleForCurrentTab ? 8 : 16)
+                            .padding(.bottom, chatVisible ? 8 : 16)
                         }
                     }
 
-                    if store.isChatVisibleForCurrentTab {
-                        DocumentChatTray(
-                            chatState: chatState,
-                            documentURL: currentDoc.url,
-                            documentContent: currentDoc.content.string,
-                            selectedText: selectionContext?.selectedText,
-                            selectedLineRange: selectionContext?.selectedLineRange,
-                            selectedImageURL: nil
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if store.chatPlacement == .trailing && chatVisible {
+                        HStack(spacing: 0) {
+                            editorBlock
+                            chatView
+                                .frame(width: 380)
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    } else {
+                        editorBlock
+
+                        if chatVisible {
+                            chatView
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
                 } else {
                     Text("Open a file to start editing")

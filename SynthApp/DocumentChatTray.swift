@@ -63,9 +63,11 @@ struct DocumentChatTray: View {
         text
     }
 
+    private var isTrailing: Bool { store.chatPlacement == .trailing }
+
     var body: some View {
         VStack(spacing: 0) {
-            dragHandle
+            if !isTrailing { dragHandle }
             headerBar
             Divider().opacity(0.3)
             messageList
@@ -75,14 +77,15 @@ struct DocumentChatTray: View {
             quickPromptBar
             inputBar
         }
-        .frame(height: trayHeight)
+        .frame(height: isTrailing ? nil : trayHeight)
+        .frame(maxHeight: isTrailing ? .infinity : nil)
         .background(backgroundGradient)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: isTrailing ? 0 : 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: isTrailing ? 0 : 14)
+                .stroke(Color.white.opacity(0.12), lineWidth: isTrailing ? 0 : 1)
         )
-        .shadow(color: .black.opacity(0.22), radius: 16, y: -3)
+        .shadow(color: .black.opacity(isTrailing ? 0 : 0.22), radius: 16, y: -3)
         .onAppear {
             refocusInputIfNeeded()
             if selectedAgent == nil {
@@ -156,6 +159,23 @@ struct DocumentChatTray: View {
             }
             .buttonStyle(.plain)
             .help("New Chat")
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
+                }
+            } label: {
+                Image(systemName: store.chatPlacement == .bottom
+                      ? "rectangle.righthalf.inset.filled"
+                      : "rectangle.bottomhalf.inset.filled")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(store.chatPlacement == .bottom ? "Move to Side" : "Move to Bottom")
 
             Button {
                 store.toggleChatForCurrentTab()

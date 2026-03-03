@@ -20,6 +20,11 @@ enum DetailViewMode: Equatable {
     case media
 }
 
+enum ChatPlacement: String {
+    case bottom
+    case trailing
+}
+
 enum ActiveModal: Equatable {
     case fileLauncher
     case linkCapture
@@ -45,6 +50,7 @@ final class DocumentStore {
     var recentFiles: [URL] = []
     var expandedFolders: Set<URL> = []
     var chatVisibleTabs: Set<URL> = []
+    var chatPlacement: ChatPlacement = .bottom
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
