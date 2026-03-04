@@ -113,7 +113,7 @@ struct ChatInputBar: View {
                     }
                 }
                 .disabled(isDisabled)
-                .onPasteCommand(of: [.png, .tiff]) { providers in
+                .onPasteCommand(of: [.image]) { providers in
                     for provider in providers {
                         _ = provider.loadDataRepresentation(
                             for: .image
