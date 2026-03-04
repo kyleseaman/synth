@@ -610,9 +610,9 @@ struct FileNodeView: View {
                             store.expandedFolders.insert(node.url)
                         }
                     }
-                    .dropDestination(for: URL.self) { urls, _ in
-                        guard let source = urls.first else { return false }
-                        store.moveFile(from: source, to: node.url)
+                    .dropDestination(for: String.self) { paths, _ in
+                        guard let path = paths.first else { return false }
+                        store.moveFile(from: URL(fileURLWithPath: path), to: node.url)
                         return true
                     }
                     .contextMenu {
@@ -638,7 +638,7 @@ struct FileNodeView: View {
             FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
                 .contentShape(Rectangle())
                 .onTapGesture { store.open(node.url) }
-                .draggable(node.url)
+                .draggable(node.url.path)
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)
