@@ -1058,13 +1058,22 @@ extension DocumentStore {
         renameTarget = nil
     }
 
-    func moveFile(from source: URL, to destinationFolder: URL) {
-        let destURL = destinationFolder.appendingPathComponent(source.lastPathComponent)
-        guard source != destURL else { return }
+    func moveFile(from sourceURL: URL, to destinationFolder: URL) {
+        let targetURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
+        guard sourceURL != targetURL,
+              sourceURL.deletingLastPathComponent() != destinationFolder else { return }
+        // Prevent moving a folder into itself or its own subtree
+        if sourceURL.hasDirectoryPath || (try? sourceURL.resourceValues(
+            forKeys: [.isDirectoryKey]
+        ).isDirectory) == true {
+            let sourcePath = sourceURL.standardizedFileURL.path
+            let destPath = destinationFolder.standardizedFileURL.path
+            if destPath.hasPrefix(sourcePath) { return }
+        }
         do {
-            try FileManager.default.moveItem(at: source, to: destURL)
-            if let idx = openFiles.firstIndex(where: { $0.url == source }) {
-                openFiles[idx] = Document(url: destURL, content: openFiles[idx].content)
+            try FileManager.default.moveItem(at: sourceURL, to: targetURL)
+            if let idx = openFiles.firstIndex(where: { $0.url == sourceURL }) {
+                openFiles[idx] = Document(url: targetURL, content: openFiles[idx].content)
             }
             loadFileTree()
         } catch {}
@@ -1087,7 +1096,6 @@ extension DocumentStore {
         } catch {}
         newFolderParent = nil
     }
-
     func pickWorkspace() {
         showWorkspacePicker = true
     }

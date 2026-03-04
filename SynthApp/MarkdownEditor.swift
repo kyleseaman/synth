@@ -341,6 +341,45 @@ class FormattingTextView: NSTextView {
         super.paste(sender)
     }
 
+    // MARK: - Drag and Drop
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let pasteboard = sender.draggingPasteboard
+
+        // Try loading an image from a dropped file URL
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true,
+                      .urlReadingContentsConformToTypes: ["public.image"]]
+        ) as? [URL], let fileURL = urls.first,
+           let image = NSImage(contentsOf: fileURL) {
+            guard let markdown = imagePasteHandler?(image) else {
+                NSSound.beep()
+                return false
+            }
+            let dropPoint = convert(sender.draggingLocation, from: nil)
+            let charIndex = characterIndexForInsertion(at: dropPoint)
+            insertText(markdown, replacementRange: NSRange(location: charIndex, length: 0))
+            return true
+        }
+
+        // Try loading a dragged image directly (e.g. from browser)
+        if let image = pasteboard.readObjects(
+            forClasses: [NSImage.self], options: nil
+        )?.first as? NSImage {
+            guard let markdown = imagePasteHandler?(image) else {
+                NSSound.beep()
+                return false
+            }
+            let dropPoint = convert(sender.draggingLocation, from: nil)
+            let charIndex = characterIndexForInsertion(at: dropPoint)
+            insertText(markdown, replacementRange: NSRange(location: charIndex, length: 0))
+            return true
+        }
+
+        return super.performDragOperation(sender)
+    }
+
     override func insertNewline(_ sender: Any?) {
         // Dismiss wiki link popup on newline
         switch wikiLinkState {

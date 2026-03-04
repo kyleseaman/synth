@@ -1,12 +1,18 @@
 import Foundation
+import UniformTypeIdentifiers
+import CoreTransferable
 
-struct FileTreeNode: Identifiable, Equatable {
+struct FileTreeNode: Identifiable, Equatable, Transferable {
     let id: String
     let url: URL
     let isDirectory: Bool
     var children: [FileTreeNode]?
 
     var name: String { url.lastPathComponent }
+
+    static var transferRepresentation: some TransferRepresentation {
+        ProxyRepresentation(exporting: \.url)
+    }
 
     init(url: URL, isDirectory: Bool, children: [FileTreeNode]?) {
         self.id = url.path
