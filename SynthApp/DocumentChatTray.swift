@@ -365,14 +365,6 @@ struct DocumentChatTray: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    if Self.shouldShowChatHints(
-                        messageCount: chatState.messages.count,
-                        currentResponse: chatState.currentResponse,
-                        isLoading: chatState.isLoading
-                    ) {
-                        emptyStateView
-                    }
-
                     ForEach(chatState.messages) { message in
                         ChatBubble(message: message).id(message.id)
                     }
@@ -410,20 +402,6 @@ struct DocumentChatTray: View {
                 }
             }
         }
-    }
-
-    private var emptyStateView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Start a collaborative turn")
-                .font(.system(size: 13, weight: .semibold))
-            Text("I can read, edit, and reason over this workspace with your approval.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Selection Indicator
