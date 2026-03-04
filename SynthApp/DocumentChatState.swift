@@ -81,6 +81,10 @@ struct UndoSnapshot: Equatable {
                 self.messages.append(ChatMessage(role: .assistant, content: self.currentResponse))
                 self.currentResponse = ""
             }
+            for idx in self.toolCalls.indices where self.toolCalls[idx].status != "completed"
+                && self.toolCalls[idx].status != "failed" {
+                self.toolCalls[idx].status = "completed"
+            }
             self.isLoading = false
         }
 
