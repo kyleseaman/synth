@@ -135,54 +135,40 @@ struct DocumentChatTray: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text("Assistant")
-                    .font(.system(size: 13, weight: .semibold))
-                connectionBadge
-                Spacer()
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
-                    }
-                } label: {
-                    Image(systemName: store.chatPlacement == .bottom
-                          ? "rectangle.righthalf.inset.filled"
-                          : "rectangle.bottomhalf.inset.filled")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Color.primary.opacity(0.08))
-                        .clipShape(Circle())
+        HStack(spacing: 8) {
+            modePicker
+            Spacer()
+            Button {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
                 }
-                .buttonStyle(.plain)
-                .help(store.chatPlacement == .bottom ? "Move to Side" : "Move to Bottom")
-
-                Button {
-                    store.toggleChatForCurrentTab()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Color.primary.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            HStack(spacing: 8) {
-                Label(documentURL.lastPathComponent, systemImage: "doc.text")
+            } label: {
+                Image(systemName: store.chatPlacement == .bottom
+                      ? "rectangle.righthalf.inset.filled"
+                      : "rectangle.bottomhalf.inset.filled")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                modePicker
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(Circle())
             }
+            .buttonStyle(.plain)
+            .help(store.chatPlacement == .bottom ? "Move to Side" : "Move to Bottom")
+
+            Button {
+                store.toggleChatForCurrentTab()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -250,42 +236,6 @@ struct DocumentChatTray: View {
             return mode.name
         }
         return "Agent"
-    }
-
-    private var connectionBadge: some View {
-        Text(connectionTitle)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(connectionColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(connectionColor.opacity(0.15))
-            .clipShape(Capsule())
-    }
-
-    private var connectionTitle: String {
-        if chatState.acpClient?.connectionFailed == true {
-            return "Disconnected"
-        }
-        if chatState.acpClient?.isConnected == true, chatState.acpClient?.sessionId != nil {
-            return "Connected"
-        }
-        if chatState.isLoading || chatState.acpClient != nil {
-            return "Connecting"
-        }
-        return "Ready"
-    }
-
-    private var connectionColor: Color {
-        switch connectionTitle {
-        case "Connected":
-            return .green
-        case "Disconnected":
-            return .red
-        case "Connecting":
-            return .orange
-        default:
-            return .secondary
-        }
     }
 
     // MARK: - Drag Handle
@@ -404,8 +354,6 @@ struct DocumentChatTray: View {
             .padding(.top, 5)
         }
     }
-
-    // MARK: - Quick Prompts
 
     // MARK: - Permission Bar
 
