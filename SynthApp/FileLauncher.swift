@@ -196,7 +196,7 @@ struct FileLauncher: View {
                     .foregroundStyle(.secondary)
                 TextField("Search notes, files & people...", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 18))
+                    .font(Theme.uiSwiftUIFont(size: 18))
                     .focused($isSearchFocused)
                     .onSubmit { openSelected() }
             }
@@ -206,10 +206,10 @@ struct FileLauncher: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "sparkle.magnifyingglass")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                 Text("Try: tag:project  person:alex  path:meetings  \"exact phrase\"")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                 Spacer()
@@ -270,7 +270,7 @@ struct FileLauncher: View {
             }
             if case .note(let note) = result {
                 Text(note.preview)
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .padding(.leading, 20)
@@ -321,16 +321,16 @@ struct FileLauncher: View {
         VStack(alignment: .leading, spacing: 8) {
             if let selectedNoteResult {
                 Text(selectedNoteResult.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(selectedNoteResult.relativePath)
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                 Divider()
                 ScrollView {
                     Text(previewText(for: selectedNoteResult))
-                        .font(.system(size: 12))
+                        .font(Theme.uiSwiftUIFont(size: 12))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -338,7 +338,7 @@ struct FileLauncher: View {
             } else {
                 Spacer()
                 Text("Select a note result to preview the full context.")
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
@@ -471,7 +471,7 @@ struct FileDatesLabel: View {
                 Text("Created \(dates.created)")
                 Text("Modified \(dates.modified)")
             }
-            .font(.system(size: 10))
+            .font(Theme.uiSwiftUIFont(size: 10))
             .foregroundStyle(.quaternary)
             .padding(.leading, 20)
         }

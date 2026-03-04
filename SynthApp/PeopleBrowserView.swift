@@ -45,10 +45,10 @@ struct PeopleBrowserView: View {
             HStack {
                 Image(systemName: "person.fill")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 14))
+                    .font(Theme.uiSwiftUIFont(size: 14))
                 TextField("Filter people...", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(Theme.uiSwiftUIFont(size: 16))
                     .focused($isSearchFocused)
                 if !query.isEmpty {
                     Button {
@@ -128,7 +128,7 @@ struct PeopleBrowserView: View {
                     ForEach(Array(people.enumerated()), id: \.element.name) { index, person in
                         HStack {
                             Text("@\(person.name)")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                                 .foregroundColor(.purple)
                             Spacer()
                             Text("(\(person.count))")
@@ -175,9 +175,9 @@ struct PeopleBrowserView: View {
                         HStack {
                             Image(systemName: "doc.text")
                                 .foregroundStyle(.secondary)
-                                .font(.system(size: 12))
+                                .font(Theme.uiSwiftUIFont(size: 12))
                             Text(note.title)
-                                .font(.system(size: 13))
+                                .font(Theme.uiSwiftUIFont(size: 13))
                             Spacer()
                             Text(note.relativePath)
                                 .foregroundStyle(.tertiary)
@@ -234,11 +234,11 @@ struct PersonPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Text("@\(personName)")
-                .font(.system(size: 11, weight: .medium))
+                .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                 .foregroundColor(.purple)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(Theme.uiSwiftUIFont(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

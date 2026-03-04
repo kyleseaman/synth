@@ -45,10 +45,10 @@ struct TagBrowserView: View {
             HStack {
                 Image(systemName: "number")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: 14))
+                    .font(Theme.uiSwiftUIFont(size: 14))
                 TextField("Filter tags...", text: $query)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 16))
+                    .font(Theme.uiSwiftUIFont(size: 16))
                     .focused($isSearchFocused)
                 if !query.isEmpty {
                     Button {
@@ -128,7 +128,7 @@ struct TagBrowserView: View {
                     ForEach(Array(tags.enumerated()), id: \.element.name) { index, tag in
                         HStack {
                             Text("#\(tag.name)")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                                 .foregroundColor(.teal)
                             Spacer()
                             Text("(\(tag.count))")
@@ -175,9 +175,9 @@ struct TagBrowserView: View {
                         HStack {
                             Image(systemName: "doc.text")
                                 .foregroundStyle(.secondary)
-                                .font(.system(size: 12))
+                                .font(Theme.uiSwiftUIFont(size: 12))
                             Text(note.title)
-                                .font(.system(size: 13))
+                                .font(Theme.uiSwiftUIFont(size: 13))
                             Spacer()
                             Text(note.relativePath)
                                 .foregroundStyle(.tertiary)
@@ -234,11 +234,11 @@ struct TagPill: View {
     var body: some View {
         HStack(spacing: 4) {
             Text("#\(tagName)")
-                .font(.system(size: 11, weight: .medium))
+                .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                 .foregroundColor(.teal)
             Button(action: onRemove) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(Theme.uiSwiftUIFont(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

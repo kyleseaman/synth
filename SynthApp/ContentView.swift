@@ -173,7 +173,7 @@ struct ContentView: View {
                 if store.workspace == nil {
                     VStack(spacing: 12) {
                         Image(systemName: "folder.badge.plus")
-                            .font(.system(size: 32))
+                            .font(Theme.uiSwiftUIFont(size: 32))
                             .foregroundStyle(.secondary)
                         Text("No workspace open")
                             .foregroundStyle(.secondary)
@@ -383,7 +383,7 @@ struct ContentView: View {
                         store.toggleChatForCurrentTab()
                     } label: {
                         Image(systemName: "sparkles")
-                            .font(.system(size: 16))
+                            .font(Theme.uiSwiftUIFont(size: 16))
                             .padding(10)
                     }
                     .buttonStyle(.plain)
@@ -727,13 +727,13 @@ struct TabButton: View {
         Button(action: onSelect) {
             HStack(spacing: 6) {
                 Text(title)
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .lineLimit(1)
 
                 if let onClose {
                     Button(action: onClose) {
                         Image(systemName: isDirty ? "circle.fill" : "xmark")
-                            .font(.system(size: isDirty ? 6 : 9, weight: .bold))
+                            .font(Theme.uiSwiftUIFont(size: isDirty ? 6 : 9, weight: .bold))
                             .foregroundStyle(isDirty ? .orange : .secondary)
                     }
                     .buttonStyle(.plain)
@@ -763,13 +763,13 @@ struct KiroSetupBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "sparkles")
-                .font(.system(size: 16))
+                .font(Theme.uiSwiftUIFont(size: 16))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Set up AI for this workspace")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                 Text("Create .kiro/ with steering context and agents")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -777,7 +777,7 @@ struct KiroSetupBanner: View {
                 .controlSize(.small)
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10))
+                    .font(Theme.uiSwiftUIFont(size: 10))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -955,7 +955,7 @@ struct MediaGridView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     Text("Screenshots (\(store.mediaFiles.count))")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     LazyVGrid(columns: gridColumns, spacing: 12) {
@@ -1023,7 +1023,7 @@ struct MediaDetailView: View {
             // Toolbar
             HStack {
                 Text(mediaURL.lastPathComponent)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(Theme.uiSwiftUIFont(size: 14, weight: .semibold))
                     .lineLimit(1)
 
                 Spacer()
@@ -1046,7 +1046,7 @@ struct MediaDetailView: View {
                     dismiss()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(Theme.uiSwiftUIFont(size: 18))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -1079,7 +1079,7 @@ struct MediaDetailView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: 11))
+                        .font(Theme.uiSwiftUIFont(size: 11))
                     ForEach(
                         referencingNotes,
                         id: \.url
@@ -1088,7 +1088,7 @@ struct MediaDetailView: View {
                             onNavigate(note.url)
                         }
                         .buttonStyle(.link)
-                        .font(.system(size: 12))
+                        .font(Theme.uiSwiftUIFont(size: 12))
                     }
                     Spacer()
                 }
@@ -1149,7 +1149,7 @@ struct MediaTile: View {
                             onCopy()
                         } label: {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 11))
+                                .font(Theme.uiSwiftUIFont(size: 11))
                                 .padding(6)
                         }
                         .buttonStyle(.plain)
@@ -1161,7 +1161,7 @@ struct MediaTile: View {
                             onDelete()
                         } label: {
                             Image(systemName: "trash")
-                                .font(.system(size: 11))
+                                .font(Theme.uiSwiftUIFont(size: 11))
                                 .foregroundStyle(.red)
                                 .padding(6)
                         }
@@ -1183,10 +1183,10 @@ struct MediaTile: View {
             }
 
             Text(mediaURL.lastPathComponent)
-                .font(.system(size: 12, weight: .medium))
+                .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                 .lineLimit(2)
             Text("media/\(mediaURL.lastPathComponent)")
-                .font(.system(size: 11))
+                .font(Theme.uiSwiftUIFont(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }

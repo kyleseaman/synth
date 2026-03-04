@@ -14,7 +14,7 @@ struct MeetingNoteView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Meeting Note")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Theme.uiSwiftUIFont(size: 16, weight: .semibold))
 
             if hasWorkspace {
                 TextField("Meeting name", text: $meetingName)
@@ -23,7 +23,7 @@ struct MeetingNoteView: View {
                     .onSubmit { create() }
             } else {
                 Text("Open a workspace first to create meeting notes.")
-                    .font(.system(size: 13))
+                    .font(Theme.uiSwiftUIFont(size: 13))
                     .foregroundStyle(.secondary)
             }
 

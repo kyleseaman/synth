@@ -170,6 +170,9 @@ struct SettingsView: View {
                 )
             }
         }
+        .onChange(of: editorFontCandidates) { Theme.invalidateFontCache() }
+        .onChange(of: terminalFontCandidates) { Theme.invalidateFontCache() }
+        .onChange(of: sidebarFontCandidates) { Theme.invalidateFontCache() }
     }
 
     // MARK: - Context

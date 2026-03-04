@@ -67,7 +67,7 @@ struct ChatBubble: View {
             if message.role == .user { Spacer(minLength: 40) }
 
             MarkdownText(message.content)
-                .font(.system(size: 14))
+                .font(Theme.uiSwiftUIFont(size: 14))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -84,7 +84,7 @@ struct ChatBubble: View {
                             NSPasteboard.general.setString(message.content, forType: .string)
                         } label: {
                             Image(systemName: "doc.on.doc")
-                                .font(.system(size: 10))
+                                .font(Theme.uiSwiftUIFont(size: 10))
                                 .padding(4)
                                 .background(.regularMaterial)
                                 .cornerRadius(4)
@@ -124,7 +124,7 @@ struct ThinkingStatusIndicator: View {
                         .frame(width: 18, height: 18)
                         .scaleEffect(pulseScale)
                     Image(systemName: "brain.head.profile")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(Theme.uiSwiftUIFont(size: 10, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                 }
 
@@ -142,7 +142,7 @@ struct ThinkingStatusIndicator: View {
                 }
 
                 Text("\(statusText)...")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -159,7 +159,7 @@ struct StreamingBubble: View {
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
                     MarkdownText(text)
-                        .font(.system(size: 14))
+                        .font(Theme.uiSwiftUIFont(size: 14))
                 }
                 if isLoading {
                     ThinkingStatusIndicator(latestToolCall: latestToolCall)
@@ -205,17 +205,17 @@ struct ToolCallBubble: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: iconName)
-                .font(.system(size: 10))
+                .font(Theme.uiSwiftUIFont(size: 10))
                 .foregroundStyle(statusColor)
             Text(toolCall.title)
-                .font(.system(size: 11))
+                .font(Theme.uiSwiftUIFont(size: 11))
                 .lineLimit(1)
             Spacer()
             if toolCall.status == "in_progress" {
                 ProgressView().scaleEffect(0.5)
             } else {
                 Text(toolCall.status)
-                    .font(.system(size: 10))
+                    .font(Theme.uiSwiftUIFont(size: 10))
                     .foregroundStyle(.secondary)
             }
         }
@@ -255,9 +255,9 @@ struct UndoToast: View {
         Button(action: onUndo) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                 Text("Undo AI edit")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
