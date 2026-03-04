@@ -147,7 +147,7 @@ struct ChatInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.9))
+        .background(Color.primary.opacity(0.05))
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
     }
