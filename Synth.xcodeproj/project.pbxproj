@@ -11,6 +11,7 @@
 		1A0000000000000000000041 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000015 /* Theme.swift */; };
 		1A0000000000000000000042 /* Document.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000016 /* Document.swift */; };
 		1A0000000000000000000701 /* DocxExportDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000700 /* DocxExportDocument.swift */; };
+		1A0000000000000000000801 /* EditorHelperViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000800 /* EditorHelperViews.swift */; };
 		1B314FD176A9126C2D604BDE /* MarkdownEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */; };
 		1D9182416C9E0B08F19A681C /* FileLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CED1C0DF1D02542388054A9 /* FileLauncher.swift */; };
 		1A0000000000000000000045 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000019 /* ContentView.swift */; };
@@ -92,6 +93,7 @@
 		1A0000000000000000000015 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		1A0000000000000000000016 /* Document.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Document.swift; sourceTree = "<group>"; };
 		1A0000000000000000000700 /* DocxExportDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocxExportDocument.swift; sourceTree = "<group>"; };
+		1A0000000000000000000800 /* EditorHelperViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorHelperViews.swift; sourceTree = "<group>"; };
 		1AA6ED82B3EDEA8D09A55E16 /* MarkdownEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownEditor.swift; sourceTree = "<group>"; };
 		1CED1C0DF1D02542388054A9 /* FileLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLauncher.swift; sourceTree = "<group>"; };
 		1A0000000000000000000019 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				1A0000000000000000000015 /* Theme.swift */,
 				1A0000000000000000000016 /* Document.swift */,
 				1A0000000000000000000700 /* DocxExportDocument.swift */,
+				1A0000000000000000000800 /* EditorHelperViews.swift */,
 				1A0000000000000000000111 /* NoteIndex.swift */,
 				1A0000000000000000000112 /* WikiLinkPopover.swift */,
 				1A0000000000000000000113 /* DailyNoteResolver.swift */,
@@ -424,6 +427,7 @@
 				1A0000000000000000000041 /* Theme.swift in Sources */,
 				1A0000000000000000000042 /* Document.swift in Sources */,
 				1A0000000000000000000701 /* DocxExportDocument.swift in Sources */,
+				1A0000000000000000000801 /* EditorHelperViews.swift in Sources */,
 				2A0000000000000000000701 /* NoteIndex.swift in Sources */,
 				2A0000000000000000000702 /* WikiLinkPopover.swift in Sources */,
 				2A0000000000000000000703 /* DailyNoteResolver.swift in Sources */,

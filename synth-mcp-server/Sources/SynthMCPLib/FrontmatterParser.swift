@@ -73,7 +73,11 @@ public enum FrontmatterParser {
     }
 
     /// Reconstruct content from modified frontmatter fields and body.
-    public static func reconstruct(fields: [String: FrontmatterValue], body: String, fieldOrder: [String]? = nil) -> String {
+    public static func reconstruct(
+        fields: [String: FrontmatterValue],
+        body: String,
+        fieldOrder: [String]? = nil
+    ) -> String {
         var yaml = ""
         let keys = fieldOrder ?? fields.keys.sorted()
         for key in keys {

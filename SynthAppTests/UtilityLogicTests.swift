@@ -1670,8 +1670,7 @@ extension DocumentModelTests {
         let rendered = MarkdownFormat().render("See [[My Note]] here")
         // Wiki links should have a link attribute
         var hasLink = false
-        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) {
-            value, _, _ in
+        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) { value, _, _ in
             if value != nil { hasLink = true }
         }
         XCTAssertTrue(hasLink)
