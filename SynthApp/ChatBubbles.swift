@@ -67,7 +67,7 @@ struct ChatBubble: View {
             if message.role == .user { Spacer(minLength: 40) }
 
             MarkdownText(message.content)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -159,7 +159,7 @@ struct StreamingBubble: View {
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
                     MarkdownText(text)
-                        .font(.system(size: 13))
+                        .font(.system(size: 14))
                 }
                 if isLoading {
                     ThinkingStatusIndicator(latestToolCall: latestToolCall)

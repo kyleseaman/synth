@@ -103,7 +103,7 @@ struct ChatInputBar: View {
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 8) {
             TextField(placeholder, text: $input, axis: .vertical)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .focused($isInputFocused)
