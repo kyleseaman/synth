@@ -510,11 +510,10 @@ struct ContentView: View {
                 store.setWorkspace(url)
             }
         }
-        // swiftlint:disable:next force_unwrapping
         .fileExporter(
             isPresented: $store.showDocxExport,
             document: store.docxExportData.map { DocxExportDocument(data: $0) },
-            contentType: UTType(filenameExtension: "docx")!,
+            contentType: UTType(filenameExtension: "docx") ?? .data,
             defaultFilename: store.currentDocumentURL?
                 .deletingPathExtension().lastPathComponent.appending(".docx") ?? "Export.docx"
         ) { _ in

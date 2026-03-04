@@ -51,14 +51,11 @@ struct DailyNotesView: View {
                         DailyNoteSection(
                             entry: entry,
                             onContentChange: { newContent in
-                                let didCreate = store.dailyNoteManager
+                                store.dailyNoteManager
                                     .updateContent(
                                         for: entry.id,
                                         newContent: newContent
                                     )
-                                if didCreate {
-                                    store.loadFileTree()
-                                }
                             },
                             store: store
                         )

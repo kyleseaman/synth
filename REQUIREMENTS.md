@@ -2,7 +2,7 @@
 
 ## 1. Metadata
 - Product: Synth
-- Platform: Native macOS application (SwiftUI + AppKit + optional Rust static library)
+- Platform: Native macOS application (SwiftUI + AppKit)
 - Document date: 2026-02-13
 - Document intent: Define the true requirements implied by the current implemented application, not a speculative roadmap.
 
@@ -51,7 +51,6 @@ Primary jobs:
   - `TagIndex`
   - `PeopleIndex`
 - AR-004: Index rebuilds must use unified single-pass file reads via `UnifiedIndexer` for markdown/text files.
-- AR-005: The app must remain functional without the Rust FFI path; Rust linkage is build-time dependency, not a required runtime code path in current implementation.
 
 ### 6.2 Workspace Boundary Model
 - AR-010: All destructive file operations (delete file/folder/media) must be constrained to allowed workspace scopes.
@@ -331,9 +330,7 @@ Primary jobs:
 - `Opt+Cmd+1...9`: Template insertion (if slot assigned)
 
 ## 11. Known Gaps / Constraints in Current Baseline
-- GAP-001: `hideSyntax` setting is exposed but not currently wired to rendering behavior in current code state.
-- GAP-002: Rust FFI exports exist and are linked, but no active Swift call sites use them in current baseline.
-- GAP-003: Some behavior is preference-driven but lacks explicit UI discoverability (for example durable MCP HTTP bridge implications).
+- GAP-001: Some behavior is preference-driven but lacks explicit UI discoverability (for example durable MCP HTTP bridge implications are now surfaced in the MCP settings tab).
 
 ## 12. Acceptance Criteria (Baseline Verification)
 - AC-001: App builds successfully for macOS target.
