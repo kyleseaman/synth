@@ -635,10 +635,11 @@ struct FileNodeView: View {
                     }
             }
         } else {
-            FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
-                .contentShape(Rectangle())
-                .onTapGesture { store.open(node.url) }
-                .draggable(node.url.path)
+            Button { store.open(node.url) } label: {
+                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
+            }
+            .buttonStyle(.plain)
+            .draggable(node.url.path)
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)
