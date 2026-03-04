@@ -610,9 +610,17 @@ struct FileNodeView: View {
                             store.expandedFolders.insert(node.url)
                         }
                     }
-                    .dropDestination(for: String.self) { paths, _ in
-                        guard let path = paths.first else { return false }
-                        store.moveFile(from: URL(fileURLWithPath: path), to: node.url)
+                    .onDrop(of: [.plainText], isTargeted: nil) { providers in
+                        guard let provider = providers.first else { return false }
+                        _ = provider.loadObject(ofClass: NSString.self) { path, _ in
+                            guard let path = path as? String else { return }
+                            DispatchQueue.main.async {
+                                store.moveFile(
+                                    from: URL(fileURLWithPath: path),
+                                    to: node.url
+                                )
+                            }
+                        }
                         return true
                     }
                     .contextMenu {
@@ -639,7 +647,7 @@ struct FileNodeView: View {
                 FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
             }
             .buttonStyle(.plain)
-            .draggable(node.url.path)
+            .onDrag { NSItemProvider(object: node.url.path as NSString) }
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)
