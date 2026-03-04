@@ -56,7 +56,6 @@ struct DocumentChatTray: View {
                 Divider().opacity(0.3)
                 messageList
                 statusBanner
-                permissionBar
                 selectionIndicator
                 inputBar
             }
@@ -359,6 +358,7 @@ struct DocumentChatTray: View {
                         )
                         .id("streaming")
                     }
+                    permissionBar
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -377,6 +377,11 @@ struct DocumentChatTray: View {
             .onChange(of: chatState.toolCalls.count) {
                 if let lastCall = chatState.toolCalls.last {
                     proxy.scrollTo(lastCall.id, anchor: .bottom)
+                }
+            }
+            .onChange(of: chatState.pendingPermission?.id) {
+                if chatState.pendingPermission != nil {
+                    proxy.scrollTo("permission", anchor: .bottom)
                 }
             }
         }
@@ -464,6 +469,7 @@ struct DocumentChatTray: View {
             .cornerRadius(9)
             .padding(.horizontal, 14)
             .padding(.top, 6)
+            .id("permission")
         }
     }
 
