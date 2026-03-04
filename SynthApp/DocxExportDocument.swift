@@ -2,8 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct DocxExportDocument: FileDocument {
-    // swiftlint:disable:next force_unwrapping
-    static var readableContentTypes: [UTType] { [UTType(filenameExtension: "docx")!] }
+    static var readableContentTypes: [UTType] {
+        if let docx = UTType(filenameExtension: "docx") {
+            return [docx]
+        }
+        return [.data]
+    }
     static var writableContentTypes: [UTType] { readableContentTypes }
 
     let data: Data

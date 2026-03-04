@@ -102,15 +102,8 @@ struct ChatInputBar: View {
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(Theme.uiSwiftUIFont(size: 12, weight: .semibold))
-                .foregroundStyle(Color.accentColor.opacity(0.9))
-                .padding(6)
-                .background(Color.accentColor.opacity(0.12))
-                .clipShape(Circle())
-
             TextField(placeholder, text: $input, axis: .vertical)
-                .font(Theme.uiSwiftUIFont(size: 13))
+                .font(Theme.uiSwiftUIFont(size: 14))
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .focused($isInputFocused)
@@ -120,7 +113,7 @@ struct ChatInputBar: View {
                     }
                 }
                 .disabled(isDisabled)
-                .onPasteCommand(of: [.png, .tiff]) { providers in
+                .onPasteCommand(of: [.image]) { providers in
                     for provider in providers {
                         _ = provider.loadDataRepresentation(
                             for: .image
@@ -154,7 +147,7 @@ struct ChatInputBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.9))
+        .background(Color.primary.opacity(0.05))
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
     }

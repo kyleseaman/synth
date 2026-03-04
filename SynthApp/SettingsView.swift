@@ -26,6 +26,7 @@ struct SettingsView: View {
             generalTab.tabItem { Label("General", systemImage: "gear") }
             fontsTab.tabItem { Label("Fonts", systemImage: "textformat") }
             contextTab.tabItem { Label("Context", systemImage: "doc.text.magnifyingglass") }
+            mcpTab.tabItem { Label("MCP", systemImage: "server.rack") }
             agentsTab.tabItem { Label("Agents", systemImage: "cpu") }
             templatesTab.tabItem { Label("Templates", systemImage: "text.badge.plus") }
         }
@@ -241,6 +242,93 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - MCP
+
+    private var mcpTab: some View {
+        List {
+            Section {
+                HStack {
+                    Label(
+                        store.mcpServer.isRunning ? "Running" : "Stopped",
+                        systemImage: store.mcpServer.isRunning
+                            ? "circle.fill" : "circle"
+                    )
+                    .foregroundStyle(store.mcpServer.isRunning ? .green : .secondary)
+                    Spacer()
+                    if store.mcpServer.isRunning {
+                        Text("Port \(store.mcpServer.httpPort)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Toggle("Enable HTTP bridge", isOn: $mcpHttpBridgeEnabled)
+                Text(
+                    "When enabled, synth-mcp-server runs on localhost:\(store.mcpServer.httpPort) "
+                    + "for external MCP clients. The AI chat always uses a per-session stdio connection."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("Server Status")
+            }
+
+            Section {
+                ForEach(mcpToolDescriptions, id: \.name) { tool in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tool.name)
+                            .font(.system(.body, design: .monospaced))
+                        Text(tool.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Available Tools (\(mcpToolDescriptions.count))")
+            } footer: {
+                Text("These tools give the AI full read/write access to your workspace notes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Usage") {
+                Text(
+                    "The MCP server exposes workspace tools over JSON-RPC 2.0. "
+                    + "Synth's AI chat connects automatically via stdio.\n\n"
+                    + "To use with external clients (Claude Desktop, etc.):\n"
+                    + "1. Enable the HTTP bridge above\n"
+                    + "2. Point your client to http://localhost:\(store.mcpServer.httpPort)/sse\n"
+                    + "3. The server auto-starts when a workspace is open"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("CLI") {
+                Text(
+                    "You can also run the server directly:\n"
+                    + "synth-mcp-server --workspace /path/to/notes --mode stdio\n"
+                    + "synth-mcp-server --workspace /path/to/notes --mode http --port 9712"
+                )
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            }
+        }
+    }
+
+    private var mcpToolDescriptions: [(name: String, description: String)] {
+        [
+            ("read_note", "Read the contents of a note by path"),
+            ("create_note", "Create a new note with content"),
+            ("update_note", "Append or prepend content to a note"),
+            ("list_notes", "List all notes in the workspace"),
+            ("global_search", "Full-text search across all notes"),
+            ("get_backlinks", "Find notes that link to a given note"),
+            ("manage_tags", "List, add, or remove tags"),
+            ("get_people", "List @mentioned people across notes")
+        ]
     }
 
     // MARK: - Agents

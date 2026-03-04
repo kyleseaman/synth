@@ -303,31 +303,6 @@ final class UtilityLogicTests: XCTestCase {
     }
 
     @MainActor
-    func testDocumentChatTrayQuickPromptsFocusOnDocumentEditing() {
-        let chatState = DocumentChatState()
-        let tray = DocumentChatTray(
-            chatState: chatState,
-            documentURL: URL(fileURLWithPath: "/tmp/notes.md"),
-            documentContent: "Draft content",
-            selectedText: nil,
-            selectedLineRange: nil
-        )
-
-        let reflectedTray = Mirror(reflecting: tray)
-        guard let quickPrompts = reflectedTray.children.first(where: { $0.label == "quickPrompts" })?.value
-            as? [String] else {
-            XCTFail("Failed to inspect quick prompts from DocumentChatTray")
-            return
-        }
-
-        XCTAssertEqual(quickPrompts, [
-            "Summarize this document into key points",
-            "Rewrite this section for clarity and flow",
-            "Improve headings and overall structure",
-            "Find gaps, ambiguities, or inconsistencies"
-        ])
-    }
-
     func testDocumentChatTrayPreferredAgentNameSelectsWriter() {
         let agents = [
             AgentInfo(name: "synth-editor", description: nil),
@@ -392,45 +367,6 @@ final class UtilityLogicTests: XCTestCase {
             ThinkingAnimation.statusText(for: 0, latestToolCall: editCall),
             "Editing"
         )
-    }
-
-    @MainActor
-    func testDocumentChatTrayHintsOnlyShownBeforeConversationStarts() {
-        XCTAssertTrue(
-            DocumentChatTray.shouldShowChatHints(
-                messageCount: 0,
-                currentResponse: "",
-                isLoading: false
-            )
-        )
-        XCTAssertFalse(
-            DocumentChatTray.shouldShowChatHints(
-                messageCount: 1,
-                currentResponse: "",
-                isLoading: false
-            )
-        )
-        XCTAssertFalse(
-            DocumentChatTray.shouldShowChatHints(
-                messageCount: 0,
-                currentResponse: "partial",
-                isLoading: true
-            )
-        )
-    }
-
-    @MainActor
-    func testDocumentChatTrayDisplayedQuickPromptsCapsAtThree() {
-        let prompts = [
-            "one",
-            "two",
-            "three",
-            "four"
-        ]
-
-        let displayed = DocumentChatTray.displayedQuickPrompts(from: prompts)
-
-        XCTAssertEqual(displayed, ["one", "two", "three"])
     }
 
     func testDocumentChatTrayDisplayedPermissionDiffTextPreservesFullContent() {
@@ -1670,8 +1606,7 @@ extension DocumentModelTests {
         let rendered = MarkdownFormat().render("See [[My Note]] here")
         // Wiki links should have a link attribute
         var hasLink = false
-        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) {
-            value, _, _ in
+        rendered.enumerateAttribute(.link, in: NSRange(location: 0, length: rendered.length)) { value, _, _ in
             if value != nil { hasLink = true }
         }
         XCTAssertTrue(hasLink)

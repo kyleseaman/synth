@@ -18,16 +18,9 @@ struct DocumentChatTray: View {
 
     private let minHeight: CGFloat = 180
     private let maxHeight: CGFloat = 720
+    private let minWidth: CGFloat = 280
+    private let maxWidth: CGFloat = 640
     private static let preferredAgentIdentifier = "synth-writer"
-    private static let preferredAgentSymbolName = "person.crop.circle"
-    private static let fallbackAgentSymbolName = "person"
-    private static let maxQuickPromptCount = 3
-    private let quickPrompts = [
-        "Summarize this document into key points",
-        "Rewrite this section for clarity and flow",
-        "Improve headings and overall structure",
-        "Find gaps, ambiguities, or inconsistencies"
-    ]
 
     static func preferredAgentName(from agents: [AgentInfo]) -> String? {
         if agents.contains(where: { $0.name == preferredAgentIdentifier }) {
@@ -36,27 +29,15 @@ struct DocumentChatTray: View {
         return agents.first(where: { $0.name.localizedCaseInsensitiveContains("writer") })?.name
     }
 
-    static func shouldShowChatHints(
-        messageCount: Int,
-        currentResponse: String,
-        isLoading: Bool
-    ) -> Bool {
-        messageCount == 0 && currentResponse.isEmpty && !isLoading
-    }
-
     static func agentSymbolName(
         symbolExists: (String) -> Bool = { symbolName in
             NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil
         }
     ) -> String {
-        if symbolExists(preferredAgentSymbolName) {
-            return preferredAgentSymbolName
+        if symbolExists("person.crop.circle") {
+            return "person.crop.circle"
         }
-        return fallbackAgentSymbolName
-    }
-
-    static func displayedQuickPrompts(from prompts: [String]) -> [String] {
-        Array(prompts.prefix(maxQuickPromptCount))
+        return "person"
     }
 
     static func displayedPermissionDiffText(_ text: String) -> String {
@@ -64,28 +45,51 @@ struct DocumentChatTray: View {
     }
 
     private var isTrailing: Bool { store.chatPlacement == .trailing }
+    private let glassCornerRadius: CGFloat = 18
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !isTrailing { dragHandle }
-            headerBar
-            Divider().opacity(0.3)
-            messageList
-            statusBanner
-            permissionBar
-            selectionIndicator
-            quickPromptBar
-            inputBar
+        HStack(spacing: 0) {
+            if isTrailing { sideDragHandle }
+            VStack(spacing: 0) {
+                if !isTrailing { dragHandle }
+                headerBar
+                Divider().opacity(0.3)
+                ZStack(alignment: .bottom) {
+                    messageList
+                    VStack(spacing: 0) {
+                        statusBanner
+                        selectionIndicator
+                        inputBar
+                    }
+                }
+            }
         }
         .frame(height: isTrailing ? nil : trayHeight)
         .frame(maxHeight: isTrailing ? .infinity : nil)
-        .background(backgroundGradient)
-        .clipShape(RoundedRectangle(cornerRadius: isTrailing ? 0 : 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: isTrailing ? 0 : 14)
-                .stroke(Color.white.opacity(0.12), lineWidth: isTrailing ? 0 : 1)
+        .background {
+            if isTrailing {
+                Color.clear
+            } else {
+                backgroundGradient
+            }
+        }
+        .glassEffect(
+            isTrailing ? .regular : .identity,
+            in: RoundedRectangle(cornerRadius: glassCornerRadius)
         )
-        .shadow(color: .black.opacity(isTrailing ? 0 : 0.22), radius: 16, y: -3)
+        .clipShape(RoundedRectangle(cornerRadius: isTrailing ? glassCornerRadius : 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: isTrailing ? glassCornerRadius : 14)
+                .stroke(
+                    Color.white.opacity(isTrailing ? 0 : 0.12),
+                    lineWidth: isTrailing ? 0 : 1
+                )
+        )
+        .shadow(
+            color: .black.opacity(isTrailing ? 0.18 : 0.22),
+            radius: isTrailing ? 12 : 16,
+            y: isTrailing ? 0 : -3
+        )
         .onAppear {
             refocusInputIfNeeded()
             if selectedAgent == nil {
@@ -94,6 +98,7 @@ struct DocumentChatTray: View {
             wireFileCallbacks()
             wireOAuthCallback()
             attachEditorImage()
+            autoConnect()
         }
         .onChange(of: store.customAgents.map(\.name)) {
             if selectedAgent == nil {
@@ -108,6 +113,9 @@ struct DocumentChatTray: View {
         }
         .onChange(of: chatState.isLoading) {
             refocusInputIfNeeded()
+            if !chatState.isLoading {
+                _ = store.reloadOpenDocumentFromDisk(documentURL)
+            }
         }
         .onChange(of: selectedImageURL) {
             attachEditorImage()
@@ -131,35 +139,9 @@ struct DocumentChatTray: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Collaborate with Assistant")
-                    .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
-                HStack(spacing: 8) {
-                    Label(documentURL.lastPathComponent, systemImage: "doc.text")
-                        .font(Theme.uiSwiftUIFont(size: 11))
-                        .foregroundStyle(.secondary)
-                    connectionBadge
-                }
-            }
-
-            Spacer()
-
+        HStack(spacing: 8) {
             modePicker
-
-            Button {
-                chatState.newChat()
-            } label: {
-                Image(systemName: "plus.message")
-                    .font(Theme.uiSwiftUIFont(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("New Chat")
-
+            Spacer()
             Button {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     store.chatPlacement = store.chatPlacement == .bottom ? .trailing : .bottom
@@ -170,8 +152,8 @@ struct DocumentChatTray: View {
                       : "rectangle.bottomhalf.inset.filled")
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.06))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
@@ -183,15 +165,14 @@ struct DocumentChatTray: View {
                 Image(systemName: "xmark")
                     .font(Theme.uiSwiftUIFont(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
-                    .background(Color.primary.opacity(0.08))
+                    .frame(width: 22, height: 22)
+                    .background(Color.primary.opacity(0.06))
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -261,42 +242,6 @@ struct DocumentChatTray: View {
         return "Agent"
     }
 
-    private var connectionBadge: some View {
-        Text(connectionTitle)
-            .font(Theme.uiSwiftUIFont(size: 10, weight: .semibold))
-            .foregroundStyle(connectionColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 2)
-            .background(connectionColor.opacity(0.15))
-            .clipShape(Capsule())
-    }
-
-    private var connectionTitle: String {
-        if chatState.acpClient?.connectionFailed == true {
-            return "Disconnected"
-        }
-        if chatState.acpClient?.isConnected == true, chatState.acpClient?.sessionId != nil {
-            return "Connected"
-        }
-        if chatState.isLoading || chatState.acpClient != nil {
-            return "Connecting"
-        }
-        return "Ready"
-    }
-
-    private var connectionColor: Color {
-        switch connectionTitle {
-        case "Connected":
-            return .green
-        case "Disconnected":
-            return .red
-        case "Connecting":
-            return .orange
-        default:
-            return .secondary
-        }
-    }
-
     // MARK: - Drag Handle
 
     private var dragHandle: some View {
@@ -323,20 +268,34 @@ struct DocumentChatTray: View {
             }
     }
 
+    private var sideDragHandle: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 6)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { gesture in
+                        let nextWidth = store.chatWidth - gesture.translation.width
+                        store.chatWidth = min(max(nextWidth, minWidth), maxWidth)
+                    }
+            )
+            .onHover { isHovering in
+                if isHovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+    }
+
     // MARK: - Messages
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    if Self.shouldShowChatHints(
-                        messageCount: chatState.messages.count,
-                        currentResponse: chatState.currentResponse,
-                        isLoading: chatState.isLoading
-                    ) {
-                        emptyStateView
-                    }
-
                     ForEach(chatState.messages) { message in
                         ChatBubble(message: message).id(message.id)
                     }
@@ -353,9 +312,11 @@ struct DocumentChatTray: View {
                         )
                         .id("streaming")
                     }
+                    permissionBar
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 70)
             }
             .scrollIndicators(.hidden)
             .onChange(of: chatState.messages.count) {
@@ -373,21 +334,12 @@ struct DocumentChatTray: View {
                     proxy.scrollTo(lastCall.id, anchor: .bottom)
                 }
             }
+            .onChange(of: chatState.pendingPermission?.id) {
+                if chatState.pendingPermission != nil {
+                    proxy.scrollTo("permission", anchor: .bottom)
+                }
+            }
         }
-    }
-
-    private var emptyStateView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Start a collaborative turn")
-                .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
-            Text("I can read, edit, and reason over this workspace with your approval.")
-                .font(Theme.uiSwiftUIFont(size: 11))
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Selection Indicator
@@ -405,40 +357,6 @@ struct DocumentChatTray: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 14)
             .padding(.top, 5)
-        }
-    }
-
-    // MARK: - Quick Prompts
-
-    private var quickPromptBar: some View {
-        Group {
-            if Self.shouldShowChatHints(
-                messageCount: chatState.messages.count,
-                currentResponse: chatState.currentResponse,
-                isLoading: chatState.isLoading
-            ) {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Self.displayedQuickPrompts(from: quickPrompts), id: \.self) { prompt in
-                        Button(prompt) {
-                            input = prompt
-                            sendMessage()
-                        }
-                        .buttonStyle(.plain)
-                        .font(Theme.uiSwiftUIFont(size: 10.5))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 9))
-                        .disabled(chatState.isLoading)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
     }
 
@@ -504,6 +422,7 @@ struct DocumentChatTray: View {
             .cornerRadius(9)
             .padding(.horizontal, 14)
             .padding(.top, 6)
+            .id("permission")
         }
     }
 
@@ -598,6 +517,18 @@ struct DocumentChatTray: View {
     }
 
     // MARK: - Actions
+
+    private func autoConnect() {
+        let workspacePath = store.workspace?.path ?? documentURL.deletingLastPathComponent().path
+        chatState.startIfNeeded(
+            cwd: workspacePath,
+            filePath: documentURL.path,
+            agent: selectedAgent,
+            mcpServerManager: store.mcpServer,
+            documentURL: documentURL
+        )
+        wireFileCallbacks()
+    }
 
     private func wireOAuthCallback() {
         chatState.onOAuthRequest = { [openURL] url in

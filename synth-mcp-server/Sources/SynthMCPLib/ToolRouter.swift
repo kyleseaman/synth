@@ -117,7 +117,11 @@ public func propertySchema(type: String, description: String) -> AnyCodableValue
     ])
 }
 
-public func propertySchemaWithDefault(type: String, description: String, defaultValue: AnyCodableValue) -> AnyCodableValue {
+public func propertySchemaWithDefault(
+    type: String,
+    description: String,
+    defaultValue: AnyCodableValue
+) -> AnyCodableValue {
     .object([
         "type": .string(type),
         "description": .string(description),

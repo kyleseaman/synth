@@ -6,7 +6,7 @@ struct BacklinksSection: View {
     let noteTitle: String
     var backlinkIndex: BacklinkIndex
     let onNavigate: (URL) -> Void
-    @AppStorage("backlinksExpanded") private var isExpanded = true
+    @AppStorage("backlinksExpanded") private var isExpanded = false
 
     var backlinks: [(url: URL, title: String, snippet: String, relativePath: String)] {
         let currentTitle = noteTitle.lowercased()
