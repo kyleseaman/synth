@@ -64,6 +64,8 @@ final class DocumentStore {
     var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
+    var newFolderParent: URL?
+    var newFolderName: String = ""
     var pendingDeleteTarget: URL?
     var pendingDeleteName: String = ""
     var pendingDeleteIsDirectory = false
@@ -1057,6 +1059,36 @@ final class DocumentStore {
             loadFileTree()
         } catch {}
         renameTarget = nil
+    }
+
+    func moveFile(from source: URL, to destinationFolder: URL) {
+        let destURL = destinationFolder.appendingPathComponent(source.lastPathComponent)
+        guard source != destURL else { return }
+        do {
+            try FileManager.default.moveItem(at: source, to: destURL)
+            if let idx = openFiles.firstIndex(where: { $0.url == source }) {
+                openFiles[idx] = Document(url: destURL, content: openFiles[idx].content)
+            }
+            loadFileTree()
+        } catch {}
+    }
+
+    func promptNewFolder(in parent: URL) {
+        newFolderParent = parent
+        newFolderName = "New Folder"
+    }
+
+    func confirmNewFolder() {
+        guard let parent = newFolderParent else { return }
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { newFolderParent = nil; return }
+        let folderURL = parent.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            expandedFolders.insert(folderURL)
+            loadFileTree()
+        } catch {}
+        newFolderParent = nil
     }
 
     func pickWorkspace() {

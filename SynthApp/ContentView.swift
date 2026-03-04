@@ -261,6 +261,15 @@ struct ContentView: View {
 
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
+                            .contextMenu {
+                                if let workspace = store.workspace {
+                                    Button {
+                                        store.promptNewFolder(in: workspace)
+                                    } label: {
+                                        Label("New Folder...", systemImage: "folder.badge.plus")
+                                    }
+                                }
+                            }
                     }
                     .font(Theme.sidebarSwiftUIFont(size: 13))
                     .listStyle(.sidebar)
@@ -459,6 +468,16 @@ struct ContentView: View {
         } message: {
             Text("Enter a new name")
         }
+        .alert("New Folder", isPresented: Binding(
+            get: { store.newFolderParent != nil },
+            set: { if !$0 { store.newFolderParent = nil } }
+        )) {
+            TextField("Folder name", text: $store.newFolderName)
+            Button("Cancel", role: .cancel) { store.newFolderParent = nil }
+            Button("Create") { store.confirmNewFolder() }
+        } message: {
+            Text("Enter a name for the new folder")
+        }
         .alert(
             "Delete Folder",
             isPresented: Binding(
@@ -591,7 +610,17 @@ struct FileNodeView: View {
                             store.expandedFolders.insert(node.url)
                         }
                     }
+                    .dropDestination(for: URL.self) { urls, _ in
+                        guard let source = urls.first else { return false }
+                        store.moveFile(from: source, to: node.url)
+                        return true
+                    }
                     .contextMenu {
+                        Button {
+                            store.promptNewFolder(in: node.url)
+                        } label: {
+                            Label("New Folder...", systemImage: "folder.badge.plus")
+                        }
                         Button {
                             store.promptRename(node.url)
                         } label: {
@@ -609,6 +638,7 @@ struct FileNodeView: View {
             FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
                 .contentShape(Rectangle())
                 .onTapGesture { store.open(node.url) }
+                .draggable(node.url)
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)
