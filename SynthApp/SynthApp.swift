@@ -87,6 +87,8 @@ struct SynthApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("New Draft") { store.newDraft() }
                     .keyboardShortcut("n")
+                Button("New Tab") { store.newDraft() }
+                    .keyboardShortcut("t")
             }
             CommandGroup(after: .newItem) {
                 Button("New Meeting Note") {

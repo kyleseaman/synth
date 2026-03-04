@@ -261,6 +261,15 @@ struct ContentView: View {
 
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
+                            .contextMenu {
+                                if let workspace = store.workspace {
+                                    Button {
+                                        store.promptNewFolder(in: workspace)
+                                    } label: {
+                                        Label("New Folder...", systemImage: "folder.badge.plus")
+                                    }
+                                }
+                            }
                     }
                     .font(Theme.sidebarSwiftUIFont(size: 13))
                     .listStyle(.sidebar)
@@ -342,8 +351,13 @@ struct ContentView: View {
                         HStack(spacing: 0) {
                             editorBlock
                             chatView
-                                .frame(width: 380)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                                .frame(width: store.chatWidth)
+                                .padding(.vertical, 8)
+                                .padding(.trailing, 8)
+                                .transition(
+                                    .move(edge: .trailing)
+                                    .combined(with: .opacity)
+                                )
                         }
                     } else {
                         editorBlock
@@ -454,6 +468,16 @@ struct ContentView: View {
         } message: {
             Text("Enter a new name")
         }
+        .alert("New Folder", isPresented: Binding(
+            get: { store.newFolderParent != nil },
+            set: { if !$0 { store.newFolderParent = nil } }
+        )) {
+            TextField("Folder name", text: $store.newFolderName)
+            Button("Cancel", role: .cancel) { store.newFolderParent = nil }
+            Button("Create") { store.confirmNewFolder() }
+        } message: {
+            Text("Enter a name for the new folder")
+        }
         .alert(
             "Delete Folder",
             isPresented: Binding(
@@ -486,11 +510,10 @@ struct ContentView: View {
                 store.setWorkspace(url)
             }
         }
-        // swiftlint:disable:next force_unwrapping
         .fileExporter(
             isPresented: $store.showDocxExport,
             document: store.docxExportData.map { DocxExportDocument(data: $0) },
-            contentType: UTType(filenameExtension: "docx")!,
+            contentType: UTType(filenameExtension: "docx") ?? .data,
             defaultFilename: store.currentDocumentURL?
                 .deletingPathExtension().lastPathComponent.appending(".docx") ?? "Export.docx"
         ) { _ in
@@ -611,7 +634,25 @@ struct FileNodeView: View {
                             store.expandedFolders.insert(node.url)
                         }
                     }
+                    .onDrop(of: [.plainText], isTargeted: nil) { providers in
+                        guard let provider = providers.first else { return false }
+                        _ = provider.loadObject(ofClass: NSString.self) { path, _ in
+                            guard let path = path as? String else { return }
+                            DispatchQueue.main.async {
+                                store.moveFile(
+                                    from: URL(fileURLWithPath: path),
+                                    to: node.url
+                                )
+                            }
+                        }
+                        return true
+                    }
                     .contextMenu {
+                        Button {
+                            store.promptNewFolder(in: node.url)
+                        } label: {
+                            Label("New Folder...", systemImage: "folder.badge.plus")
+                        }
                         Button {
                             store.promptRename(node.url)
                         } label: {
@@ -649,9 +690,11 @@ struct FileNodeView: View {
                     .opacity(isDropTargeted ? 1 : 0)
             )
         } else {
-            FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
-                .contentShape(Rectangle())
-                .onTapGesture { store.open(node.url) }
+            Button { store.open(node.url) } label: {
+                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
+            }
+            .buttonStyle(.plain)
+            .onDrag { NSItemProvider(object: node.url.path as NSString) }
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)

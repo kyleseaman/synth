@@ -169,9 +169,8 @@ final class WorkspaceWatcher {
         return true
     }
 
-    private static let eventCallback: FSEventStreamCallback = {
-        _, clientInfo, numEvents, eventPathsPointer,
-        eventFlags, _ in
+    // swiftlint:disable:next line_length
+    private static let eventCallback: FSEventStreamCallback = { _, clientInfo, numEvents, eventPathsPointer, eventFlags, _ in
         guard let clientInfo else { return }
         let context = Unmanaged<WorkspaceWatcherContext>
             .fromOpaque(clientInfo)

@@ -81,6 +81,10 @@ struct UndoSnapshot: Equatable {
                 self.messages.append(ChatMessage(role: .assistant, content: self.currentResponse))
                 self.currentResponse = ""
             }
+            for idx in self.toolCalls.indices where self.toolCalls[idx].status != "completed"
+                && self.toolCalls[idx].status != "failed" {
+                self.toolCalls[idx].status = "completed"
+            }
             self.isLoading = false
         }
 
@@ -159,39 +163,39 @@ struct UndoSnapshot: Equatable {
 
         // After connection, try to load existing session or create new
         let storedSessionId = documentURL.flatMap { ACPSessionStore.sessionId(for: $0) }
-        waitForConnection(client: client, storedSessionId: storedSessionId)
+        Task { [weak self] in
+            await self?.waitForConnection(client: client, storedSessionId: storedSessionId)
+        }
     }
 
     private func waitForConnection(
         client: ACPClient,
         storedSessionId: String?,
-        retries: Int = 20
-    ) {
-        guard retries > 0 else {
-            client.createSession()
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard self != nil else { return }
+        maxAttempts: Int = 20,
+        intervalSeconds: Double = 0.3
+    ) async {
+        for attempt in 1...maxAttempts {
             if client.isConnected {
+                print("[ACP] Connected after \(attempt) attempt(s)")
                 if let storedId = storedSessionId, client.supportsLoadSession {
                     client.loadSession(sessionId: storedId)
                 } else {
                     if storedSessionId != nil, !client.supportsLoadSession {
-                        if let docURL = self?.documentURL {
+                        if let docURL = documentURL {
                             ACPSessionStore.remove(for: docURL)
                         }
                     }
                     client.createSession()
                 }
-            } else {
-                self?.waitForConnection(
-                    client: client,
-                    storedSessionId: storedSessionId,
-                    retries: retries - 1
-                )
+                return
             }
+            try? await Task.sleep(for: .milliseconds(Int(intervalSeconds * 1000)))
         }
+        print("[ACP] Connection timed out after \(maxAttempts) attempts — creating fresh session")
+        if let docURL = documentURL, storedSessionId != nil {
+            ACPSessionStore.remove(for: docURL)
+        }
+        client.createSession()
     }
 
     func setMode(_ modeId: String) {

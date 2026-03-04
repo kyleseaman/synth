@@ -200,7 +200,10 @@ import Observation
         case "_kiro.dev/mcp/server_initialized":
             if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let params = dict["params"] as? [String: Any] {
-                let name = params["name"] as? String ?? "unknown"
+                let name = params["name"] as? String
+                    ?? params["serverName"] as? String
+                    ?? params["server_name"] as? String
+                    ?? "MCP Server"
                 print("[ACP] MCP server initialized: \(name)")
                 onMcpServerInitialized?(name)
             }
@@ -661,6 +664,10 @@ import Observation
             return true
         }
         guard shouldFinish else { return }
+        for idx in toolCalls.indices where toolCalls[idx].status != "completed"
+            && toolCalls[idx].status != "failed" {
+            toolCalls[idx].status = "completed"
+        }
         onTurnComplete?()
     }
 }
