@@ -548,10 +548,33 @@ struct FileRow: View {
 struct FileTreeView: View {
     let nodes: [FileTreeNode]
     var store: DocumentStore
+    @State private var isRootDropTargeted = false
 
     var body: some View {
         ForEach(nodes) { node in
             FileNodeView(node: node, store: store)
+        }
+        // Drop zone for moving items to workspace root
+        if let workspace = store.workspace {
+            Rectangle()
+                .fill(isRootDropTargeted ? Color.accentColor.opacity(0.1) : Color.clear)
+                .frame(height: isRootDropTargeted ? 32 : 8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(
+                            style: StrokeStyle(lineWidth: 1.5, dash: [5, 3])
+                        )
+                        .foregroundStyle(Color.accentColor)
+                        .opacity(isRootDropTargeted ? 1 : 0)
+                )
+                .dropDestination(for: URL.self) { urls, _ in
+                    guard let sourceURL = urls.first else { return false }
+                    store.moveFile(from: sourceURL, to: workspace)
+                    return true
+                } isTargeted: { targeted in
+                    isRootDropTargeted = targeted
+                }
+                .animation(.easeInOut(duration: 0.15), value: isRootDropTargeted)
         }
     }
 }
@@ -559,6 +582,8 @@ struct FileTreeView: View {
 struct FileNodeView: View {
     let node: FileTreeNode
     var store: DocumentStore
+    @State private var isDropTargeted = false
+    @State private var expandTimer: Timer?
 
     var body: some View {
         @Bindable var store = store
@@ -600,6 +625,29 @@ struct FileNodeView: View {
                         }
                     }
             }
+            .draggable(node)
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let sourceURL = urls.first else { return false }
+                store.moveFile(from: sourceURL, to: node.url)
+                return true
+            } isTargeted: { targeted in
+                isDropTargeted = targeted
+                if targeted {
+                    expandTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { _ in
+                        Task { @MainActor in
+                            store.expandedFolders.insert(node.url)
+                        }
+                    }
+                } else {
+                    expandTimer?.invalidate()
+                    expandTimer = nil
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .opacity(isDropTargeted ? 1 : 0)
+            )
         } else {
             FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
                 .contentShape(Rectangle())
@@ -617,6 +665,7 @@ struct FileNodeView: View {
                         Label("Delete File", systemImage: "trash")
                     }
                 }
+                .draggable(node)
         }
     }
 }

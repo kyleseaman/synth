@@ -1058,6 +1058,27 @@ final class DocumentStore {
         renameTarget = nil
     }
 
+    func moveFile(from sourceURL: URL, to destinationFolder: URL) {
+        let targetURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
+        guard sourceURL != targetURL,
+              sourceURL.deletingLastPathComponent() != destinationFolder else { return }
+        // Prevent moving a folder into itself or its own subtree
+        if sourceURL.hasDirectoryPath || (try? sourceURL.resourceValues(
+            forKeys: [.isDirectoryKey]
+        ).isDirectory) == true {
+            let sourcePath = sourceURL.standardizedFileURL.path
+            let destPath = destinationFolder.standardizedFileURL.path
+            if destPath.hasPrefix(sourcePath) { return }
+        }
+        do {
+            try FileManager.default.moveItem(at: sourceURL, to: targetURL)
+            if let idx = openFiles.firstIndex(where: { $0.url == sourceURL }) {
+                openFiles[idx] = Document(url: targetURL, content: openFiles[idx].content)
+            }
+            loadFileTree()
+        } catch {}
+    }
+
     func pickWorkspace() {
         showWorkspacePicker = true
     }
