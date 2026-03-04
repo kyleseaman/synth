@@ -61,7 +61,6 @@ struct DocumentChatTray: View {
                         selectionIndicator
                         inputBar
                     }
-                    .background(.ultraThinMaterial)
                 }
             }
         }
