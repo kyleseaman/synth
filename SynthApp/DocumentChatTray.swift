@@ -21,15 +21,6 @@ struct DocumentChatTray: View {
     private let minWidth: CGFloat = 280
     private let maxWidth: CGFloat = 640
     private static let preferredAgentIdentifier = "synth-writer"
-    private static let preferredAgentSymbolName = "person.crop.circle"
-    private static let fallbackAgentSymbolName = "person"
-    private static let maxQuickPromptCount = 3
-    private let quickPrompts = [
-        "Summarize this document into key points",
-        "Rewrite this section for clarity and flow",
-        "Improve headings and overall structure",
-        "Find gaps, ambiguities, or inconsistencies"
-    ]
 
     static func preferredAgentName(from agents: [AgentInfo]) -> String? {
         if agents.contains(where: { $0.name == preferredAgentIdentifier }) {
@@ -38,27 +29,15 @@ struct DocumentChatTray: View {
         return agents.first(where: { $0.name.localizedCaseInsensitiveContains("writer") })?.name
     }
 
-    static func shouldShowChatHints(
-        messageCount: Int,
-        currentResponse: String,
-        isLoading: Bool
-    ) -> Bool {
-        messageCount == 0 && currentResponse.isEmpty && !isLoading
-    }
-
     static func agentSymbolName(
         symbolExists: (String) -> Bool = { symbolName in
             NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil
         }
     ) -> String {
-        if symbolExists(preferredAgentSymbolName) {
-            return preferredAgentSymbolName
+        if symbolExists("person.crop.circle") {
+            return "person.crop.circle"
         }
-        return fallbackAgentSymbolName
-    }
-
-    static func displayedQuickPrompts(from prompts: [String]) -> [String] {
-        Array(prompts.prefix(maxQuickPromptCount))
+        return "person"
     }
 
     static func displayedPermissionDiffText(_ text: String) -> String {
@@ -79,7 +58,6 @@ struct DocumentChatTray: View {
                 statusBanner
                 permissionBar
                 selectionIndicator
-                quickPromptBar
                 inputBar
             }
         }
@@ -423,38 +401,6 @@ struct DocumentChatTray: View {
     }
 
     // MARK: - Quick Prompts
-
-    private var quickPromptBar: some View {
-        Group {
-            if Self.shouldShowChatHints(
-                messageCount: chatState.messages.count,
-                currentResponse: chatState.currentResponse,
-                isLoading: chatState.isLoading
-            ) {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Self.displayedQuickPrompts(from: quickPrompts), id: \.self) { prompt in
-                        Button(prompt) {
-                            input = prompt
-                            sendMessage()
-                        }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10.5))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.primary.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 9))
-                        .disabled(chatState.isLoading)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
 
     // MARK: - Permission Bar
 
