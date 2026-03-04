@@ -54,10 +54,15 @@ struct DocumentChatTray: View {
                 if !isTrailing { dragHandle }
                 headerBar
                 Divider().opacity(0.3)
-                messageList
-                statusBanner
-                selectionIndicator
-                inputBar
+                ZStack(alignment: .bottom) {
+                    messageList
+                    VStack(spacing: 0) {
+                        statusBanner
+                        selectionIndicator
+                        inputBar
+                    }
+                    .background(.ultraThinMaterial)
+                }
             }
         }
         .frame(height: isTrailing ? nil : trayHeight)
@@ -311,7 +316,8 @@ struct DocumentChatTray: View {
                     permissionBar
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 70)
             }
             .scrollIndicators(.hidden)
             .onChange(of: chatState.messages.count) {
