@@ -9,30 +9,30 @@ import Foundation
 /// - Inline arrays (`key: [a, b, c]`)
 /// - Nested indented blocks
 /// - Quoted strings (single and double)
-enum FrontmatterParser {
+public enum FrontmatterParser {
 
     /// Parsed frontmatter result.
-    struct Frontmatter {
+    public struct Frontmatter {
         /// Raw frontmatter string (between the --- delimiters, not including them).
-        let raw: String
+        public let raw: String
         /// Parsed key-value pairs. Values are either a single String or [String].
-        let fields: [String: FrontmatterValue]
+        public let fields: [String: FrontmatterValue]
         /// The body content after the closing ---.
-        let body: String
+        public let body: String
         /// Full original content for reconstruction.
-        let originalContent: String
+        public let originalContent: String
     }
 
-    enum FrontmatterValue: Equatable {
+    public enum FrontmatterValue: Equatable {
         case scalar(String)
         case list([String])
 
-        var stringValue: String? {
+        public var stringValue: String? {
             if case .scalar(let val) = self { return val }
             return nil
         }
 
-        var listValue: [String]? {
+        public var listValue: [String]? {
             if case .list(let val) = self { return val }
             return nil
         }
@@ -42,7 +42,7 @@ enum FrontmatterParser {
 
     /// Parse markdown content with optional YAML frontmatter.
     /// Returns nil if content has no valid frontmatter delimiters.
-    static func parse(_ content: String) -> Frontmatter? {
+    public static func parse(_ content: String) -> Frontmatter? {
         guard content.hasPrefix("---\n") || content.hasPrefix("---\r\n") else {
             return nil
         }
@@ -73,7 +73,11 @@ enum FrontmatterParser {
     }
 
     /// Reconstruct content from modified frontmatter fields and body.
-    static func reconstruct(fields: [String: FrontmatterValue], body: String, fieldOrder: [String]? = nil) -> String {
+    public static func reconstruct(
+        fields: [String: FrontmatterValue],
+        body: String,
+        fieldOrder: [String]? = nil
+    ) -> String {
         var yaml = ""
         let keys = fieldOrder ?? fields.keys.sorted()
         for key in keys {
@@ -98,7 +102,7 @@ enum FrontmatterParser {
     // MARK: - Tags Helpers
 
     /// Extract the tags list from frontmatter, returns empty array if no tags field.
-    static func tags(from frontmatter: Frontmatter) -> [String] {
+    public static func tags(from frontmatter: Frontmatter) -> [String] {
         switch frontmatter.fields["tags"] {
         case .list(let items):
             return items
@@ -113,7 +117,7 @@ enum FrontmatterParser {
 
     /// Return new content with a tag added to frontmatter.
     /// Creates frontmatter if none exists.
-    static func addTag(_ tag: String, to content: String) -> String {
+    public static func addTag(_ tag: String, to content: String) -> String {
         if let frontmatter = parse(content) {
             var currentTags = tags(from: frontmatter)
             guard !currentTags.contains(tag) else { return content }
@@ -136,7 +140,7 @@ enum FrontmatterParser {
     }
 
     /// Return new content with a tag removed from frontmatter.
-    static func removeTag(_ tag: String, fromFrontmatter content: String) -> (String, Bool) {
+    public static func removeTag(_ tag: String, fromFrontmatter content: String) -> (String, Bool) {
         guard let frontmatter = parse(content) else { return (content, false) }
 
         var currentTags = tags(from: frontmatter)

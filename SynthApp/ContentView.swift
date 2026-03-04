@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 extension Array {
     subscript(safe index: Int) -> Element? {
@@ -17,6 +18,7 @@ extension Notification.Name {
     static let showDailyDate = Notification.Name("showDailyDate")
     static let insertTemplate = Notification.Name("insertTemplate")
     static let formatParagraphNow = Notification.Name("formatParagraphNow")
+    static let reloadEditor = Notification.Name("reloadEditor")
 }
 
 struct EditorSelectionContext {
@@ -259,6 +261,15 @@ struct ContentView: View {
 
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
+                            .contextMenu {
+                                if let workspace = store.workspace {
+                                    Button {
+                                        store.promptNewFolder(in: workspace)
+                                    } label: {
+                                        Label("New Folder...", systemImage: "folder.badge.plus")
+                                    }
+                                }
+                            }
                     }
                     .font(Theme.sidebarSwiftUIFont(size: 13))
                     .listStyle(.sidebar)
@@ -293,8 +304,17 @@ struct ContentView: View {
                     let currentDoc = store.openFiles[store.currentIndex]
                     let chatState = store.chatState(for: currentDoc.url)
                     let selectionContext = selectionByDocument[currentDoc.url]
+                    let chatVisible = store.isChatVisibleForCurrentTab
+                    let chatView = DocumentChatTray(
+                        chatState: chatState,
+                        documentURL: currentDoc.url,
+                        documentContent: currentDoc.content.string,
+                        selectedText: selectionContext?.selectedText,
+                        selectedLineRange: selectionContext?.selectedLineRange,
+                        selectedImageURL: nil
+                    )
 
-                    ZStack(alignment: .bottom) {
+                    let editorBlock = ZStack(alignment: .bottom) {
                         EditorViewSimple { documentURL, selectedText, selectedLineRange in
                             let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
                             if trimmedText.isEmpty {
@@ -323,21 +343,31 @@ struct ContentView: View {
                                     chatState.dismissUndo()
                                 }
                             }
-                            .padding(.bottom, store.isChatVisibleForCurrentTab ? 8 : 16)
+                            .padding(.bottom, chatVisible ? 8 : 16)
                         }
                     }
 
-                    if store.isChatVisibleForCurrentTab {
-                        DocumentChatTray(
-                            chatState: chatState,
-                            documentURL: currentDoc.url,
-                            documentContent: currentDoc.content.string,
-                            selectedText: selectionContext?.selectedText,
-                            selectedLineRange: selectionContext?.selectedLineRange
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    if store.chatPlacement == .trailing && chatVisible {
+                        HStack(spacing: 0) {
+                            editorBlock
+                            chatView
+                                .frame(width: store.chatWidth)
+                                .padding(.vertical, 8)
+                                .padding(.trailing, 8)
+                                .transition(
+                                    .move(edge: .trailing)
+                                    .combined(with: .opacity)
+                                )
+                        }
+                    } else {
+                        editorBlock
+
+                        if chatVisible {
+                            chatView
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
                 } else {
                     Text("Open a file to start editing")
@@ -438,6 +468,16 @@ struct ContentView: View {
         } message: {
             Text("Enter a new name")
         }
+        .alert("New Folder", isPresented: Binding(
+            get: { store.newFolderParent != nil },
+            set: { if !$0 { store.newFolderParent = nil } }
+        )) {
+            TextField("Folder name", text: $store.newFolderName)
+            Button("Cancel", role: .cancel) { store.newFolderParent = nil }
+            Button("Create") { store.confirmNewFolder() }
+        } message: {
+            Text("Enter a name for the new folder")
+        }
         .alert(
             "Delete Folder",
             isPresented: Binding(
@@ -469,6 +509,15 @@ struct ContentView: View {
             if case .success(let url) = result {
                 store.setWorkspace(url)
             }
+        }
+        .fileExporter(
+            isPresented: $store.showDocxExport,
+            document: store.docxExportData.map { DocxExportDocument(data: $0) },
+            contentType: UTType(filenameExtension: "docx") ?? .data,
+            defaultFilename: store.currentDocumentURL?
+                .deletingPathExtension().lastPathComponent.appending(".docx") ?? "Export.docx"
+        ) { _ in
+            store.docxExportData = nil
         }
         .sheet(item: $store.imageDetailURL) { mediaURL in
             MediaDetailView(
@@ -560,7 +609,25 @@ struct FileNodeView: View {
                             store.expandedFolders.insert(node.url)
                         }
                     }
+                    .onDrop(of: [.plainText], isTargeted: nil) { providers in
+                        guard let provider = providers.first else { return false }
+                        _ = provider.loadObject(ofClass: NSString.self) { path, _ in
+                            guard let path = path as? String else { return }
+                            DispatchQueue.main.async {
+                                store.moveFile(
+                                    from: URL(fileURLWithPath: path),
+                                    to: node.url
+                                )
+                            }
+                        }
+                        return true
+                    }
                     .contextMenu {
+                        Button {
+                            store.promptNewFolder(in: node.url)
+                        } label: {
+                            Label("New Folder...", systemImage: "folder.badge.plus")
+                        }
                         Button {
                             store.promptRename(node.url)
                         } label: {
@@ -575,9 +642,11 @@ struct FileNodeView: View {
                     }
             }
         } else {
-            FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
-                .contentShape(Rectangle())
-                .onTapGesture { store.open(node.url) }
+            Button { store.open(node.url) } label: {
+                FileRow(node: node, isOpen: store.openFiles.contains { $0.url == node.url })
+            }
+            .buttonStyle(.plain)
+            .onDrag { NSItemProvider(object: node.url.path as NSString) }
                 .contextMenu {
                     Button {
                         store.promptRename(node.url)
@@ -675,6 +744,7 @@ struct KiroSetupBanner: View {
 struct EditorViewSimple: View {
     @Environment(DocumentStore.self) var store
     @Environment(TemplateStore.self) var templateStore
+    @AppStorage("hideSyntax") private var hideSyntax = true
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
@@ -712,6 +782,7 @@ struct EditorViewSimple: View {
                     linePositions: $linePositions,
                     selectedText: $selectedText,
                     selectedLineRange: $selectedLineRange,
+                    hideSyntax: hideSyntax,
                     store: store,
                     templateStore: templateStore
                 )

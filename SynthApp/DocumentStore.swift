@@ -20,6 +20,11 @@ enum DetailViewMode: Equatable {
     case media
 }
 
+enum ChatPlacement: String {
+    case bottom
+    case trailing
+}
+
 enum ActiveModal: Equatable {
     case fileLauncher
     case linkCapture
@@ -45,6 +50,12 @@ final class DocumentStore {
     var recentFiles: [URL] = []
     var expandedFolders: Set<URL> = []
     var chatVisibleTabs: Set<URL> = []
+    var chatPlacement: ChatPlacement = .bottom {
+        didSet { UserDefaults.standard.set(chatPlacement.rawValue, forKey: "chatPlacement") }
+    }
+    var chatWidth: CGFloat = 360 {
+        didSet { UserDefaults.standard.set(chatWidth, forKey: "chatWidth") }
+    }
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
@@ -53,14 +64,18 @@ final class DocumentStore {
     var columnVisibility: NavigationSplitViewVisibility = .all
     var activeModal: ActiveModal?
     var imageDetailURL: URL?
-    var showBacklinks = true
+    var showBacklinks = false
     var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
+    var newFolderParent: URL?
+    var newFolderName: String = ""
     var pendingDeleteTarget: URL?
     var pendingDeleteName: String = ""
     var pendingDeleteIsDirectory = false
     var showWorkspacePicker = false
+    var showDocxExport = false
+    var docxExportData: Data?
 
     let noteIndex = NoteIndex()
     let backlinkIndex = BacklinkIndex()
@@ -92,8 +107,16 @@ final class DocumentStore {
     @ObservationIgnored private var isFileTreeScanRunning = false
     @ObservationIgnored private var fileTreeRescanRequested = false
     @ObservationIgnored private var activeFileTreeScanID = UUID()
+    /// Tracks recent saves to skip self-triggered FSEvents.
+    @ObservationIgnored private var recentSaves: [URL: Date] = [:]
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: "chatPlacement"),
+           let saved = ChatPlacement(rawValue: raw) {
+            chatPlacement = saved
+        }
+        let savedWidth = UserDefaults.standard.double(forKey: "chatWidth")
+        if savedWidth > 0 { chatWidth = savedWidth }
         loadRecentFiles()
         dailyNoteManager.onSave = { [weak self] url, content in
             self?.backlinkIndex.updateFile(url, content: content)
@@ -124,8 +147,8 @@ final class DocumentStore {
 
     private func startWatching() {
         guard let workspace else { return }
-        watcher.start(workspace: workspace) { [weak self] eventPaths in
-            self?.handleWorkspaceEvents(eventPaths)
+        watcher.start(workspace: workspace) { [weak self] events in
+            self?.handleWorkspaceEvents(events)
         }
     }
 
@@ -500,13 +523,32 @@ final class DocumentStore {
         }
         openFiles[currentIndex].isDirty = false
 
+        // Mark save to skip self-triggered FSEvent
+        let savedURL = openFiles[currentIndex].url
+        recentSaves[savedURL] = Date()
+
         // Incremental index updates after save
         let savedContent = openFiles[currentIndex].content.string
-        let savedURL = openFiles[currentIndex].url
         noteIndex.updateFile(savedURL, content: savedContent)
         backlinkIndex.updateFile(savedURL, content: savedContent)
         tagIndex.updateFile(savedURL, content: savedContent)
         peopleIndex.updateFile(savedURL, content: savedContent)
+    }
+
+    func exportAsDocx() {
+        guard currentIndex >= 0, currentIndex < openFiles.count else { return }
+        let doc = openFiles[currentIndex]
+        let plainText = MarkdownFormat.restoreMarkup(in: doc.content)
+        let rendered = MarkdownFormat().render(plainText)
+        let range = NSRange(location: 0, length: rendered.length)
+        let attrs: [NSAttributedString.DocumentAttributeKey: Any] = [
+            .documentType: NSAttributedString.DocumentType.officeOpenXML
+        ]
+        guard let data = try? rendered.data(
+            from: range, documentAttributes: attrs
+        ) else { return }
+        docxExportData = data
+        showDocxExport = true
     }
 
     func saveAll() {
@@ -533,8 +575,9 @@ final class DocumentStore {
 
             openFiles[index].isDirty = false
 
-            // Update indexes on main thread
+            // Mark save + update indexes
             let savedURL = openFiles[index].url
+            recentSaves[savedURL] = Date()
             let savedContent = openFiles[index].content.string
             noteIndex.updateFile(savedURL, content: savedContent)
             backlinkIndex.updateFile(savedURL, content: savedContent)
@@ -670,20 +713,144 @@ final class DocumentStore {
         }
     }
 
-    private func handleWorkspaceEvents(_ eventPaths: [String]) {
+    private func handleWorkspaceEvents(_ events: [FileEvent]) {
         guard let workspace else { return }
         let workspacePath = workspace.standardizedFileURL.path
-        let shouldRefresh = eventPaths.isEmpty || eventPaths.contains { eventPath in
-            WorkspaceWatcher.shouldRefreshSidebar(forWorkspace: workspacePath, eventPath: eventPath)
-        }
-        guard shouldRefresh else { return }
 
+        // Clean stale recent saves
+        let staleThreshold = Date().addingTimeInterval(-2)
+        recentSaves = recentSaves.filter { $0.value > staleThreshold }
+
+        // Filter to relevant events
+        let relevant = events.filter { event in
+            WorkspaceWatcher.shouldRefreshSidebar(
+                forWorkspace: workspacePath,
+                eventPath: event.path
+            )
+        }
+        guard !relevant.isEmpty else { return }
+
+        // Fallback to full rescan for large batches
+        if relevant.count > 20 {
+            scheduleFullRescan()
+            return
+        }
+
+        let indexContext = IndexContext(
+            noteIndex: noteIndex,
+            backlinkIndex: backlinkIndex,
+            tagIndex: tagIndex,
+            peopleIndex: peopleIndex
+        )
+        let validExtensions: Set<String> = ["md", "txt"]
+        var treeChanged = false
+
+        for event in relevant {
+            let url = event.url
+
+            // Skip self-triggered events
+            if let saveDate = recentSaves[url],
+               Date().timeIntervalSince(saveDate) < 0.5 {
+                continue
+            }
+
+            if event.isDirectory {
+                if event.dirCreated || event.dirRemoved || event.dirRenamed {
+                    scheduleFullRescan()
+                    return
+                }
+                continue
+            }
+
+            let ext = url.pathExtension.lowercased()
+            let isIndexable = validExtensions.contains(ext)
+            let changed = handleFileEvent(
+                event, url: url, isIndexable: isIndexable,
+                workspace: workspace, indexContext: indexContext
+            )
+            if changed { treeChanged = true }
+        }
+
+        if treeChanged {
+            fileTreeVersion &+= 1
+        }
+    }
+
+    private func scheduleFullRescan() {
         pendingWatcherReloadTask?.cancel()
         pendingWatcherReloadTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
             self?.loadFileTree()
         }
+    }
+
+    /// Returns true if the file tree was modified.
+    private func handleFileEvent(
+        _ event: FileEvent,
+        url: URL,
+        isIndexable: Bool,
+        workspace: URL,
+        indexContext: IndexContext
+    ) -> Bool {
+        if event.fileRemoved {
+            removeFileFromInMemoryTree(url)
+            if isIndexable {
+                UnifiedIndexer.removeFile(url, context: indexContext)
+            }
+            if let tabIdx = openFiles.firstIndex(where: { $0.url == url }) {
+                closeTab(at: tabIdx)
+            }
+            return true
+        }
+
+        if event.fileRenamed {
+            let exists = FileManager.default.fileExists(atPath: url.path)
+            if exists {
+                addFileToInMemoryTree(url)
+                if isIndexable,
+                   let content = try? String(contentsOf: url, encoding: .utf8) {
+                    UnifiedIndexer.addFile(
+                        url, content: content,
+                        workspace: workspace,
+                        context: indexContext
+                    )
+                }
+            } else {
+                removeFileFromInMemoryTree(url)
+                if isIndexable {
+                    UnifiedIndexer.removeFile(url, context: indexContext)
+                }
+            }
+            return true
+        }
+
+        if event.fileCreated {
+            addFileToInMemoryTree(url)
+            if isIndexable,
+               let content = try? String(contentsOf: url, encoding: .utf8) {
+                UnifiedIndexer.addFile(
+                    url, content: content,
+                    workspace: workspace,
+                    context: indexContext
+                )
+            }
+            return true
+        }
+
+        if event.fileModified {
+            if isIndexable,
+               let content = try? String(contentsOf: url, encoding: .utf8) {
+                UnifiedIndexer.updateFile(url, content: content, context: indexContext)
+            }
+            if openFiles.contains(where: { $0.url == url }) {
+                reloadOpenDocumentFromDisk(url)
+                NotificationCenter.default.post(name: .reloadEditor, object: nil)
+            }
+            return false
+        }
+
+        return false
     }
 
     func closeCurrentTab() {
@@ -709,7 +876,11 @@ final class DocumentStore {
             currentIndex -= 1
         }
     }
+}
 
+// MARK: - File Operations
+
+extension DocumentStore {
     func newDraft() {
         guard let workspace = workspace else { return }
         let drafts = workspace.appendingPathComponent("drafts")
@@ -887,12 +1058,44 @@ final class DocumentStore {
         renameTarget = nil
     }
 
+    func moveFile(from source: URL, to destinationFolder: URL) {
+        let destURL = destinationFolder.appendingPathComponent(source.lastPathComponent)
+        guard source != destURL else { return }
+        do {
+            try FileManager.default.moveItem(at: source, to: destURL)
+            if let idx = openFiles.firstIndex(where: { $0.url == source }) {
+                openFiles[idx] = Document(url: destURL, content: openFiles[idx].content)
+            }
+            loadFileTree()
+        } catch {}
+    }
+
+    func promptNewFolder(in parent: URL) {
+        newFolderParent = parent
+        newFolderName = "New Folder"
+    }
+
+    func confirmNewFolder() {
+        guard let parent = newFolderParent else { return }
+        let name = newFolderName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { newFolderParent = nil; return }
+        let folderURL = parent.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            expandedFolders.insert(folderURL)
+            loadFileTree()
+        } catch {}
+        newFolderParent = nil
+    }
+
     func pickWorkspace() {
         showWorkspacePicker = true
     }
+}
 
-    // MARK: - UI State Methods
+// MARK: - UI State Methods
 
+extension DocumentStore {
     func toggleSidebar() {
         columnVisibility = columnVisibility == .all ? .detailOnly : .all
     }

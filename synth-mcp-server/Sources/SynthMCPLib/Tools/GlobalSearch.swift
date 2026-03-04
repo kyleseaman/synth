@@ -153,7 +153,7 @@ enum GlobalSearch {
     /// backtracking (e.g. `(a+)+`, `(a*)*`, `(a+)*`).
     /// Walks the pattern tracking group nesting depth and
     /// whether a quantifier appears inside a quantified group.
-    static func hasNestedQuantifiers(
+    public static func hasNestedQuantifiers(
         _ pattern: String
     ) -> Bool {
         let quantifiers: Set<Character> = ["+", "*", "?"]

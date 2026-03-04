@@ -35,6 +35,34 @@ enum UnifiedIndexer {
         context.peopleIndex.rebuild(from: fileContents)
     }
 
+    // MARK: - Incremental Operations
+
+    static func addFile(
+        _ url: URL, content: String, workspace: URL,
+        context: IndexContext
+    ) {
+        context.noteIndex.addFile(url, content: content, workspace: workspace)
+        context.backlinkIndex.addFile(url, content: content)
+        context.tagIndex.addFile(url, content: content)
+        context.peopleIndex.addFile(url, content: content)
+    }
+
+    static func removeFile(_ url: URL, context: IndexContext) {
+        context.noteIndex.removeFile(url)
+        context.backlinkIndex.removeFile(url)
+        context.tagIndex.removeFile(url)
+        context.peopleIndex.removeFile(url)
+    }
+
+    static func updateFile(
+        _ url: URL, content: String, context: IndexContext
+    ) {
+        context.noteIndex.updateFile(url, content: content)
+        context.backlinkIndex.updateFile(url, content: content)
+        context.tagIndex.updateFile(url, content: content)
+        context.peopleIndex.updateFile(url, content: content)
+    }
+
     /// Read files in parallel using a concurrent dispatch queue
     private static func readFilesInParallel(_ files: [FileTreeNode]) -> [FileContent] {
         guard !files.isEmpty else { return [] }

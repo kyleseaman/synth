@@ -6,19 +6,19 @@ enum HTTPTransportError: Error {
     case startupTimeout(UInt16)
 }
 
-class HTTPTransport {
-    let handler: MCPProtocolHandler
-    let port: UInt16
+public class HTTPTransport {
+    public let handler: MCPProtocolHandler
+    public let port: UInt16
     private var listener: NWListener?
     private var sessions: [String: SSESession] = [:]
     private let sessionsLock = NSLock()
 
-    init(handler: MCPProtocolHandler, port: UInt16) {
+    public init(handler: MCPProtocolHandler, port: UInt16) {
         self.handler = handler
         self.port = port
     }
 
-    func start() throws {
+    public func start() throws {
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {

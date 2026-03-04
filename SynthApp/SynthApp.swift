@@ -34,6 +34,7 @@ struct SynthApp: App {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
         signal(SIGPIPE, SIG_IGN)
         Theme.registerBundledFonts()
+        UserDefaults.standard.register(defaults: ["hideSyntax": true])
     }
 
     private var templatesSortedForMenu: [SavedTemplate] {
@@ -86,6 +87,8 @@ struct SynthApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("New Draft") { store.newDraft() }
                     .keyboardShortcut("n")
+                Button("New Tab") { store.newDraft() }
+                    .keyboardShortcut("t")
             }
             CommandGroup(after: .newItem) {
                 Button("New Meeting Note") {
@@ -97,6 +100,9 @@ struct SynthApp: App {
                     .keyboardShortcut("o")
                 Button("Save") { store.save() }
                     .keyboardShortcut("s")
+                Button("Export as Word Document...") { store.exportAsDocx() }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(store.openFiles.isEmpty)
                 Divider()
                 Button("Close Tab") { store.closeCurrentTab() }
                     .keyboardShortcut("w")

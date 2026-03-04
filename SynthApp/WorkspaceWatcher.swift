@@ -1,6 +1,57 @@
 import Foundation
 import CoreServices
 
+// MARK: - FileEvent (aligned with FSNotes' FileWatcherEvent)
+
+struct FileEvent {
+    let path: String
+    let flags: FSEventStreamEventFlags
+
+    var isFile: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemIsFile
+        ) != 0
+    }
+    var isDirectory: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemIsDir
+        ) != 0
+    }
+    var isCreated: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemCreated
+        ) != 0
+    }
+    var isRemoved: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemRemoved
+        ) != 0
+    }
+    var isRenamed: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemRenamed
+        ) != 0
+    }
+    var isModified: Bool {
+        flags & FSEventStreamEventFlags(
+            kFSEventStreamEventFlagItemModified
+        ) != 0
+    }
+
+    // Convenience
+    var fileCreated: Bool { isFile && isCreated }
+    var fileRemoved: Bool { isFile && isRemoved }
+    var fileRenamed: Bool { isFile && isRenamed }
+    var fileModified: Bool { isFile && isModified }
+    var dirCreated: Bool { isDirectory && isCreated }
+    var dirRemoved: Bool { isDirectory && isRemoved }
+    var dirRenamed: Bool { isDirectory && isRenamed }
+
+    var url: URL { URL(fileURLWithPath: path) }
+}
+
+// MARK: - WorkspaceWatcher
+
 private final class WorkspaceWatcherContext {
     weak var watcher: WorkspaceWatcher?
 
@@ -27,9 +78,12 @@ private let watcherContextRelease: CFAllocatorReleaseCallBack = { info in
 final class WorkspaceWatcher {
     private var fileEventStream: FSEventStreamRef?
     private var watcherContext: WorkspaceWatcherContext?
-    private var onEvents: (([String]) -> Void)?
+    private var onEvents: (([FileEvent]) -> Void)?
 
-    func start(workspace: URL, onEvents: @escaping ([String]) -> Void) {
+    func start(
+        workspace: URL,
+        onEvents: @escaping ([FileEvent]) -> Void
+    ) {
         stop()
         self.onEvents = onEvents
 
@@ -38,7 +92,9 @@ final class WorkspaceWatcher {
 
         var streamContext = FSEventStreamContext(
             version: 0,
-            info: UnsafeMutableRawPointer(Unmanaged.passRetained(context).toOpaque()),
+            info: UnsafeMutableRawPointer(
+                Unmanaged.passRetained(context).toOpaque()
+            ),
             retain: watcherContextRetain,
             release: watcherContextRelease,
             copyDescription: nil
@@ -83,25 +139,38 @@ final class WorkspaceWatcher {
         onEvents = nil
     }
 
-    static func shouldRefreshSidebar(forWorkspace workspacePath: String, eventPath: String) -> Bool {
-        let normalizedWorkspace = URL(fileURLWithPath: workspacePath).standardizedFileURL.path
-        let normalizedEvent = URL(fileURLWithPath: eventPath).standardizedFileURL.path
-        guard normalizedEvent.hasPrefix(normalizedWorkspace) else { return false }
+    static func shouldRefreshSidebar(
+        forWorkspace workspacePath: String, eventPath: String
+    ) -> Bool {
+        let normalizedWorkspace = URL(
+            fileURLWithPath: workspacePath
+        ).standardizedFileURL.path
+        let normalizedEvent = URL(
+            fileURLWithPath: eventPath
+        ).standardizedFileURL.path
+        guard normalizedEvent.hasPrefix(normalizedWorkspace)
+        else { return false }
 
-        let relativePath = String(normalizedEvent.dropFirst(normalizedWorkspace.count))
-        if relativePath == "/.kiro" || relativePath.hasPrefix("/.kiro/") {
+        let relativePath = String(
+            normalizedEvent.dropFirst(normalizedWorkspace.count)
+        )
+        if relativePath == "/.kiro"
+            || relativePath.hasPrefix("/.kiro/") {
             return false
         }
-        if relativePath == "/daily" || relativePath.hasPrefix("/daily/") {
+        if relativePath == "/daily"
+            || relativePath.hasPrefix("/daily/") {
             return false
         }
-        if relativePath == "/media" || relativePath.hasPrefix("/media/") {
+        if relativePath == "/media"
+            || relativePath.hasPrefix("/media/") {
             return false
         }
         return true
     }
 
-    private static let eventCallback: FSEventStreamCallback = { _, clientInfo, _, eventPathsPointer, _, _ in
+    // swiftlint:disable:next line_length
+    private static let eventCallback: FSEventStreamCallback = { _, clientInfo, numEvents, eventPathsPointer, eventFlags, _ in
         guard let clientInfo else { return }
         let context = Unmanaged<WorkspaceWatcherContext>
             .fromOpaque(clientInfo)
@@ -111,8 +180,20 @@ final class WorkspaceWatcher {
         let eventPathArray = Unmanaged<CFArray>
             .fromOpaque(eventPathsPointer)
             .takeUnretainedValue() as NSArray
-        let eventPaths = eventPathArray.compactMap { $0 as? String }
+        let paths = eventPathArray.compactMap { $0 as? String }
 
-        watcher.onEvents?(eventPaths)
+        var events: [FileEvent] = []
+        events.reserveCapacity(numEvents)
+        for index in 0..<numEvents {
+            guard index < paths.count else { break }
+            events.append(
+                FileEvent(
+                    path: paths[index],
+                    flags: eventFlags[index]
+                )
+            )
+        }
+
+        watcher.onEvents?(events)
     }
 }

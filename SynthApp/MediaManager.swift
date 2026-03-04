@@ -127,4 +127,8 @@ extension NSImage {
               let bitmapRep = NSBitmapImageRep(data: tiffData) else { return nil }
         return bitmapRep.representation(using: .png, properties: [:])
     }
+
+    var pngBase64: String? {
+        pngDataRepresentation?.base64EncodedString()
+    }
 }

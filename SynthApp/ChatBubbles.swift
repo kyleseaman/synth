@@ -56,16 +56,6 @@ private extension Int {
     }
 }
 
-@ViewBuilder
-private func roleBadge(symbolName: String, tintColor: Color) -> some View {
-    Image(systemName: symbolName)
-        .font(.system(size: 9, weight: .semibold))
-        .foregroundStyle(tintColor)
-        .frame(width: 18, height: 18)
-        .background(tintColor.opacity(0.13))
-        .clipShape(Circle())
-}
-
 // MARK: - Chat Bubble
 
 struct ChatBubble: View {
@@ -74,20 +64,17 @@ struct ChatBubble: View {
 
     var body: some View {
         HStack {
-            if message.role == .user {
-                Spacer(minLength: 70)
-            } else {
-                roleBadge(symbolName: "sparkles", tintColor: .accentColor)
-            }
+            if message.role == .user { Spacer(minLength: 40) }
 
             MarkdownText(message.content)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .background(
                     message.role == .user
                         ? Color.accentColor.opacity(0.18)
-                        : Color.primary.opacity(0.06)
+                        : Color(nsColor: .textBackgroundColor).opacity(0.55)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
@@ -109,11 +96,7 @@ struct ChatBubble: View {
                 }
                 .onHover { isHovered = $0 }
 
-            if message.role == .assistant {
-                Spacer(minLength: 70)
-            } else {
-                roleBadge(symbolName: "person.fill", tintColor: .orange)
-            }
+            if message.role == .assistant { Spacer(minLength: 40) }
         }
     }
 
@@ -173,11 +156,10 @@ struct StreamingBubble: View {
 
     var body: some View {
         HStack {
-            roleBadge(symbolName: "sparkles", tintColor: .accentColor)
             VStack(alignment: .leading, spacing: 4) {
                 if !text.isEmpty {
                     MarkdownText(text)
-                        .font(.system(size: 13))
+                        .font(.system(size: 14))
                 }
                 if isLoading {
                     ThinkingStatusIndicator(latestToolCall: latestToolCall)
@@ -185,9 +167,9 @@ struct StreamingBubble: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color.primary.opacity(0.06))
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.55))
             .clipShape(RoundedRectangle(cornerRadius: 10))
-            Spacer(minLength: 70)
+            Spacer(minLength: 40)
         }
     }
 }

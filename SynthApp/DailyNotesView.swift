@@ -6,10 +6,9 @@ import AppKit
 struct DailyNotesView: View {
     @Environment(DocumentStore.self) var store
     @State private var scrollTarget: String?
-    @State private var cachedNoteDates: Set<String> = []
 
-    private func updateNoteDates() {
-        cachedNoteDates = Set(
+    private var noteDates: Set<String> {
+        Set(
             store.dailyNoteManager.entries
                 .filter { $0.exists }
                 .map { DailyNoteManager.dateIdentifier($0.date) }
@@ -27,13 +26,12 @@ struct DailyNotesView: View {
             // Calendar sidebar
             CalendarSidebarView(
                 onSelectDate: { date in scrollToDate(date) },
-                noteDates: cachedNoteDates
+                noteDates: noteDates
             )
         }
         .background(Color(.textBackgroundColor))
         .onAppear {
             loadAllEntries()
-            updateNoteDates()
             scrollToToday()
         }
         .onChange(of: store.dailyDateScrollTarget) { _, target in
@@ -53,15 +51,11 @@ struct DailyNotesView: View {
                         DailyNoteSection(
                             entry: entry,
                             onContentChange: { newContent in
-                                let didCreate = store.dailyNoteManager
+                                store.dailyNoteManager
                                     .updateContent(
                                         for: entry.id,
                                         newContent: newContent
                                     )
-                                if didCreate {
-                                    store.addFileToInMemoryTree(entry.url)
-                                    updateNoteDates()
-                                }
                             },
                             store: store
                         )
@@ -105,7 +99,6 @@ struct DailyNoteSection: View {
     let entry: DailyNoteEntry
     let onContentChange: (String) -> Void
     weak var store: DocumentStore?
-    @State private var editorHeight: CGFloat = 120
 
     private var isToday: Bool {
         DailyNoteManager.isToday(entry.date)
@@ -126,10 +119,9 @@ struct DailyNoteSection: View {
                 noteURL: entry.url,
                 onTextChange: onContentChange,
                 noteIndex: store?.noteIndex,
-                store: store,
-                computedHeight: $editorHeight
+                store: store
             )
-            .frame(height: max(isToday ? 240 : 120, editorHeight))
+            .frame(minHeight: isToday ? 240 : 120)
             .padding(.leading, 20)
             .padding(.trailing, 16)
 
@@ -157,12 +149,15 @@ struct DailyNoteSection: View {
                 .frame(width: 3, height: 20)
 
             Text(dateLabel)
-                .font(Theme.editorSwiftUIFont(size: 16))
+                .font(.system(
+                    size: 14,
+                    weight: isToday ? .bold : .semibold
+                ))
                 .foregroundStyle(isToday ? .primary : .secondary)
 
             if isToday {
                 Text("Today")
-                    .font(Theme.editorSwiftUIFont(size: 11))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -188,7 +183,6 @@ struct DailyNoteEditor: NSViewRepresentable {
     let onTextChange: (String) -> Void
     var noteIndex: NoteIndex?
     weak var store: DocumentStore?
-    @Binding var computedHeight: CGFloat
 
     func makeNSView(context: Context) -> FormattingTextView {
         let textView = FormattingTextView()
@@ -202,11 +196,11 @@ struct DailyNoteEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainerInset = NSSize(width: 4, height: 8)
         textView.allowsUndo = true
-        textView.layoutManager?.allowsNonContiguousLayout = true
         textView.delegate = context.coordinator
         textView.isAutomaticLinkDetectionEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
+        textView.insertionPointColor = NSColor.textColor
         textView.typingAttributes = [
             .font: Theme.editorNSFont(ofSize: 16),
             .foregroundColor: NSColor.textColor
@@ -223,15 +217,6 @@ struct DailyNoteEditor: NSViewRepresentable {
         context.coordinator.bindImageOverlay(to: textView)
         context.coordinator.setupAutocomplete()
         context.coordinator.applyFormatting()
-
-        textView.postsFrameChangedNotifications = true
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.frameDidChange(_:)),
-            name: NSView.frameDidChangeNotification,
-            object: textView
-        )
-
         return textView
     }
 
@@ -240,8 +225,8 @@ struct DailyNoteEditor: NSViewRepresentable {
     ) {
         context.coordinator.store = store
         context.coordinator.autocomplete.store = store
-        let restoredString = MarkdownFormat.restoreImageMarkup(
-            in: textView.string
+        let restoredString = MarkdownFormat.restoreMarkup(
+            in: textView.attributedString()
         )
         if !context.coordinator.isEditing
             && !context.coordinator.isFormatting
@@ -280,21 +265,6 @@ struct DailyNoteEditor: NSViewRepresentable {
 
         init(_ parent: DailyNoteEditor) { self.parent = parent }
 
-        @objc func frameDidChange(_ notification: Notification) {
-            guard let textView = textView else { return }
-            textView.layoutManager?.ensureLayout(
-                for: textView.textContainer!
-            )
-            let usedRect = textView.layoutManager?.usedRect(
-                for: textView.textContainer!
-            ) ?? .zero
-            let inset = textView.textContainerInset
-            let newHeight = usedRect.height + inset.height * 2
-            if abs(parent.computedHeight - newHeight) > 1 {
-                parent.computedHeight = newHeight
-            }
-        }
-
         func setupAutocomplete() {
             autocomplete.textView = textView
             autocomplete.store = store
@@ -303,8 +273,8 @@ struct DailyNoteEditor: NSViewRepresentable {
                       let textView = self.textView
                 else { return }
                 self.parent.onTextChange(
-                    MarkdownFormat.restoreImageMarkup(
-                        in: textView.string
+                    MarkdownFormat.restoreMarkup(
+                        in: textView.attributedString()
                     )
                 )
                 self.applyFormatting()
@@ -329,7 +299,9 @@ struct DailyNoteEditor: NSViewRepresentable {
                   !textView.isResizing
             else { return }
             parent.onTextChange(
-                MarkdownFormat.restoreImageMarkup(in: textView.string)
+                MarkdownFormat.restoreMarkup(
+                    in: textView.attributedString()
+                )
             )
             applyFormatting()
         }
@@ -342,8 +314,8 @@ struct DailyNoteEditor: NSViewRepresentable {
             else { return }
             isFormatting = true
             let cursor = textView.selectedRange()
-            let cleanText = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+            let cleanText = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
             let format = MarkdownFormat(
                 noteIndex: parent.noteIndex
@@ -367,7 +339,6 @@ struct DailyNoteEditor: NSViewRepresentable {
             )
             textView.setSelectedRange(cursor)
             isFormatting = false
-            frameDidChange(Notification(name: NSView.frameDidChangeNotification))
         }
 
         private func loadInlineImages(
@@ -476,8 +447,8 @@ struct DailyNoteEditor: NSViewRepresentable {
                         try? FileManager.default.trashItem(
                             at: imageURL, resultingItemURL: nil
                         )
-                        self.store?.mediaFiles.removeAll { $0 == imageURL }
                     }
+                    self.store?.loadFileTree()
                 case .open:
                     self.store?.showImageDetailModal(imageURL)
                 }
@@ -493,8 +464,8 @@ struct DailyNoteEditor: NSViewRepresentable {
             originalMarkup: String, newWidth: Int
         ) {
             guard let textView = textView else { return }
-            let text = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+            let text = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
             let updated = MarkdownFormat.markupWithWidth(
                 originalMarkup, width: newWidth
@@ -510,8 +481,8 @@ struct DailyNoteEditor: NSViewRepresentable {
         private func removeImageMarkup(for imageURL: URL) {
             guard let textView = textView else { return }
             let filename = imageURL.lastPathComponent
-            let text = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+            let text = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
             // swiftlint:disable:next force_try
             let pattern = try! NSRegularExpression(
@@ -552,7 +523,6 @@ struct DailyNoteBacklinks: View {
     let entry: DailyNoteEntry
     var store: DocumentStore
     @State private var isExpanded = true
-    @State private var cachedLinks: [(url: URL, title: String, snippet: String, relativePath: String)] = []
 
     private static let titleFormatter: DateFormatter = {
         let fmt = DateFormatter()
@@ -569,31 +539,33 @@ struct DailyNoteBacklinks: View {
         Self.titleFormatter.string(from: entry.date)
     }
 
-    private func loadBacklinks() {
+    private var backlinks: [(url: URL, title: String, snippet: String, relativePath: String)] {
         let byFilename = store.backlinkIndex.links(to: filename)
         let byTitle = store.backlinkIndex.links(to: dateTitle)
         let allURLs = byFilename.union(byTitle)
         let lowerFilename = filename.lowercased()
-        Task.detached(priority: .utility) {
-            let links = allURLs.compactMap { url -> (url: URL, title: String, snippet: String, relativePath: String)? in
-                let title = url.deletingPathExtension().lastPathComponent
-                guard title.lowercased() != lowerFilename else { return nil }
-                let snippet = Self.contentPreview(for: url)
-                let parent = url.deletingLastPathComponent().lastPathComponent
-                return (url: url, title: title, snippet: snippet, relativePath: parent)
-            }
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            await MainActor.run { cachedLinks = links }
+        return allURLs.compactMap { url in
+            let title = url.deletingPathExtension().lastPathComponent
+            guard title.lowercased() != lowerFilename else { return nil }
+            let snippet = Self.contentPreview(for: url)
+            let parent = url.deletingLastPathComponent()
+                .lastPathComponent
+            return (
+                url: url, title: title,
+                snippet: snippet, relativePath: parent
+            )
+        }
+        .sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title)
+                == .orderedAscending
         }
     }
 
     /// First meaningful content line from a file (skips headings and blanks).
-    nonisolated private static func contentPreview(for url: URL) -> String {
-        guard let fileHandle = try? FileHandle(forReadingFrom: url) else { return "" }
-        defer { try? fileHandle.close() }
-        guard let data = try? fileHandle.read(upToCount: 1024),
-              let content = String(data: data, encoding: .utf8)
-        else { return "" }
+    private static func contentPreview(for url: URL) -> String {
+        guard let content = try? String(
+            contentsOf: url, encoding: .utf8
+        ) else { return "" }
         let lines = content.components(separatedBy: "\n")
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -607,46 +579,43 @@ struct DailyNoteBacklinks: View {
     }
 
     var body: some View {
-        let links = cachedLinks
-        Group {
-            if !links.isEmpty {
-                VStack(spacing: 0) {
-                    DisclosureGroup(isExpanded: $isExpanded) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(links.prefix(10), id: \.url) { link in
-                                BacklinkRow(
-                                    title: link.title,
-                                    snippet: link.snippet,
-                                    relativePath: link.relativePath,
-                                    url: link.url,
-                                    onNavigate: { store.open($0) }
-                                )
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    store.open(link.url)
-                                }
+        let links = backlinks
+        if !links.isEmpty {
+            VStack(spacing: 0) {
+                DisclosureGroup(isExpanded: $isExpanded) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(links.prefix(10), id: \.url) { link in
+                            BacklinkRow(
+                                title: link.title,
+                                snippet: link.snippet,
+                                relativePath: link.relativePath,
+                                url: link.url,
+                                onNavigate: { store.open($0) }
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                store.open(link.url)
                             }
                         }
-                        .padding(.top, 8)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(
-                                "Incoming backlinks (\(links.count))"
-                            )
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
                     }
-                    .animation(
-                        .easeOut(duration: 0.15), value: isExpanded
-                    )
+                    .padding(.top, 8)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(
+                            "Incoming backlinks (\(links.count))"
+                        )
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
+                .animation(
+                    .easeOut(duration: 0.15), value: isExpanded
+                )
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
-        .onAppear { loadBacklinks() }
     }
 }

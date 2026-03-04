@@ -27,15 +27,11 @@ synth/
 │   ├── LinksView.swift            # Captured links view
 │   ├── ACPClient.swift            # Kiro CLI JSON-RPC client
 │   └── ...
-├── synth-core/                    # Rust core library
-│   ├── src/lib.rs                 # FFI exports
-│   ├── Cargo.toml
-│   └── synth_core.h               # C header for Swift bridging
+├── synth-mcp-server/              # Swift MCP server CLI
 ├── Synth.xcodeproj/               # Xcode project (must register new files)
 └── scripts/                       # Build scripts
 ```
 
 ## Naming Conventions
 - Swift: PascalCase for types, camelCase for functions/variables
-- Rust: snake_case for functions/variables, PascalCase for types
-- Files: PascalCase for Swift, snake_case for Rust
+- Files: PascalCase for Swift

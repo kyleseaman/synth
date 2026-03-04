@@ -55,7 +55,10 @@ enum UpdateNote {
 
         do {
             try result.write(toFile: fullPath, atomically: true, encoding: .utf8)
-            return toolResult("Updated \(path) (\(position)ed \(newContent.count) characters)")
+            return toolResult(
+                "Updated \(path) (\(position)ed \(newContent.count) characters)"
+                + "\n\n--- Added content ---\n\(newContent)"
+            )
         } catch {
             return toolError("Could not write file: \(error.localizedDescription)")
         }

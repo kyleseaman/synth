@@ -64,6 +64,27 @@ import Observation
 
     // MARK: - Incremental Update
 
+    func addFile(_ url: URL, content: String) {
+        let (targets, snippets) = scanFile(content: content)
+        outgoingLinks[url] = targets
+        contextSnippets[url] = snippets
+        for target in targets {
+            incomingLinks[target, default: []].insert(url)
+        }
+    }
+
+    func removeFile(_ url: URL) {
+        if let oldTargets = outgoingLinks.removeValue(forKey: url) {
+            for target in oldTargets {
+                incomingLinks[target]?.remove(url)
+                if incomingLinks[target]?.isEmpty == true {
+                    incomingLinks.removeValue(forKey: target)
+                }
+            }
+        }
+        contextSnippets.removeValue(forKey: url)
+    }
+
     /// Incremental update for a single file on save. Must dispatch to main thread.
     func updateFile(_ url: URL, content: String) {
         let (targets, snippets) = scanFile(content: content)

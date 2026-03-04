@@ -15,12 +15,19 @@ import Observation
     @ObservationIgnored private var lastToolCallLocations: [String: [String]] = [:]
     @ObservationIgnored private var pendingPromptRequest = false
     @ObservationIgnored var mcpServerManager: MCPServerManager?
+    @ObservationIgnored private var isLoadingSession = false
 
     var isConnected = false
     var sessionId: String?
     var connectionFailed = false
     var toolCalls: [ACPToolCall] = []
     var pendingPermission: ACPPermissionRequest?
+    var supportsLoadSession = false
+    var availableCommands: [ACPSlashCommand] = []
+    var availableModes: [ACPSessionMode] = []
+    var currentModeId: String?
+
+    // MARK: - Callbacks
 
     @ObservationIgnored var onUpdate: ((String) -> Void)?
     @ObservationIgnored var onTurnComplete: (() -> Void)?
@@ -31,6 +38,13 @@ import Observation
     @ObservationIgnored var onEditToolCompleted: ((String, [String]) -> Void)?
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
+    @ObservationIgnored var onUserMessageReplay: ((String) -> Void)?
+    @ObservationIgnored var onSessionReady: ((String) -> Void)?
+    @ObservationIgnored var onSessionLoadFailed: (() -> Void)?
+    @ObservationIgnored var onOAuthRequest: ((URL) -> Void)?
+    @ObservationIgnored var onCompactionStatus: ((String) -> Void)?
+    @ObservationIgnored var onClearStatus: ((String) -> Void)?
+    @ObservationIgnored var onMcpServerInitialized: ((String) -> Void)?
 
     func start(cwd: String, agent: String? = nil) {
         self.cwd = cwd
@@ -124,25 +138,30 @@ import Observation
     }
 
     private func processMessage(_ json: String) {
-        guard let data = json.data(using: .utf8) else { return }
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
 
-        // Try as incoming request from agent (bidirectional: has method + id)
-        if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let method = dict["method"] as? String,
-           let reqId = dict["id"] {
-            let idString = "\(reqId)"  // Handle both Int and String IDs
-            handleIncomingRequest(id: idString, method: method, params: dict["params"] as? [String: Any])
+        let method = dict["method"] as? String
+        let hasId = dict["id"] != nil
+
+        // Incoming request from agent (has method + id)
+        if let method, hasId {
+            let idString = "\(dict["id"]!)"
+            handleIncomingRequest(
+                id: idString,
+                method: method,
+                params: dict["params"] as? [String: Any]
+            )
             return
         }
 
-        // Try as notification (has method, no id)
-        if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data),
-           ACPProtocolAdapter.isSessionUpdateMethod(notification.method) {
-            handleSessionUpdate(notification.params)
+        // Notification (has method, no id)
+        if let method, !hasId {
+            handleNotification(method: method, data: data)
             return
         }
 
-        // Try as response to our request
+        // Response to our request (has id, no method)
         if let response = try? JSONDecoder().decode(JsonRpcResponse.self, from: data),
            let reqId = response.id {
             let handler = queue.sync { pendingRequests.removeValue(forKey: reqId) }
@@ -156,6 +175,62 @@ import Observation
                 } else {
                     handler(.success(response.result))
                 }
+            }
+        }
+    }
+
+    // MARK: - Notification Router
+
+    private func handleNotification(method: String, data: Data) {
+        switch method {
+        case "session/update", "session/notification":
+            if let notification = try? JSONDecoder().decode(JsonRpcNotification.self, from: data) {
+                handleSessionUpdate(notification.params)
+            }
+
+        case "_kiro.dev/mcp/oauth_request":
+            if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let params = dict["params"] as? [String: Any],
+               let urlString = params["url"] as? String,
+               let url = URL(string: urlString) {
+                print("[ACP] OAuth request: \(urlString)")
+                onOAuthRequest?(url)
+            }
+
+        case "_kiro.dev/mcp/server_initialized":
+            if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let params = dict["params"] as? [String: Any] {
+                let name = params["name"] as? String
+                    ?? params["serverName"] as? String
+                    ?? params["server_name"] as? String
+                    ?? "MCP Server"
+                print("[ACP] MCP server initialized: \(name)")
+                onMcpServerInitialized?(name)
+            }
+
+        case "_kiro.dev/compaction/status":
+            if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let params = dict["params"] as? [String: Any] {
+                let status = params["status"] as? String ?? "in_progress"
+                print("[ACP] Compaction status: \(status)")
+                onCompactionStatus?(status)
+            }
+
+        case "_kiro.dev/clear/status":
+            if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let params = dict["params"] as? [String: Any] {
+                let status = params["status"] as? String ?? "in_progress"
+                print("[ACP] Clear status: \(status)")
+                onClearStatus?(status)
+            }
+
+        case "_session/terminate":
+            print("[ACP] Session terminate received")
+            stop()
+
+        default:
+            if method.hasPrefix("_kiro.dev/") || method.hasPrefix("_session/") {
+                print("[ACP] Unhandled extension notification: \(method)")
             }
         }
     }
@@ -199,7 +274,6 @@ import Observation
             onPermissionRequest?(request)
 
         default:
-            // Unknown method — respond with error
             sendErrorResponse(id: id, code: -32601, message: "Method not found: \(method)")
         }
     }
@@ -231,20 +305,29 @@ import Observation
                 onUpdate?(text)
             }
 
+        case .userMessageChunk:
+            if let content = update["content"]?.dictValue,
+               let text = content["text"]?.stringValue {
+                onUserMessageReplay?(text)
+            } else if let text = update["text"]?.stringValue {
+                onUserMessageReplay?(text)
+            }
+
         case .toolCall:
             if let toolCallId = update["toolCallId"]?.stringValue,
                let title = update["title"]?.stringValue {
                 let toolKind = update["kind"]?.stringValue ?? "other"
                 let status = update["status"]?.stringValue ?? "pending"
                 let call = ACPToolCall(id: toolCallId, title: title, kind: toolKind, status: status)
-                // Capture diff content if present
                 if let content = update["content"]?.arrayValue,
                    let first = content.first?.dictValue,
                    first["type"]?.stringValue == "diff",
                    let path = first["path"]?.stringValue,
                    let oldText = first["oldText"]?.stringValue,
                    let newText = first["newText"]?.stringValue {
-                    self.lastToolCallDiff[toolCallId] = DiffContent(oldText: oldText, newText: newText, path: path)
+                    self.lastToolCallDiff[toolCallId] = DiffContent(
+                        oldText: oldText, newText: newText, path: path
+                    )
                 }
                 let locationPaths = Self.locationPaths(from: update)
                 if !locationPaths.isEmpty {
@@ -293,6 +376,24 @@ import Observation
 
         case .turnEnd:
             finishTurnIfNeeded()
+
+        case .availableCommandsUpdate:
+            if let commands = update["availableCommands"]?.arrayValue {
+                availableCommands = commands.compactMap { entry in
+                    guard let dict = entry.dictValue,
+                          let name = dict["name"]?.stringValue,
+                          let desc = dict["description"]?.stringValue else { return nil }
+                    let hint = dict["input"]?.dictValue?["hint"]?.stringValue
+                    return ACPSlashCommand(name: name, description: desc, inputHint: hint)
+                }
+                print("[ACP] Available commands updated: \(availableCommands.map(\.name))")
+            }
+
+        case .currentModeUpdate:
+            if let modeId = update["modeId"]?.stringValue {
+                currentModeId = modeId
+                print("[ACP] Mode updated to: \(modeId)")
+            }
         }
     }
 
@@ -429,8 +530,10 @@ import Observation
             switch result {
             case .success(let response):
                 print("[ACP] Initialize succeeded: \(String(describing: response))")
+                if let caps = response?.dictValue?["agentCapabilities"]?.dictValue {
+                    self?.supportsLoadSession = caps["loadSession"]?.value as? Bool ?? false
+                }
                 self?.isConnected = true
-                self?.createSession()
             case .failure(let error):
                 print("[ACP] Initialize failed: \(error)")
                 self?.connectionFailed = true
@@ -438,7 +541,7 @@ import Observation
         }
     }
 
-    private func createSession() {
+    func createSession() {
         var params: [String: AnyCodable] = [
             "cwd": AnyCodable(cwd),
             "mcpServers": AnyCodable(buildMcpServerConfigs())
@@ -454,11 +557,66 @@ import Observation
                let sid = dict["sessionId"]?.stringValue {
                 print("[ACP] Session created: \(sid)")
                 self?.sessionId = sid
+                self?.parseModes(from: dict)
+                self?.onSessionReady?(sid)
             } else {
                 print("[ACP] session/new response: \(result)")
                 self?.connectionFailed = true
                 self?.onError?("Failed to create session with kiro-cli.")
             }
+        }
+    }
+
+    func loadSession(sessionId: String) {
+        isLoadingSession = true
+        let params: [String: AnyCodable] = [
+            "sessionId": AnyCodable(sessionId),
+            "cwd": AnyCodable(cwd),
+            "mcpServers": AnyCodable(buildMcpServerConfigs())
+        ]
+
+        print("[ACP] Sending session/load for \(sessionId)")
+        sendRequest(method: "session/load", params: params) { [weak self] result in
+            guard let self = self else { return }
+            self.isLoadingSession = false
+            switch result {
+            case .success:
+                print("[ACP] Session loaded: \(sessionId)")
+                self.sessionId = sessionId
+                self.onSessionReady?(sessionId)
+            case .failure(let error):
+                print("[ACP] session/load failed: \(error), falling back to new session")
+                self.onSessionLoadFailed?()
+            }
+        }
+    }
+
+    func setMode(_ modeId: String) {
+        guard let sid = sessionId else { return }
+        let params: [String: AnyCodable] = [
+            "sessionId": AnyCodable(sid),
+            "modeId": AnyCodable(modeId)
+        ]
+        print("[ACP] Sending session/set_mode: \(modeId)")
+        sendRequest(method: "session/set_mode", params: params) { result in
+            if case .failure(let error) = result {
+                print("[ACP] set_mode failed: \(error)")
+            }
+        }
+    }
+
+    private func parseModes(from dict: [String: AnyCodable]) {
+        guard let modes = dict["modes"]?.dictValue else { return }
+        currentModeId = modes["currentModeId"]?.stringValue
+        if let available = modes["availableModes"]?.arrayValue {
+            availableModes = available.compactMap { entry in
+                guard let modeDict = entry.dictValue,
+                      let modeId = modeDict["id"]?.stringValue,
+                      let name = modeDict["name"]?.stringValue else { return nil }
+                let desc = modeDict["description"]?.stringValue
+                return ACPSessionMode(id: modeId, name: name, description: desc)
+            }
+            print("[ACP] Available modes: \(availableModes.map(\.name))")
         }
     }
 
@@ -506,6 +664,10 @@ import Observation
             return true
         }
         guard shouldFinish else { return }
+        for idx in toolCalls.indices where toolCalls[idx].status != "completed"
+            && toolCalls[idx].status != "failed" {
+            toolCalls[idx].status = "completed"
+        }
         onTurnComplete?()
     }
 }

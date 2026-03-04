@@ -23,12 +23,6 @@ jobs:
         swiftlint version
     - name: Lint Swift
       run: swiftlint lint --strict
-    - name: Install Rust
-      uses: dtolnay/rust-toolchain@stable
-    - name: Build Rust core
-      run: cd synth-core && cargo build --release
-    - name: Test Rust core
-      run: cd synth-core && cargo test
     - name: Build app
       run: xcodebuild -project Synth.xcodeproj -scheme Synth -configuration Debug build CODE_SIGNING_ALLOWED=NO
     - name: Test app

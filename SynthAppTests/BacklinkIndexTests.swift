@@ -56,3 +56,41 @@ final class BacklinkIndexTests: XCTestCase {
         XCTAssertTrue(index.links(to: "ignored").isEmpty)
     }
 }
+
+// MARK: - BacklinkIndex Additional Tests
+
+extension BacklinkIndexTests {
+    func testAddFileAndRemoveFileIncrementalOps() {
+        let index = BacklinkIndex()
+        let sourceURL = URL(fileURLWithPath: "/tmp/add-source.md")
+
+        index.addFile(sourceURL, content: "[[target]]")
+        XCTAssertTrue(index.links(to: "target").contains(sourceURL))
+
+        index.removeFile(sourceURL)
+        XCTAssertTrue(index.links(to: "target").isEmpty)
+    }
+
+    func testLongSnippetTruncation() {
+        let index = BacklinkIndex()
+        let sourceURL = URL(fileURLWithPath: "/tmp/long-snippet.md")
+        let longLine = "See [[note]] " + String(repeating: "x", count: 200)
+
+        index.updateFile(sourceURL, content: longLine)
+
+        let snippet = index.snippet(from: sourceURL, to: "note")
+        XCTAssertNotNil(snippet)
+        XCTAssertTrue((snippet?.count ?? 0) <= 124) // 120 + "..."
+    }
+
+    func testMultipleWikiLinksInSameLine() {
+        let index = BacklinkIndex()
+        let sourceURL = URL(fileURLWithPath: "/tmp/multi-link.md")
+
+        index.updateFile(sourceURL, content: "See [[alpha]] and [[beta]]")
+
+        XCTAssertTrue(index.links(to: "alpha").contains(sourceURL))
+        XCTAssertTrue(index.links(to: "beta").contains(sourceURL))
+        XCTAssertEqual(index.outgoing(from: sourceURL).count, 2)
+    }
+}

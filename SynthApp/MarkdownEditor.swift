@@ -1,702 +1,6 @@
 import SwiftUI
 import AppKit
 
-protocol DocumentFormat {
-    func render(_ text: String) -> NSAttributedString
-    func toPlainText(_ attributed: NSAttributedString) -> String
-}
-
-struct MarkdownFormat: DocumentFormat {
-    struct PendingImageRender {
-        let imageURL: URL
-        let markupRange: NSRange
-        let markupText: String
-        let attachmentRange: NSRange
-    }
-
-    // MARK: - Hide Syntax Preference
-
-    /// When true, markdown syntax markers (**, *, [[, ]], `, #) are hidden
-    static var hideSyntax: Bool {
-        get { UserDefaults.standard.object(forKey: "hideSyntax") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "hideSyntax") }
-    }
-
-    /// Hidden font and color for syntax markers
-    @MainActor static var hiddenFont: NSFont { NSFont.systemFont(ofSize: 0.01) }
-    @MainActor static var hiddenColor: NSColor { NSColor.clear }
-
-    // MARK: - Static Regex Patterns (compiled once)
-
-    // swiftlint:disable force_try
-    static let imagePattern = try! NSRegularExpression(
-        pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
-    )
-    static let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
-    static let datePattern = try! NSRegularExpression(pattern: "@(\\d{4}-\\d{2}-\\d{2})")
-    static let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
-    static let italicPattern = try! NSRegularExpression(pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)")
-    static let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
-    static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
-    // swiftlint:enable force_try
-
-    var noteIndex: NoteIndex?
-    var baseURL: URL?
-
-    func render(_ text: String) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        let bodyFont = Theme.editorNSFont(ofSize: 16)
-        let bodyParagraph = NSMutableParagraphStyle()
-        let defaultAttrs: [NSAttributedString.Key: Any] = [
-            .font: bodyFont, .foregroundColor: NSColor.textColor,
-            .paragraphStyle: bodyParagraph
-        ]
-
-        let lines = text.components(separatedBy: "\n")
-        for (index, line) in lines.enumerated() {
-            var attrs = defaultAttrs
-
-            // Style headings — hide # prefix visually
-            var headingPrefixLen = 0
-            if line.hasPrefix("# ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
-                headingPrefixLen = 2
-            } else if line.hasPrefix("## ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
-                headingPrefixLen = 3
-            } else if line.hasPrefix("### ") {
-                attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
-                headingPrefixLen = 4
-            }
-
-            // Enforce minimum line height so hidden prefix doesn't
-            // collapse the line fragment (e.g. "# " with no content)
-            if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
-                let para = NSMutableParagraphStyle()
-                para.minimumLineHeight = ceil(
-                    headingFont.ascender - headingFont.descender
-                        + headingFont.leading
-                )
-                attrs[.paragraphStyle] = para
-            }
-
-            let lineStr = NSMutableAttributedString(string: line, attributes: attrs)
-            if headingPrefixLen > 0 {
-                let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 0.01),
-                    .foregroundColor: NSColor.clear
-                ]
-                lineStr.addAttributes(
-                    hiddenAttrs,
-                    range: NSRange(location: 0, length: headingPrefixLen)
-                )
-            }
-            applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
-            if index < lines.count - 1 {
-                lineStr.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
-            }
-            result.append(lineStr)
-        }
-        return result
-    }
-
-    func toPlainText(_ attributed: NSAttributedString) -> String {
-        attributed.string
-    }
-
-    /// Character used by NSTextView to render inline attachments.
-    static let attachmentCharacter = "\u{FFFC}"
-
-    /// Custom attribute key storing the resolved image file URL.
-    static let imageURLKey = NSAttributedString.Key("synth.imageURL")
-
-    /// Custom attribute storing the original markup text for resize.
-    static let imageMarkupKey = NSAttributedString.Key(
-        "synth.imageMarkup"
-    )
-
-    @discardableResult
-    static func applyImageRendering(
-        in attributedText: NSMutableAttributedString,
-        baseFont: NSFont,
-        baseDirectoryURL: URL?
-    ) -> [PendingImageRender] {
-        let maxSize = maxRenderedImageSize(for: baseFont)
-        var pendingRenders: [PendingImageRender] = []
-
-        // Match ![alt](path) or ![alt](path =WIDTHx)
-        let fullRange = NSRange(
-            location: 0, length: attributedText.string.utf16.count
-        )
-
-        for imageMatch in imagePattern.matches(
-            in: attributedText.string, range: fullRange
-        ).reversed() {
-            let markupRange = imageMatch.range
-            let pathRange = imageMatch.range(at: 1)
-            guard pathRange.location != NSNotFound,
-                  let pathSwiftRange = Range(
-                      pathRange, in: attributedText.string
-                  ) else { continue }
-
-            let pathValue = String(
-                attributedText.string[pathSwiftRange]
-            )
-            guard let imageURL = MediaManager.resolvedImageURL(
-                from: pathValue,
-                baseDirectoryURL: baseDirectoryURL
-            ) else { continue }
-
-            // Parse optional width
-            var requestedWidth: CGFloat?
-            let widthRange = imageMatch.range(at: 2)
-            if widthRange.location != NSNotFound,
-               let widthSwiftRange = Range(
-                   widthRange, in: attributedText.string
-               ),
-               let parsed = Int(
-                   attributedText.string[widthSwiftRange]
-               ) {
-                requestedWidth = CGFloat(parsed)
-            }
-
-            let markupText = (attributedText.string as NSString)
-                .substring(with: markupRange)
-            let cachedImage = WorkspaceImageLoader.shared.cachedImage(
-                at: imageURL,
-                maxSize: maxSize
-            )
-            let attachment = NSTextAttachment()
-            let displayImage = cachedImage
-                ?? NSImage(
-                    systemSymbolName: "photo",
-                    accessibilityDescription: nil
-                )
-            attachment.image = displayImage
-
-            if let width = requestedWidth,
-               let img = displayImage,
-               img.size.width > 0 {
-                let scale = width / img.size.width
-                attachment.bounds = CGRect(
-                    x: 0, y: 0,
-                    width: width,
-                    height: img.size.height * scale
-                )
-            }
-
-            // Hide the markdown syntax after the first character
-            let tailRange = NSRange(
-                location: markupRange.location + 1,
-                length: markupRange.length - 1
-            )
-            let hiddenAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear
-            ]
-            attributedText.addAttributes(
-                hiddenAttributes, range: tailRange
-            )
-
-            // Replace leading "!" with the object replacement
-            // character so NSTextView renders the attachment
-            let bangRange = NSRange(
-                location: markupRange.location, length: 1
-            )
-            let attachmentStr = NSMutableAttributedString(
-                attributedString: NSAttributedString(
-                    attachment: attachment
-                )
-            )
-            let attrRange = NSRange(location: 0, length: 1)
-            attachmentStr.addAttribute(
-                imageURLKey, value: imageURL, range: attrRange
-            )
-            attachmentStr.addAttribute(
-                imageMarkupKey,
-                value: markupText,
-                range: attrRange
-            )
-            attributedText.replaceCharacters(
-                in: bangRange,
-                with: attachmentStr
-            )
-
-            pendingRenders.append(
-                PendingImageRender(
-                    imageURL: imageURL,
-                    markupRange: markupRange,
-                    markupText: markupText,
-                    attachmentRange: bangRange
-                )
-            )
-        }
-
-        return pendingRenders
-    }
-
-    /// Restore object replacement characters back to `!` so the
-    /// underlying plain text stays valid markdown.
-    static func restoreImageMarkup(in text: String) -> String {
-        // Short-circuit if no attachment characters present
-        guard text.contains(attachmentCharacter) else { return text }
-        return text.replacingOccurrences(of: attachmentCharacter, with: "!")
-    }
-
-    static func maxRenderedImageSize(for baseFont: NSFont) -> NSSize {
-        NSSize(
-            width: 560,
-            height: max(baseFont.pointSize * 18, 220)
-        )
-    }
-
-    /// Parse `=WIDTHx` from image markup like `![alt](path =300x)`.
-    static func parseImageWidth(from markup: String) -> CGFloat? {
-        guard let range = markup.range(of: #"=(\d+)x\)$"#, options: .regularExpression),
-              let numRange = markup.range(of: #"\d+"#, options: .regularExpression, range: range)
-        else { return nil }
-        return CGFloat(Int(markup[numRange]) ?? 0)
-    }
-
-    /// Return new markup with the width set or updated.
-    static func markupWithWidth(
-        _ markup: String, width: Int
-    ) -> String {
-        // Remove existing =WIDTHx if present
-        var cleaned = markup.replacingOccurrences(
-            of: #"\s+=\d+x\)"#,
-            with: ")",
-            options: .regularExpression
-        )
-        // Insert =WIDTHx before closing paren
-        if let parenIndex = cleaned.lastIndex(of: ")") {
-            cleaned.insert(
-                contentsOf: " =\(width)x",
-                at: parenIndex
-            )
-        }
-        return cleaned
-    }
-
-    func applyInlineOnly(_ str: NSMutableAttributedString, baseFont: NSFont) {
-        applyInlineFormatting(str, baseFont: baseFont)
-    }
-
-    // swiftlint:disable:next function_body_length
-    private func applyInlineFormatting(_ str: NSMutableAttributedString, baseFont: NSFont) {
-        // MARK: Wiki links [[Note Title]]
-        // Must run BEFORE bold/italic so link content isn't further reformatted
-        let wikiRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in Self.wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
-            let fullNSRange = match.range
-            let innerNSRange = match.range(at: 1)
-            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
-            let noteTitle = String(str.string[innerSwiftRange])
-            // Skip empty or whitespace-only links
-            if noteTitle.trimmingCharacters(in: .whitespaces).isEmpty { continue }
-            let encodedTitle = noteTitle.addingPercentEncoding(
-                withAllowedCharacters: .urlPathAllowed
-            ) ?? noteTitle
-            // swiftlint:disable:next force_unwrapping
-            let linkURL = URL(string: "synth://wiki/\(encodedTitle)")!
-
-            // Style inner text as link
-            let linkAttrs: [NSAttributedString.Key: Any] = [
-                .foregroundColor: NSColor.controlAccentColor,
-                .link: linkURL,
-                .cursor: NSCursor.pointingHand
-            ]
-            str.addAttributes(linkAttrs, range: innerNSRange)
-
-            // Style [[ and ]] brackets in gray (FSNotes style)
-            let bracketAttrs: [NSAttributedString.Key: Any] = [
-                .foregroundColor: NSColor.gray,
-                .link: linkURL
-            ]
-            let openRange = NSRange(location: fullNSRange.location, length: 2)
-            let closeRange = NSRange(
-                location: fullNSRange.location + fullNSRange.length - 2,
-                length: 2
-            )
-            str.addAttributes(bracketAttrs, range: openRange)
-            str.addAttributes(bracketAttrs, range: closeRange)
-        }
-
-        // MARK: @Date mentions (@2026-02-07) — styled as daily note links
-        let dateRange = NSRange(
-            location: 0, length: str.string.utf16.count
-        )
-        for match in Self.datePattern.matches(
-            in: str.string, range: dateRange
-        ).reversed() {
-            let fullNSRange = match.range
-            let innerNSRange = match.range(at: 1)
-            guard let innerSwiftRange = Range(
-                innerNSRange, in: str.string
-            ) else { continue }
-            let dateStr = String(str.string[innerSwiftRange])
-            // swiftlint:disable:next force_unwrapping
-            let linkURL = URL(string: "synth://daily/\(dateStr)")!
-            // Style the date part as a link
-            let linkAttrs: [NSAttributedString.Key: Any] = [
-                .font: Theme.editorNSFont(
-                    ofSize: baseFont.pointSize,
-                    weight: .medium
-                ),
-                .foregroundColor: NSColor.controlAccentColor,
-                .link: linkURL,
-                .cursor: NSCursor.pointingHand
-            ]
-            str.addAttributes(linkAttrs, range: innerNSRange)
-
-            // Hide the @ prefix
-            let hiddenAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 0.01),
-                .foregroundColor: NSColor.clear,
-                .link: linkURL
-            ]
-            str.addAttributes(
-                hiddenAttrs,
-                range: NSRange(
-                    location: fullNSRange.location, length: 1
-                )
-            )
-        }
-        // MARK: @People mentions
-        let personPattern = PeopleIndex.personPattern
-        let personRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in personPattern.matches(in: str.string, range: personRange).reversed() {
-            let fullNSRange = match.range
-            let innerNSRange = match.range(at: 1)
-            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
-            let personName = String(str.string[innerSwiftRange])
-            guard personName.count >= 2 else { continue }
-            let personLower = personName.lowercased()
-            // swiftlint:disable:next force_unwrapping
-            let personURL = URL(string: "synth://person/\(personLower)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
-            let replacement = NSAttributedString(
-                string: "@\(personName)",
-                attributes: [
-                    .font: mediumFont,
-                    .foregroundColor: NSColor.systemPurple,
-                    .backgroundColor: NSColor.systemPurple.withAlphaComponent(0.10),
-                    .link: personURL,
-                    .cursor: NSCursor.pointingHand
-                ]
-            )
-            str.replaceCharacters(in: fullNSRange, with: replacement)
-        }
-
-        // MARK: #Tags
-        // Must run after wiki links and @dates, before bold/italic/code
-        let tagPattern = TagIndex.tagPattern
-        let tagRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in tagPattern.matches(in: str.string, range: tagRange).reversed() {
-            let fullNSRange = match.range
-            let innerNSRange = match.range(at: 1)
-            guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
-            let tagName = String(str.string[innerSwiftRange])
-            guard tagName.count >= 2 else { continue }
-            let tagLower = tagName.lowercased()
-            // swiftlint:disable:next force_unwrapping
-            let tagURL = URL(string: "synth://tag/\(tagLower)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
-            let replacement = NSAttributedString(
-                string: "#\(tagName)",
-                attributes: [
-                    .font: mediumFont,
-                    .foregroundColor: NSColor.systemTeal,
-                    .backgroundColor: NSColor.systemTeal.withAlphaComponent(0.10),
-                    .link: tagURL,
-                    .cursor: NSCursor.pointingHand
-                ]
-            )
-            str.replaceCharacters(in: fullNSRange, with: replacement)
-        }
-
-        // Hidden marker attributes
-        let hiddenAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 0.01),
-            .foregroundColor: NSColor.clear
-        ]
-
-        // MARK: Bold **text** — style inner text, hide markers
-        let boldRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in Self.boldPattern.matches(in: str.string, range: boldRange).reversed() {
-            let fullRange = match.range
-            let innerRange = match.range(at: 1)
-            let boldFont = NSFontManager.shared.convert(
-                baseFont, toHaveTrait: .boldFontMask
-            )
-            str.addAttribute(.font, value: boldFont, range: innerRange)
-            // Gray ** markers (FSNotes style)
-            let openRange = NSRange(location: fullRange.location, length: 2)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
-        }
-
-        // MARK: Italic *text* — style inner text, gray markers
-        let italicRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in Self.italicPattern.matches(in: str.string, range: italicRange).reversed() {
-            let fullRange = match.range
-            let innerRange = match.range(at: 1)
-            let italicFont = NSFontManager.shared.convert(
-                baseFont, toHaveTrait: .italicFontMask
-            )
-            str.addAttribute(.font, value: italicFont, range: innerRange)
-            // Gray * markers (FSNotes style)
-            let openRange = NSRange(location: fullRange.location, length: 1)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 1, length: 1)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
-        }
-
-        // MARK: Underline __text__ — style inner text, gray markers
-        let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in Self.underlinePattern.matches(in: str.string, range: underlineRange).reversed() {
-            let fullRange = match.range
-            let innerRange = match.range(at: 1)
-            str.addAttribute(
-                .underlineStyle,
-                value: NSUnderlineStyle.single.rawValue,
-                range: innerRange
-            )
-            // Gray __ markers (FSNotes style)
-            let openRange = NSRange(location: fullRange.location, length: 2)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 2, length: 2)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
-        }
-
-        // MARK: Inline code `text` — style inner text, gray backticks
-        let codeRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in Self.codePattern.matches(in: str.string, range: codeRange).reversed() {
-            let fullRange = match.range
-            let innerRange = match.range(at: 1)
-            str.addAttributes([
-                .font: Theme.terminalNSFont(ofSize: 14),
-                .foregroundColor: NSColor.systemPink,
-                .backgroundColor: NSColor.quaternaryLabelColor
-            ], range: innerRange)
-            // Gray ` markers (FSNotes style)
-            let openRange = NSRange(location: fullRange.location, length: 1)
-            let closeRange = NSRange(location: fullRange.location + fullRange.length - 1, length: 1)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: openRange)
-            str.addAttribute(.foregroundColor, value: NSColor.gray, range: closeRange)
-        }
-    }
-}
-
-struct RichTextFormat: DocumentFormat {
-    func render(_ text: String) -> NSAttributedString {
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: Theme.editorNSFont(ofSize: 16),
-            .foregroundColor: NSColor.textColor
-        ]
-        return NSAttributedString(string: text, attributes: attrs)
-    }
-
-    func toPlainText(_ attributed: NSAttributedString) -> String {
-        attributed.string
-    }
-}
-
-struct EditorModelTextTracker {
-    private(set) var lastObservedModelText: String
-
-    init(initialModelText: String) {
-        self.lastObservedModelText = Self.normalizedText(initialModelText)
-    }
-
-    func hasModelTextChanged(_ modelText: String) -> Bool {
-        Self.normalizedText(modelText) != lastObservedModelText
-    }
-
-    mutating func markObserved(_ modelText: String) {
-        lastObservedModelText = Self.normalizedText(modelText)
-    }
-
-    static func normalizedText(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-    }
-
-    static func isOutOfSync(modelText: String, renderedText: String) -> Bool {
-        normalizedText(modelText) != normalizedText(renderedText)
-    }
-}
-
-struct EditorScrollMetrics {
-    static func effectiveDocumentHeight(
-        usedTextHeight: CGFloat,
-        textInset: CGFloat,
-        viewportHeight: CGFloat
-    ) -> CGFloat {
-        let usedHeightWithInsets = usedTextHeight + textInset * 2
-        return max(viewportHeight, usedHeightWithInsets)
-    }
-
-    static func clampedVerticalOffset(
-        rawOffset: CGFloat,
-        documentHeight: CGFloat,
-        viewportHeight: CGFloat
-    ) -> CGFloat {
-        let maxOffset = max(0, documentHeight - viewportHeight)
-        return min(max(rawOffset, 0), maxOffset)
-    }
-
-    static func effectiveDocumentHeight(
-        documentViewHeight: CGFloat,
-        viewportHeight: CGFloat
-    ) -> CGFloat {
-        max(viewportHeight, documentViewHeight.rounded(.up))
-    }
-}
-
-struct EditorLinePositionMetrics {
-    static func shouldIncludeTrailingEmptyLine(
-        text: String,
-        extraLineFragmentHeight: CGFloat
-    ) -> Bool {
-        text.hasSuffix("\n") && extraLineFragmentHeight > 0
-    }
-}
-
-// MARK: - Resize Grip View
-
-class ResizeGripView: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 3
-        layer?.backgroundColor = NSColor.windowBackgroundColor
-            .withAlphaComponent(0.8).cgColor
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard let context = NSGraphicsContext.current?.cgContext
-        else { return }
-        let inset: CGFloat = 4
-        let lineWidth: CGFloat = 1.5
-        context.setStrokeColor(
-            NSColor.secondaryLabelColor.cgColor
-        )
-        context.setLineWidth(lineWidth)
-        context.setLineCap(.round)
-        // Draw two diagonal lines (bottom-right grip)
-        // Line 1: shorter
-        context.move(to: CGPoint(
-            x: bounds.maxX - inset,
-            y: bounds.maxY - inset - 4
-        ))
-        context.addLine(to: CGPoint(
-            x: bounds.maxX - inset - 4,
-            y: bounds.maxY - inset
-        ))
-        // Line 2: longer
-        context.move(to: CGPoint(
-            x: bounds.maxX - inset,
-            y: bounds.maxY - inset - 8
-        ))
-        context.addLine(to: CGPoint(
-            x: bounds.maxX - inset - 8,
-            y: bounds.maxY - inset
-        ))
-        context.strokePath()
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-// MARK: - Image Attachment Overlay
-
-class ImageAttachmentOverlay: NSView {
-    var onCopy: (() -> Void)?
-    var onDelete: (() -> Void)?
-
-    private let copyButton = NSButton()
-    private let deleteButton = NSButton()
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.cornerRadius = 6
-        layer?.backgroundColor = NSColor.windowBackgroundColor
-            .withAlphaComponent(0.85).cgColor
-
-        copyButton.image = NSImage(
-            systemSymbolName: "doc.on.doc",
-            accessibilityDescription: "Copy"
-        )
-        copyButton.bezelStyle = .inline
-        copyButton.isBordered = false
-        copyButton.target = self
-        copyButton.action = #selector(copyTapped)
-        copyButton.toolTip = "Copy image"
-        addSubview(copyButton)
-
-        deleteButton.image = NSImage(
-            systemSymbolName: "trash",
-            accessibilityDescription: "Delete"
-        )
-        deleteButton.bezelStyle = .inline
-        deleteButton.isBordered = false
-        deleteButton.contentTintColor = .systemRed
-        deleteButton.target = self
-        deleteButton.action = #selector(deleteTapped)
-        deleteButton.toolTip = "Delete image"
-        addSubview(deleteButton)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func layout() {
-        super.layout()
-        let buttonSize: CGFloat = 24
-        let padding: CGFloat = 4
-        copyButton.frame = CGRect(
-            x: padding, y: (bounds.height - buttonSize) / 2,
-            width: buttonSize, height: buttonSize
-        )
-        deleteButton.frame = CGRect(
-            x: padding + buttonSize + 4,
-            y: (bounds.height - buttonSize) / 2,
-            width: buttonSize, height: buttonSize
-        )
-    }
-
-    // Prevent clicks from passing through to the text view
-    override func mouseDown(with event: NSEvent) {}
-
-    @objc private func copyTapped() { onCopy?() }
-    @objc private func deleteTapped() { onDelete?() }
-}
-
-// MARK: - Wiki Link State Machine
-
-enum WikiLinkState {
-    case idle
-    case singleBracket
-    case wikiLinkActive(start: Int)
-    case atActive(start: Int)
-    case hashtagActive(start: Int)
-    case slashActive(start: Int)
-}
-
 class FormattingTextView: NSTextView {
     var wikiLinkState: WikiLinkState = .idle
     var imagePasteHandler: ((NSImage) -> String?)?
@@ -707,39 +11,6 @@ class FormattingTextView: NSTextView {
     /// Called when the user finishes dragging the resize handle.
     /// Parameters: original markup string, new width in points.
     var onImageResize: ((String, Int) -> Void)?
-
-    // MARK: - Custom Caret
-    private let caretWidth: CGFloat = 2
-    private let caretColor = NSColor.controlAccentColor
-
-    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
-        var newRect = rect
-        newRect.size.width = caretWidth
-        super.drawInsertionPoint(in: newRect, color: caretColor, turnedOn: flag)
-    }
-
-    override func setNeedsDisplay(_ invalidRect: NSRect) {
-        var expandedRect = invalidRect
-        expandedRect.size.width += caretWidth - 1
-        super.setNeedsDisplay(expandedRect)
-    }
-
-    // MARK: - Undo Break Timer
-    private var undoBreakTimer: Timer?
-
-    func resetUndoBreakTimer() {
-        undoBreakTimer?.invalidate()
-        undoBreakTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.breakUndoCoalescing()
-            }
-        }
-    }
-
-    func invalidateUndoBreakTimer() {
-        undoBreakTimer?.invalidate()
-        undoBreakTimer = nil
-    }
 
     private lazy var imageOverlay: ImageAttachmentOverlay = {
         let overlay = ImageAttachmentOverlay()
@@ -1070,17 +341,6 @@ class FormattingTextView: NSTextView {
         super.paste(sender)
     }
 
-    // Regex for unordered list markers: -, *, +, •, >, –, —
-    // swiftlint:disable:next force_try
-    private static let listMarkerRegex = try! NSRegularExpression(
-        pattern: #"^([ \t]*)([-*+•>–—])( )"#
-    )
-    // Regex for ordered list: 1. 2. etc
-    // swiftlint:disable:next force_try
-    private static let numberedListRegex = try! NSRegularExpression(
-        pattern: #"^([ \t]*)(\d+)(\.[ ])"#
-    )
-
     override func insertNewline(_ sender: Any?) {
         // Dismiss wiki link popup on newline
         switch wikiLinkState {
@@ -1094,43 +354,22 @@ class FormattingTextView: NSTextView {
         guard let storage = textStorage else { super.insertNewline(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange).trimmingCharacters(in: .newlines)
-        let nsLine = line as NSString
-        let fullRange = NSRange(location: 0, length: nsLine.length)
 
-        // Check for unordered list marker
-        if let match = Self.listMarkerRegex.firstMatch(in: line, range: fullRange) {
-            let prefix = nsLine.substring(with: match.range)
-            // If line is just the marker, remove it
-            if line == prefix.trimmingCharacters(in: .whitespaces) {
-                storage.replaceCharacters(in: lineRange, with: "")
-                return
-            }
-            // Single insert: newline + prefix (avoids two didProcessEditing cycles)
-            insertText("\n" + prefix, replacementRange: selectedRange())
+        // Count leading tabs
+        var indent = ""
+        for char in line { if char == "\t" { indent += "\t" } else { break } }
+
+        // If current line is just a bullet (empty item), remove it instead
+        if line == "\(indent)•" {
+            storage.replaceCharacters(in: lineRange, with: "")
             return
         }
 
-        // Check for numbered list
-        if let match = Self.numberedListRegex.firstMatch(in: line, range: fullRange) {
-            let indentRange = match.range(at: 1)
-            let numRange = match.range(at: 2)
-            let dotRange = match.range(at: 3)
-            let indent = nsLine.substring(with: indentRange)
-            let numStr = nsLine.substring(with: numRange)
-            let dot = nsLine.substring(with: dotRange)
-            let prefix = "\(indent)\(numStr)\(dot)"
-
-            // If line is just the marker, remove it
-            if line == prefix.trimmingCharacters(in: .whitespaces) {
-                storage.replaceCharacters(in: lineRange, with: "")
-                return
-            }
-            // Increment number — single insert
-            if let num = Int(numStr) {
-                let nextPrefix = "\(indent)\(num + 1)\(dot)"
-                insertText("\n" + nextPrefix, replacementRange: selectedRange())
-                return
-            }
+        // If line starts with bullet, continue the list
+        if line.hasPrefix("\(indent)•") {
+            super.insertNewline(sender)
+            insertText("\(indent)• ", replacementRange: selectedRange())
+            return
         }
 
         super.insertNewline(sender)
@@ -1140,28 +379,14 @@ class FormattingTextView: NSTextView {
         super.insertText(string, replacementRange: replacementRange)
         guard let str = string as? String else { return }
 
-        // Text substitution: -> becomes →
-        if str == ">" {
-            tryArrowSubstitution()
-        }
-
         handleAutocompleteState(for: str)
+        handleBulletConversion(for: str)
     }
+}
 
-    /// Replace "->" with "→" if just typed
-    private func tryArrowSubstitution() {
-        guard let storage = textStorage else { return }
-        let cursor = selectedRange().location
-        // Need at least 2 characters before cursor for "->"
-        guard cursor >= 2 else { return }
-        let checkRange = NSRange(location: cursor - 2, length: 2)
-        guard checkRange.location + checkRange.length <= storage.length else { return }
-        let twoChars = (storage.string as NSString).substring(with: checkRange)
-        guard twoChars == "->" else { return }
-        // Replace "->" with "→"
-        storage.replaceCharacters(in: checkRange, with: "→")
-    }
+// MARK: - FormattingTextView Autocomplete
 
+extension FormattingTextView {
     // MARK: - Autocomplete State Machine
 
     private func handleAutocompleteState(for str: String) {
@@ -1303,11 +528,28 @@ class FormattingTextView: NSTextView {
         )
     }
 
+    // MARK: - Bullet Conversion
+
+    private func handleBulletConversion(for str: String) {
+        guard str == " ", let storage = textStorage else { return }
+        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
+        let line = (storage.string as NSString).substring(with: lineRange)
+
+        let trimmed = line.trimmingCharacters(in: .newlines)
+        var indent = ""
+        for char in trimmed { if char == "\t" { indent += "\t" } else { break } }
+        let rest = String(trimmed.dropFirst(indent.count))
+
+        if rest == "- " || rest == "* " {
+            let bulletRange = NSRange(location: lineRange.location + indent.count, length: 2)
+            storage.replaceCharacters(in: bulletRange, with: "• ")
+        }
+    }
+
     // MARK: - Delete Backward
 
     override func deleteBackward(_ sender: Any?) {
         super.deleteBackward(sender)
-
         switch wikiLinkState {
         case .wikiLinkActive(let start), .atActive(let start), .hashtagActive(let start), .slashActive(let start):
             if selectedRange().location <= start {
@@ -1382,18 +624,12 @@ class FormattingTextView: NSTextView {
         }
     }
 
-    private func isListLine(_ line: String) -> Bool {
-        let range = NSRange(location: 0, length: (line as NSString).length)
-        return Self.listMarkerRegex.firstMatch(in: line, range: range) != nil
-            || Self.numberedListRegex.firstMatch(in: line, range: range) != nil
-    }
-
     override func insertTab(_ sender: Any?) {
         guard let storage = textStorage else { super.insertTab(sender); return }
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        if isListLine(line) {
+        if line.contains("•") {
             storage.insert(NSAttributedString(string: "\t"), at: lineRange.location)
             return
         }
@@ -1405,7 +641,7 @@ class FormattingTextView: NSTextView {
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        if line.hasPrefix("\t") && isListLine(line) {
+        if line.hasPrefix("\t") && line.contains("•") {
             storage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
             return
         }
@@ -1414,41 +650,157 @@ class FormattingTextView: NSTextView {
 
     func toggleBold() { toggleMarkdownWrap("**") }
     func toggleItalic() { toggleMarkdownWrap("*") }
-    func toggleUnderline() { toggleMarkdownWrap("__") }
 
     private func toggleMarkdownWrap(_ marker: String) {
-        guard textStorage != nil else { return }
-        let range = selectedRange()
-        let text = (textStorage!.string as NSString)
-        let markerLen = marker.count
+        let selectedRangeValue = selectedRange()
+        guard let storage = textStorage else { return }
+        let textValue = storage.string as NSString
+        let markerLength = marker.count
 
-        if range.length > 0 {
-            guard range.location + range.length <= text.length else { return }
-            let selected = text.substring(with: range)
-
-            // Check if already wrapped
-            let hasBefore = range.location >= markerLen
-                && text.substring(with: NSRange(location: range.location - markerLen, length: markerLen)) == marker
-            let hasAfter = range.location + range.length + markerLen <= text.length
-                && text.substring(with: NSRange(location: range.location + range.length, length: markerLen)) == marker
-
-            if hasBefore && hasAfter {
-                // Remove markers
-                let fullRange = NSRange(location: range.location - markerLen, length: range.length + markerLen * 2)
-                insertText(selected, replacementRange: fullRange)
-                setSelectedRange(NSRange(location: range.location - markerLen, length: range.length))
-            } else {
-                // Add markers
-                let wrapped = "\(marker)\(selected)\(marker)"
-                insertText(wrapped, replacementRange: range)
-                setSelectedRange(NSRange(location: range.location + markerLen, length: range.length))
+        if selectedRangeValue.length == 0 {
+            if removeAdjacentMarkersIfPresent(
+                marker: marker,
+                markerLength: markerLength,
+                selectedRangeValue: selectedRangeValue,
+                storage: storage,
+                textValue: textValue
+            ) {
+                return
             }
+
+            if removeWrappedSegmentIfCursorInside(
+                marker: marker,
+                markerLength: markerLength,
+                selectedRangeValue: selectedRangeValue,
+                storage: storage,
+                textValue: textValue
+            ) {
+                return
+            }
+
+            let wrapped = "\(marker)\(marker)"
+            storage.replaceCharacters(in: selectedRangeValue, with: wrapped)
+            setSelectedRange(NSRange(
+                location: selectedRangeValue.location + markerLength,
+                length: 0
+            ))
+            return
+        }
+
+        let selectedText = textValue.substring(with: selectedRangeValue)
+
+        // Check if already wrapped with this marker
+        let hasBefore = selectedRangeValue.location >= markerLength
+            && textValue.substring(
+                with: NSRange(
+                    location: selectedRangeValue.location - markerLength,
+                    length: markerLength
+                )
+            ) == marker
+        let hasAfter = selectedRangeValue.location
+            + selectedRangeValue.length
+            + markerLength <= textValue.length
+            && textValue.substring(
+                with: NSRange(
+                    location: selectedRangeValue.location + selectedRangeValue.length,
+                    length: markerLength
+                )
+            ) == marker
+
+        if hasBefore && hasAfter {
+            // Remove markers
+            let fullRange = NSRange(
+                location: selectedRangeValue.location - markerLength,
+                length: selectedRangeValue.length + markerLength * 2
+            )
+            storage.replaceCharacters(in: fullRange, with: selectedText)
+            setSelectedRange(NSRange(
+                location: selectedRangeValue.location - markerLength,
+                length: selectedRangeValue.length
+            ))
         } else {
-            // No selection — insert empty markers and place cursor inside
-            insertText("\(marker)\(marker)", replacementRange: range)
-            setSelectedRange(NSRange(location: range.location + markerLen, length: 0))
+            // Add markers
+            let wrapped = "\(marker)\(selectedText)\(marker)"
+            storage.replaceCharacters(in: selectedRangeValue, with: wrapped)
+            setSelectedRange(NSRange(
+                location: selectedRangeValue.location + markerLength,
+                length: selectedRangeValue.length
+            ))
         }
     }
+
+    private func removeAdjacentMarkersIfPresent(
+        marker: String,
+        markerLength: Int,
+        selectedRangeValue: NSRange,
+        storage: NSTextStorage,
+        textValue: NSString
+    ) -> Bool {
+        let cursorLocation = selectedRangeValue.location
+        guard cursorLocation >= markerLength,
+              cursorLocation + markerLength <= textValue.length
+        else { return false }
+
+        let beforeRange = NSRange(
+            location: cursorLocation - markerLength,
+            length: markerLength
+        )
+        let afterRange = NSRange(
+            location: cursorLocation,
+            length: markerLength
+        )
+        let beforeMarker = textValue.substring(with: beforeRange)
+        let afterMarker = textValue.substring(with: afterRange)
+        guard beforeMarker == marker, afterMarker == marker else { return false }
+
+        let fullRange = NSRange(
+            location: cursorLocation - markerLength,
+            length: markerLength * 2
+        )
+        storage.replaceCharacters(in: fullRange, with: "")
+        setSelectedRange(NSRange(
+            location: cursorLocation - markerLength,
+            length: 0
+        ))
+        return true
+    }
+
+    private func removeWrappedSegmentIfCursorInside(
+        marker: String,
+        markerLength: Int,
+        selectedRangeValue: NSRange,
+        storage: NSTextStorage,
+        textValue: NSString
+    ) -> Bool {
+        let escapedMarker = NSRegularExpression.escapedPattern(for: marker)
+        guard let pattern = try? NSRegularExpression(
+            pattern: "\(escapedMarker)(.+?)\(escapedMarker)"
+        ) else { return false }
+
+        let fullRange = NSRange(location: 0, length: textValue.length)
+        let cursorLocation = selectedRangeValue.location
+        for match in pattern.matches(in: textValue as String, range: fullRange) {
+            let innerRange = match.range(at: 1)
+            let innerEnd = innerRange.location + innerRange.length
+            guard cursorLocation >= innerRange.location,
+                  cursorLocation <= innerEnd
+            else { continue }
+
+            let wrappedRange = match.range
+            let unwrappedText = textValue.substring(with: innerRange)
+            storage.replaceCharacters(in: wrappedRange, with: unwrappedText)
+            let newCursorLocation = max(
+                innerRange.location,
+                cursorLocation - markerLength
+            )
+            setSelectedRange(NSRange(location: newCursorLocation, length: 0))
+            return true
+        }
+
+        return false
+    }
+
+    func toggleUnderline() { toggleMarkdownWrap("__") }
 
     // MARK: - Shared Autocomplete Completion
 
@@ -1458,7 +810,7 @@ class FormattingTextView: NSTextView {
         let completedDate: Bool
     }
 
-    func completeAutocomplete(title: String, cursorOffset: Int? = nil) -> AutocompleteResult {
+    func completeAutocomplete(title: String) -> AutocompleteResult {
         guard let storage = textStorage else {
             return AutocompleteResult(
                 completedWikiLink: false,
@@ -1533,15 +885,8 @@ class FormattingTextView: NSTextView {
                 length: cursor - replaceStart
             )
             storage.replaceCharacters(in: range, with: title)
-            // Position cursor at cursorOffset if provided (for {{cursor}} support)
-            let newCursorPosition: Int
-            if let cursorOffset {
-                newCursorPosition = replaceStart + cursorOffset
-            } else {
-                newCursorPosition = replaceStart + title.count
-            }
             setSelectedRange(NSRange(
-                location: newCursorPosition,
+                location: replaceStart + title.count,
                 length: 0
             ))
 
@@ -1572,6 +917,7 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var linePositions: [CGFloat]
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
+    var hideSyntax: Bool
     weak var store: DocumentStore?
     weak var templateStore: TemplateStore?
 
@@ -1589,21 +935,23 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.drawsBackground = false
         textView.delegate = context.coordinator
+        let typingParagraph = NSMutableParagraphStyle()
+        typingParagraph.lineHeightMultiple = 1.25
         textView.typingAttributes = [
             .font: Theme.editorNSFont(ofSize: 16),
-            .foregroundColor: NSColor.textColor
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: typingParagraph
         ]
+        textView.insertionPointColor = NSColor.textColor
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
-        textView.layoutManager?.allowsNonContiguousLayout = false
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
-        scrollView.verticalScrollElasticity = .none
         scrollView.documentView = textView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
@@ -1649,42 +997,25 @@ struct MarkdownEditor: NSViewRepresentable {
         context.coordinator.autocomplete.templateStore = templateStore
         context.coordinator.autocomplete.store = store
 
-        let currentURL = store?.currentDocumentURL
-
-        // Save selected range when switching away from a document
-        if let lastURL = context.coordinator.lastDocumentURL,
-           lastURL != currentURL {
-            store?.saveSelectedRange(textView.selectedRange(), for: lastURL)
+        // Force re-format when hideSyntax preference changes
+        if context.coordinator.lastHideSyntax != hideSyntax {
+            context.coordinator.lastHideSyntax = hideSyntax
+            context.coordinator.lastContentHash = nil
+            context.coordinator.applyFormatting()
+            return
         }
 
-        let didModelTextChange = context.coordinator
-            .modelTextTracker
-            .hasModelTextChanged(text)
-
-        if didModelTextChange && !context.coordinator.isEditing {
-            context.coordinator.modelTextTracker.markObserved(text)
-            let restoredString = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
-            )
-            if EditorModelTextTracker.isOutOfSync(
-                modelText: text,
-                renderedText: restoredString
-            ) {
-                textView.textStorage?.setAttributedString(format.render(text))
-                context.coordinator.applyFormatting()
-                DispatchQueue.main.async {
-                    context.coordinator.updateLinePositions()
-                    // Restore saved selected range for this document
-                    if let savedRange = self.store?.savedSelectedRange(),
-                       savedRange.location + savedRange.length <= textView.string.count {
-                        textView.setSelectedRange(savedRange)
-                        textView.scrollRangeToVisible(savedRange)
-                    }
-                }
+        let restoredString = MarkdownFormat.restoreMarkup(
+            in: textView.attributedString()
+        )
+        if !context.coordinator.isEditing && restoredString != text {
+            context.coordinator.lastContentHash = nil
+            textView.textStorage?.setAttributedString(format.render(text))
+            context.coordinator.applyFormatting()
+            DispatchQueue.main.async {
+                context.coordinator.updateLinePositions()
             }
         }
-
-        context.coordinator.lastDocumentURL = currentURL
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -1701,77 +1032,28 @@ struct MarkdownEditor: NSViewRepresentable {
     // MARK: - Coordinator
 
     @MainActor
-    class Coordinator: NSObject,
-                       NSTextViewDelegate,
-                       @preconcurrency NSTextStorageDelegate,
-                       @preconcurrency NSLayoutManagerDelegate {
+    class Coordinator: NSObject, NSTextViewDelegate, NSTextStorageDelegate,
+        @preconcurrency NSLayoutManagerDelegate {
         var parent: MarkdownEditor
         var textView: FormattingTextView?
         var scrollView: NSScrollView?
         var isEditing = false
+        var isFormatting = false
         weak var store: DocumentStore?
         weak var templateStore: TemplateStore?
         let autocomplete = AutocompleteCoordinator()
         private var saveTimer: Timer?
-        var lastDocumentURL: URL?
-        var modelTextTracker: EditorModelTextTracker
+        fileprivate var lastContentHash: UInt64?
+        var lastHideSyntax: Bool?
+        private var lastCursorParagraph: NSRange?
+        private var codeBlockRanges: [NSRange] = []
 
-        // Cached fonts for highlightParagraph — resolved once, reused every keystroke
-        private var cachedCodeFont: NSFont?
-        private var cachedH1Font: NSFont?
-        private var cachedH2Font: NSFont?
-        private var cachedH3Font: NSFont?
-
-        struct HighlightFonts {
-            let code: NSFont
-            let heading1: NSFont
-            let heading2: NSFont
-            let heading3: NSFont
-        }
-
-        func highlightFonts() -> HighlightFonts {
-            if let code = cachedCodeFont,
-               let heading1 = cachedH1Font,
-               let heading2 = cachedH2Font,
-               let heading3 = cachedH3Font {
-                return HighlightFonts(
-                    code: code, heading1: heading1, heading2: heading2, heading3: heading3
-                )
-            }
-            let code = Theme.terminalNSFont(ofSize: 14)
-            let heading1 = Theme.editorNSFont(ofSize: 28, weight: .bold)
-            let heading2 = Theme.editorNSFont(ofSize: 22, weight: .bold)
-            let heading3 = Theme.editorNSFont(ofSize: 18, weight: .semibold)
-            cachedCodeFont = code
-            cachedH1Font = heading1
-            cachedH2Font = heading2
-            cachedH3Font = heading3
-            return HighlightFonts(
-                code: code, heading1: heading1, heading2: heading2, heading3: heading3
-            )
-        }
-
-        func invalidateFontCache() {
-            cachedCodeFont = nil
-            cachedH1Font = nil
-            cachedH2Font = nil
-            cachedH3Font = nil
-        }
-
-        init(_ parent: MarkdownEditor) {
-            self.parent = parent
-            self.modelTextTracker = EditorModelTextTracker(
-                initialModelText: parent.text
-            )
-        }
+        init(_ parent: MarkdownEditor) { self.parent = parent }
 
         deinit {}
 
         func tearDown() {
             saveTimer?.invalidate()
-            fullReformatTask?.cancel()
-            scrollOffsetUpdateTask?.cancel()
-            textView?.invalidateUndoBreakTimer()
             if let clipView = scrollView?.contentView {
                 NotificationCenter.default.removeObserver(
                     self,
@@ -1797,10 +1079,10 @@ struct MarkdownEditor: NSViewRepresentable {
                 guard let self = self,
                       let textView = self.textView
                 else { return }
-                self.parent.text = MarkdownFormat.restoreImageMarkup(
-                    in: textView.string
+                self.parent.text = MarkdownFormat.restoreMarkup(
+                    in: textView.attributedString()
                 )
-                // Don't call applyFormatting() - didProcessEditing handles it
+                self.applyFormatting()
             }
             autocomplete.setupObservers()
         }
@@ -1839,8 +1121,8 @@ struct MarkdownEditor: NSViewRepresentable {
             originalMarkup: String, newWidth: Int
         ) {
             guard let textView = textView else { return }
-            let text = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+            let text = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
             let updated = MarkdownFormat.markupWithWidth(
                 originalMarkup, width: newWidth
@@ -1850,7 +1132,7 @@ struct MarkdownEditor: NSViewRepresentable {
             )
             textView.string = newText
             parent.text = newText
-            applyFormatting() // Need full reformat for image rendering
+            applyFormatting()
         }
 
         private func handleImageAction(
@@ -1865,6 +1147,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 NSPasteboard.general.writeObjects([image])
             case .delete:
                 removeImageMarkup(for: imageURL)
+                applyFormatting()
                 // Save so disk content is up to date for the check
                 store?.saveAll()
                 let refs = store?.notesReferencing(
@@ -1873,7 +1156,7 @@ struct MarkdownEditor: NSViewRepresentable {
                 if refs.isEmpty {
                     _ = store?.deleteMedia(imageURL)
                 }
-                applyFormatting() // Need full reformat for image rendering
+                applyFormatting()
             case .open:
                 self.store?.showImageDetailModal(imageURL)
             }
@@ -1882,8 +1165,8 @@ struct MarkdownEditor: NSViewRepresentable {
         private func removeImageMarkup(for imageURL: URL) {
             guard let textView = textView else { return }
             let filename = imageURL.lastPathComponent
-            let text = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+            let text = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
             // swiftlint:disable:next force_try
             let pattern = try! NSRegularExpression(
@@ -1916,75 +1199,26 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // MARK: - Scroll Offset
 
-        private var lastReportedScrollOffset: CGFloat = 0
-        private var pendingScrollOffset: CGFloat?
-        private var scrollOffsetUpdateTask: DispatchWorkItem?
         func updateScrollOffset() {
             guard let scrollView = scrollView else { return }
-            let clipBounds = scrollView.contentView.bounds
-            let viewportHeight = clipBounds.height
-            let documentViewHeight = scrollView.documentView?.bounds.height ?? viewportHeight
-            let documentHeight = EditorScrollMetrics.effectiveDocumentHeight(
-                documentViewHeight: documentViewHeight,
-                viewportHeight: viewportHeight
-            )
-            let newOffset = EditorScrollMetrics.clampedVerticalOffset(
-                rawOffset: clipBounds.origin.y,
-                documentHeight: documentHeight,
-                viewportHeight: viewportHeight
-            )
-            .rounded(.toNearestOrAwayFromZero)
-            // Only update if changed by more than 1 point to reduce SwiftUI churn
-            let didScrollOffsetChange = abs(newOffset - lastReportedScrollOffset) > 1
-            guard didScrollOffsetChange else { return }
-
-            pendingScrollOffset = newOffset
-            if scrollOffsetUpdateTask != nil { return }
-
-            let updateTask = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.scrollOffsetUpdateTask = nil
-                guard let pendingOffset = self.pendingScrollOffset else { return }
-                self.pendingScrollOffset = nil
-                self.lastReportedScrollOffset = pendingOffset
-                self.parent.scrollOffset = pendingOffset
+            DispatchQueue.main.async {
+                self.parent.scrollOffset = scrollView.contentView.bounds.origin.y
             }
-            scrollOffsetUpdateTask = updateTask
-            DispatchQueue.main.async(execute: updateTask)
         }
 
         // MARK: - Line Positions
 
-        private var lastNewlineCount = 0
-        private var isUpdatingLinePositions = false
-
         func updateLinePositions() {
-            guard !isUpdatingLinePositions else { return }
             guard let textView = textView,
                   let layoutManager = textView.layoutManager,
                   let textContainer = textView.textContainer else { return }
-
-            let string = textView.string
-
-            // Quick newline count — O(n) but fast single pass
-            var newlineCount = 0
-            for char in string where char == "\n" { newlineCount += 1 }
-
-            // Skip if newline count unchanged (most keystrokes don't add/remove lines)
-            if newlineCount == lastNewlineCount && !parent.linePositions.isEmpty {
-                return
-            }
-            lastNewlineCount = newlineCount
-
-            isUpdatingLinePositions = true
-            defer { isUpdatingLinePositions = false }
 
             layoutManager.ensureLayout(for: textContainer)
 
             let textInset = textView.textContainerInset.height
             let baseFont = Theme.editorNSFont(ofSize: 16)
             var positions: [CGFloat] = []
-            let nsString = string as NSString
+            let nsString = textView.string as NSString
             let length = nsString.length
 
             if length == 0 {
@@ -2018,16 +1252,12 @@ struct MarkdownEditor: NSViewRepresentable {
             // Trailing newline produces an empty last line with no
             // characters — use extraLineFragmentRect for its position
             let extraRect = layoutManager.extraLineFragmentRect
-            if EditorLinePositionMetrics.shouldIncludeTrailingEmptyLine(
-                text: string,
-                extraLineFragmentHeight: extraRect.height
-            ) {
+            if extraRect.height > 0 {
                 positions.append(textInset + extraRect.midY)
             }
 
-            // Only update if positions actually changed
-            if positions != parent.linePositions {
-                parent.linePositions = positions
+            DispatchQueue.main.async {
+                self.parent.linePositions = positions
             }
         }
 
@@ -2038,22 +1268,9 @@ struct MarkdownEditor: NSViewRepresentable {
             didCompleteLayoutFor textContainer: NSTextContainer?,
             atEnd layoutFinishedFlag: Bool
         ) {
-            // Only update when ALL layout is complete — partial updates cause bounce
-            guard layoutFinishedFlag else { return }
-            guard !isUpdatingLinePositions else { return }
-            debouncedLinePositionUpdate()
-        }
-
-        private var linePositionTask: DispatchWorkItem?
-
-        private func debouncedLinePositionUpdate() {
-            linePositionTask?.cancel()
-            let item = DispatchWorkItem { [weak self] in
-                self?.updateLinePositions()
+            if layoutFinishedFlag && !isFormatting {
+                updateLinePositions()
             }
-            linePositionTask = item
-            // Longer debounce to avoid blocking typing
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
         }
 
         // MARK: - Text Delegate Methods
@@ -2066,220 +1283,20 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView = textView, !textView.isResizing else { return }
-
-            // Reset undo break timer on each edit
-            textView.resetUndoBreakTimer()
-
-            // Sync text to parent (debounced)
-            debouncedTextSync()
+            guard let textView = textView,
+                  !isFormatting,
+                  !textView.isResizing
+            else { return }
+            parent.text = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
+            )
+            // Formatting is handled incrementally by the NSTextStorageDelegate
+            updateLinePositions()
+            scheduleSave()
         }
 
-        // MARK: - NSTextStorageDelegate
-
-        func textStorage(
-            _ textStorage: NSTextStorage,
-            didProcessEditing editedMask: NSTextStorageEditActions,
-            range editedRange: NSRange,
-            changeInLength delta: Int
-        ) {
-            // Only format on character changes, not attribute changes
-            guard editedMask.contains(.editedCharacters) else { return }
-            guard textStorage.length > 0 else { return }
-
-            let paragraphRange = (textStorage.string as NSString).paragraphRange(for: editedRange)
-
-            // For large edits (paragraph delete, paste), defer to async reformat
-            if paragraphRange.length > 500 {
-                scheduleFullReformat()
-                return
-            }
-
-            // Highlight each paragraph individually within the affected range
-            let nsString = textStorage.string as NSString
-            var scanLocation = paragraphRange.location
-            let rangeEnd = paragraphRange.location + paragraphRange.length
-            while scanLocation < rangeEnd {
-                let lineRange = nsString.paragraphRange(
-                    for: NSRange(location: scanLocation, length: 0)
-                )
-                highlightParagraph(textStorage, range: lineRange)
-                let lineEnd = lineRange.location + lineRange.length
-                scanLocation = lineEnd == scanLocation ? scanLocation + 1 : lineEnd
-            }
-        }
-
-        private var fullReformatTask: DispatchWorkItem?
-
-        private func scheduleFullReformat() {
-            fullReformatTask?.cancel()
-            let item = DispatchWorkItem { [weak self] in
-                self?.applyFormatting()
-            }
-            fullReformatTask = item
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: item)
-        }
-
-        private func highlightParagraph(_ storage: NSTextStorage, range paraRange: NSRange) {
-            guard paraRange.location + paraRange.length <= storage.length else { return }
-
-            let text = storage.string
-            let nsText = text as NSString
-            let lineText = nsText.substring(with: paraRange)
-            let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return }
-
-            // Check which syntax markers are present (avoid running unnecessary regex)
-            let hasBold = lineText.contains("**")
-            let hasItalic = !hasBold && lineText.contains("*")  // Skip if bold handles it
-            let hasWiki = lineText.contains("[[")
-            let hasCode = lineText.contains("`")
-            let isHeading = trimmed.hasPrefix("#")
-
-            // Skip all formatting work for plain text lines (most common case)
-            guard isHeading || hasBold || hasItalic || hasWiki || hasCode else { return }
-
-            // Batch all attribute changes to trigger only one layout pass
-            storage.beginEditing()
-            defer { storage.endEditing() }
-
-            let fonts = highlightFonts()
-
-            // Reset colors for lines with markdown
-            storage.addAttribute(.foregroundColor, value: NSColor.textColor, range: paraRange)
-            storage.removeAttribute(.backgroundColor, range: paraRange)
-
-            // Strip bold/italic traits only if line has bold/italic markers
-            if hasBold || hasItalic {
-                storage.enumerateAttribute(.font, in: paraRange) { value, subrange, _ in
-                    guard let font = value as? NSFont else { return }
-                    let traits = font.fontDescriptor.symbolicTraits
-                    guard traits.contains(.bold) || traits.contains(.italic) else { return }
-                    let stripped = traits.subtracting([.bold, .italic])
-                    let newDesc = font.fontDescriptor.withSymbolicTraits(stripped)
-                    if let newFont = NSFont(descriptor: newDesc, size: font.pointSize) {
-                        storage.addAttribute(.font, value: newFont, range: subrange)
-                    }
-                }
-            }
-
-            // Headings — these DO need a full font set
-            if isHeading {
-                var headingPrefixLen = 0
-                if trimmed.hasPrefix("# ") {
-                    storage.addAttribute(.font, value: fonts.heading1, range: paraRange)
-                    headingPrefixLen = 2
-                } else if trimmed.hasPrefix("## ") {
-                    storage.addAttribute(.font, value: fonts.heading2, range: paraRange)
-                    headingPrefixLen = 3
-                } else if trimmed.hasPrefix("### ") {
-                    storage.addAttribute(.font, value: fonts.heading3, range: paraRange)
-                    headingPrefixLen = 4
-                }
-                if headingPrefixLen > 0 {
-                    storage.addAttributes([
-                        .font: NSFont.systemFont(ofSize: 0.01),
-                        .foregroundColor: NSColor.clear
-                    ], range: NSRange(location: paraRange.location, length: headingPrefixLen))
-                }
-            }
-
-            // Helper to apply hidden or gray style to syntax markers
-            let hideSyntax = MarkdownFormat.hideSyntax
-            let markerAttrs: [NSAttributedString.Key: Any] = hideSyntax
-                ? [.font: MarkdownFormat.hiddenFont, .foregroundColor: MarkdownFormat.hiddenColor]
-                : [.foregroundColor: NSColor.gray]
-
-            // Bold **text** — only if ** present
-            if hasBold {
-                MarkdownFormat.boldPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                    guard let match = match else { return }
-                    let innerRange = match.range(at: 1)
-                    Self.addFontTrait(.bold, storage: storage, range: innerRange)
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location, length: 2))
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
-                }
-            }
-
-            // Italic *text* — only if single * present (and no **)
-            if hasItalic {
-                MarkdownFormat.italicPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                    guard let match = match else { return }
-                    let innerRange = match.range(at: 1)
-                    Self.addFontTrait(.italic, storage: storage, range: innerRange)
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location, length: 1))
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
-                }
-            }
-
-            // Wiki links [[text]] — only if [[ present
-            if hasWiki {
-                MarkdownFormat.wikiPattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                    guard let match = match else { return }
-                    let innerRange = match.range(at: 1)
-                    storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: innerRange)
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location, length: 2))
-                    storage.addAttributes(markerAttrs,
-                        range: NSRange(location: match.range.location + match.range.length - 2, length: 2))
-                }
-            }
-
-            // Code `text` — only if backtick present
-            guard hasCode else { return }
-            MarkdownFormat.codePattern.enumerateMatches(in: text, range: paraRange) { match, _, _ in
-                guard let match = match else { return }
-                let innerRange = match.range(at: 1)
-                storage.addAttributes([
-                    .font: fonts.code,
-                    .foregroundColor: NSColor.systemPink,
-                    .backgroundColor: NSColor.quaternaryLabelColor
-                ], range: innerRange)
-                storage.addAttributes(markerAttrs,
-                    range: NSRange(location: match.range.location, length: 1))
-                storage.addAttributes(markerAttrs,
-                    range: NSRange(location: match.range.location + match.range.length - 1, length: 1))
-            }
-        }
-
-        private static func addFontTrait(
-            _ trait: NSFontDescriptor.SymbolicTraits,
-            storage: NSTextStorage,
-            range: NSRange
-        ) {
-            storage.enumerateAttribute(.font, in: range) { value, subrange, _ in
-                guard let font = value as? NSFont else { return }
-                let newTraits = font.fontDescriptor.symbolicTraits.union(trait)
-                let newDesc = font.fontDescriptor.withSymbolicTraits(newTraits)
-                if let newFont = NSFont(descriptor: newDesc, size: font.pointSize) {
-                    storage.addAttribute(.font, value: newFont, range: subrange)
-                }
-            }
-        }
-
-        private var textSyncTask: DispatchWorkItem?
-
-        /// Combined debounce for text sync (fast) and save (slower)
-        /// Text syncs after 0.15s of idle, save triggers after 1s of idle
-        private func debouncedTextSync() {
-            textSyncTask?.cancel()
+        private func scheduleSave() {
             saveTimer?.invalidate()
-
-            // Fast text sync (0.15s) - updates parent.text binding
-            let syncItem = DispatchWorkItem { [weak self] in
-                guard let self, let textView = self.textView else { return }
-                self.parent.text = MarkdownFormat.restoreImageMarkup(
-                    in: textView.string
-                )
-            }
-            textSyncTask = syncItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: syncItem)
-
-            // Slower save (1s) - persists to disk
             saveTimer = Timer.scheduledTimer(
                 withTimeInterval: 1.0, repeats: false
             ) { [weak self] _ in
@@ -2288,18 +1305,29 @@ struct MarkdownEditor: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+// MARK: - Coordinator Formatting & Image Loading
+
+extension MarkdownEditor.Coordinator {
 
         // MARK: - Live Formatting
 
         func applyFormatting() {
-            invalidateFontCache()
             guard let textView = textView,
                   let storage = textView.textStorage
             else { return }
-            let cursor = textView.selectedRange()
-            let cleanText = MarkdownFormat.restoreImageMarkup(
-                in: textView.string
+
+            // Content hash guard — skip if nothing changed
+            let cleanText = MarkdownFormat.restoreMarkup(
+                in: textView.attributedString()
             )
+            let hash = cleanText.fnv1a
+            if hash == lastContentHash { return }
+
+            isFormatting = true
+            let cursor = textView.selectedRange()
             let format = MarkdownFormat(noteIndex: store?.noteIndex)
             storage.setAttributedString(
                 format.render(cleanText)
@@ -2318,7 +1346,518 @@ struct MarkdownEditor: NSViewRepresentable {
                 storage: storage,
                 baseFont: baseFont
             )
+            codeBlockRanges = Self.findCodeBlockRanges(
+                in: storage.string
+            )
+            lastContentHash = hash
             textView.setSelectedRange(cursor)
+            isFormatting = false
+        }
+
+        // MARK: - NSTextStorageDelegate (Incremental Formatting)
+
+        nonisolated func textStorage(
+            _ textStorage: NSTextStorage,
+            didProcessEditing editedMask: NSTextStorageEditActions,
+            range editedRange: NSRange,
+            changeInLength delta: Int
+        ) {
+            nonisolated(unsafe) let storage = textStorage
+            MainActor.assumeIsolated {
+                guard editedMask.contains(.editedCharacters),
+                      !isFormatting
+                else { return }
+                isFormatting = true
+                defer { isFormatting = false }
+
+                let nsString = storage.string as NSString
+                var formatTarget = nsString.paragraphRange(
+                    for: editedRange
+                )
+
+                // Extend to full code block if edit touches one
+                if let blockRange = codeBlockContaining(
+                    editedRange, in: storage.string
+                ) {
+                    formatTarget = NSUnionRange(
+                        formatTarget, blockRange
+                    )
+                }
+
+                formatRange(
+                    formatTarget, in: storage,
+                    cursorLocation: textView?.selectedRange().location
+                )
+                codeBlockRanges = Self.findCodeBlockRanges(
+                    in: storage.string
+                )
+                lastContentHash = storage.string.fnv1a
+            }
+        }
+
+        // MARK: - Paragraph-Level Formatting
+
+        /// Apply markdown formatting to a specific range within an
+        /// existing NSTextStorage, without replacing the full string.
+        private func formatRange(
+            _ range: NSRange, in storage: NSTextStorage,
+            cursorLocation: Int? = nil
+        ) {
+            let nsString = storage.string as NSString
+            let bodyFont = Theme.editorNSFont(ofSize: 16)
+            let bodyParagraph = NSMutableParagraphStyle()
+            bodyParagraph.lineHeightMultiple = 1.25
+            let defaultAttrs: [NSAttributedString.Key: Any] = [
+                .font: bodyFont,
+                .foregroundColor: NSColor.textColor,
+                .paragraphStyle: bodyParagraph
+            ]
+
+            // Determine the paragraph containing the cursor so we
+            // can skip hiding syntax on the actively-edited line.
+            let cursorParagraph: NSRange? = cursorLocation.map {
+                nsString.paragraphRange(for: NSRange(location: $0, length: 0))
+            }
+
+            // Reset attributes to defaults for the range
+            storage.setAttributes(defaultAttrs, range: range)
+
+            // Remove any stale links in the range
+            storage.removeAttribute(.link, range: range)
+            storage.removeAttribute(.underlineStyle, range: range)
+            storage.removeAttribute(.underlineColor, range: range)
+            storage.removeAttribute(.backgroundColor, range: range)
+            storage.removeAttribute(.toolTip, range: range)
+            storage.removeAttribute(.cursor, range: range)
+
+            // Process each paragraph in the range for headings
+            nsString.enumerateSubstrings(
+                in: range,
+                options: [.byParagraphs, .substringNotRequired]
+            ) { _, paraRange, _, _ in
+                self.formatParagraphHeading(
+                    paraRange, in: storage, bodyFont: bodyFont,
+                    bodyParagraph: bodyParagraph,
+                    cursorParagraph: cursorParagraph
+                )
+            }
+
+            // Apply inline formatting within the range
+            formatInlineMarkdown(
+                range, in: storage, baseFont: bodyFont,
+                cursorParagraph: cursorParagraph
+            )
+        }
+
+        private func formatParagraphHeading(
+            _ paraRange: NSRange, in storage: NSTextStorage,
+            bodyFont: NSFont, bodyParagraph: NSMutableParagraphStyle,
+            cursorParagraph: NSRange? = nil
+        ) {
+            let nsString = storage.string as NSString
+            let line = nsString.substring(with: paraRange)
+
+            var headingFont: NSFont?
+            var prefixLen = 0
+            if line.hasPrefix("# ") {
+                headingFont = Theme.editorNSFont(
+                    ofSize: 28, weight: .bold
+                )
+                prefixLen = 2
+            } else if line.hasPrefix("## ") {
+                headingFont = Theme.editorNSFont(
+                    ofSize: 22, weight: .bold
+                )
+                prefixLen = 3
+            } else if line.hasPrefix("### ") {
+                headingFont = Theme.editorNSFont(
+                    ofSize: 18, weight: .semibold
+                )
+                prefixLen = 4
+            }
+
+            guard let font = headingFont else { return }
+            storage.addAttribute(
+                .font, value: font, range: paraRange
+            )
+            let para = NSMutableParagraphStyle()
+            para.lineHeightMultiple = 1.25
+            para.minimumLineHeight = ceil(
+                font.ascender - font.descender + font.leading
+            )
+            storage.addAttribute(
+                .paragraphStyle, value: para, range: paraRange
+            )
+            // Hide or dim heading prefix based on preference
+            let prefixRange = NSRange(
+                location: paraRange.location, length: prefixLen
+            )
+            let onCursorLine = cursorParagraph.map {
+                NSIntersectionRange($0, paraRange).length > 0
+            } ?? false
+            if UserDefaults.standard.bool(forKey: "hideSyntax")
+                && !onCursorLine {
+                storage.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ], range: prefixRange)
+            } else {
+                storage.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.tertiaryLabelColor,
+                    range: prefixRange
+                )
+            }
+        }
+
+        // swiftlint:disable:next function_body_length
+        private func formatInlineMarkdown(
+            _ range: NSRange, in storage: NSTextStorage,
+            baseFont: NSFont, cursorParagraph: NSRange? = nil
+        ) {
+            let text = storage.string
+            let shouldHide = UserDefaults.standard.bool(
+                forKey: "hideSyntax"
+            )
+            let hiddenAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 0.01),
+                .foregroundColor: NSColor.clear
+            ]
+            let dimAttrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.tertiaryLabelColor
+            ]
+
+            func shouldHideAt(_ syntaxRange: NSRange) -> Bool {
+                guard shouldHide else { return false }
+                if let cursor = cursorParagraph,
+                   NSIntersectionRange(cursor, syntaxRange).length > 0 {
+                    return false
+                }
+                return true
+            }
+
+            func hide(_ syntaxRange: NSRange) {
+                guard syntaxRange.location >= 0,
+                      syntaxRange.length > 0,
+                      syntaxRange.location + syntaxRange.length
+                          <= storage.length
+                else { return }
+                storage.addAttributes(
+                    shouldHideAt(syntaxRange)
+                        ? hiddenAttrs : dimAttrs,
+                    range: syntaxRange
+                )
+            }
+
+            // Wiki links [[Note Title]]
+            // swiftlint:disable:next force_try
+            let wikiRx = try! NSRegularExpression(
+                pattern: "\\[\\[(.+?)\\]\\]"
+            )
+            for match in wikiRx.matches(
+                in: text, range: range
+            ).reversed() {
+                let full = match.range
+                let inner = match.range(at: 1)
+                guard let swiftRange = Range(inner, in: text)
+                else { continue }
+                let title = String(text[swiftRange])
+                if title.trimmingCharacters(
+                    in: .whitespaces
+                ).isEmpty { continue }
+                let encoded = title.addingPercentEncoding(
+                    withAllowedCharacters: .urlPathAllowed
+                ) ?? title
+                // swiftlint:disable:next force_unwrapping
+                let linkURL = URL(
+                    string: "synth://wiki/\(encoded)"
+                )!
+                let medFont = Theme.editorNSFont(
+                    ofSize: baseFont.pointSize, weight: .medium
+                )
+                let noteExists: Bool
+                if let idx = store?.noteIndex, idx.isPopulated {
+                    noteExists = idx.findExact(title) != nil
+                } else {
+                    noteExists = true
+                }
+                var attrs: [NSAttributedString.Key: Any] = [
+                    .font: medFont, .link: linkURL,
+                    .cursor: NSCursor.pointingHand
+                ]
+                if noteExists {
+                    attrs[.foregroundColor] = NSColor
+                        .controlAccentColor
+                } else {
+                    attrs[.foregroundColor] = NSColor.systemOrange
+                    attrs[.underlineStyle] =
+                        NSUnderlineStyle.patternDash.rawValue
+                        | NSUnderlineStyle.single.rawValue
+                    attrs[.underlineColor] = NSColor.systemOrange
+                        .withAlphaComponent(0.6)
+                    attrs[.toolTip] =
+                        "Note not found -- click to create"
+                }
+                storage.addAttributes(attrs, range: inner)
+                let openBracket = NSRange(
+                    location: full.location, length: 2
+                )
+                var bracketAttrs = shouldHideAt(openBracket)
+                    ? hiddenAttrs : dimAttrs
+                bracketAttrs[.link] = linkURL
+                storage.addAttributes(
+                    bracketAttrs,
+                    range: openBracket
+                )
+                let closeBracket = NSRange(
+                    location: full.location + full.length - 2,
+                    length: 2
+                )
+                var closeBracketAttrs = shouldHideAt(closeBracket)
+                    ? hiddenAttrs : dimAttrs
+                closeBracketAttrs[.link] = linkURL
+                storage.addAttributes(
+                    closeBracketAttrs,
+                    range: closeBracket
+                )
+            }
+
+            // @Date mentions
+            // swiftlint:disable:next force_try
+            let dateRx = try! NSRegularExpression(
+                pattern: "@(\\d{4}-\\d{2}-\\d{2})"
+            )
+            for match in dateRx.matches(
+                in: text, range: range
+            ).reversed() {
+                let full = match.range
+                let inner = match.range(at: 1)
+                guard let swiftRange = Range(inner, in: text)
+                else { continue }
+                let dateStr = String(text[swiftRange])
+                // swiftlint:disable:next force_unwrapping
+                let linkURL = URL(
+                    string: "synth://daily/\(dateStr)"
+                )!
+                storage.addAttributes([
+                    .font: Theme.editorNSFont(
+                        ofSize: baseFont.pointSize, weight: .medium
+                    ),
+                    .foregroundColor: NSColor.controlAccentColor,
+                    .link: linkURL,
+                    .cursor: NSCursor.pointingHand
+                ], range: inner)
+                var atAttrs = shouldHideAt(
+                    NSRange(location: full.location, length: 1)
+                ) ? hiddenAttrs : dimAttrs
+                atAttrs[.link] = linkURL
+                storage.addAttributes(
+                    atAttrs,
+                    range: NSRange(
+                        location: full.location, length: 1
+                    )
+                )
+            }
+
+            // @People mentions
+            for match in PeopleIndex.personPattern.matches(
+                in: text, range: range
+            ).reversed() {
+                let full = match.range
+                let inner = match.range(at: 1)
+                guard let swiftRange = Range(inner, in: text)
+                else { continue }
+                let name = String(text[swiftRange])
+                guard name.count >= 2 else { continue }
+                let lower = name.lowercased()
+                // swiftlint:disable:next force_unwrapping
+                let url = URL(
+                    string: "synth://person/\(lower)"
+                )!
+                let medFont = Theme.editorNSFont(
+                    ofSize: baseFont.pointSize, weight: .medium
+                )
+                storage.addAttributes([
+                    .font: medFont,
+                    .foregroundColor: NSColor.systemPurple,
+                    .backgroundColor: NSColor.systemPurple
+                        .withAlphaComponent(0.10),
+                    .link: url,
+                    .cursor: NSCursor.pointingHand
+                ], range: full)
+            }
+
+            // #Tags
+            for match in TagIndex.tagPattern.matches(
+                in: text, range: range
+            ).reversed() {
+                let full = match.range
+                let inner = match.range(at: 1)
+                guard let swiftRange = Range(inner, in: text)
+                else { continue }
+                let tag = String(text[swiftRange])
+                guard tag.count >= 2 else { continue }
+                let lower = tag.lowercased()
+                // swiftlint:disable:next force_unwrapping
+                let url = URL(
+                    string: "synth://tag/\(lower)"
+                )!
+                let medFont = Theme.editorNSFont(
+                    ofSize: baseFont.pointSize, weight: .medium
+                )
+                storage.addAttributes([
+                    .font: medFont,
+                    .foregroundColor: NSColor.systemTeal,
+                    .backgroundColor: NSColor.systemTeal
+                        .withAlphaComponent(0.10),
+                    .link: url,
+                    .cursor: NSCursor.pointingHand
+                ], range: full)
+            }
+
+            // Bold **text**
+            // swiftlint:disable:next force_try
+            let boldRx = try! NSRegularExpression(
+                pattern: "\\*\\*(.+?)\\*\\*"
+            )
+            for match in boldRx.matches(in: text, range: range) {
+                let inner = match.range(at: 1)
+                let boldFont = NSFontManager.shared.convert(
+                    baseFont, toHaveTrait: .boldFontMask
+                )
+                storage.addAttribute(
+                    .font, value: boldFont, range: inner
+                )
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 2
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 2,
+                    length: 2
+                ))
+            }
+
+            // Italic *text*
+            // swiftlint:disable:next force_try
+            let italicRx = try! NSRegularExpression(
+                pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
+            )
+            for match in italicRx.matches(in: text, range: range) {
+                let inner = match.range(at: 1)
+                let italicFont = NSFontManager.shared.convert(
+                    baseFont, toHaveTrait: .italicFontMask
+                )
+                storage.addAttribute(
+                    .font, value: italicFont, range: inner
+                )
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 1
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 1,
+                    length: 1
+                ))
+            }
+
+            // Italic _text_
+            // swiftlint:disable:next force_try
+            let underItalicRx = try! NSRegularExpression(
+                pattern: "(?<!_)_([^_]+)_(?!_)"
+            )
+            for match in underItalicRx.matches(
+                in: text, range: range
+            ) {
+                let inner = match.range(at: 1)
+                let italicFont = NSFontManager.shared.convert(
+                    baseFont, toHaveTrait: .italicFontMask
+                )
+                storage.addAttribute(
+                    .font, value: italicFont, range: inner
+                )
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 1
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 1,
+                    length: 1
+                ))
+            }
+
+            // Underline __text__
+            // swiftlint:disable:next force_try
+            let underlineRx = try! NSRegularExpression(
+                pattern: "__(.+?)__"
+            )
+            for match in underlineRx.matches(
+                in: text, range: range
+            ) {
+                let inner = match.range(at: 1)
+                storage.addAttribute(
+                    .underlineStyle,
+                    value: NSUnderlineStyle.single.rawValue,
+                    range: inner
+                )
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 2
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 2,
+                    length: 2
+                ))
+            }
+
+            // Inline code `text`
+            // swiftlint:disable:next force_try
+            let codeRx = try! NSRegularExpression(
+                pattern: "`([^`]+)`"
+            )
+            for match in codeRx.matches(in: text, range: range) {
+                let inner = match.range(at: 1)
+                storage.addAttributes([
+                    .font: Theme.terminalNSFont(ofSize: 14),
+                    .foregroundColor: NSColor.systemPink,
+                    .backgroundColor: NSColor.quaternaryLabelColor
+                ], range: inner)
+                let full = match.range
+                hide(NSRange(
+                    location: full.location, length: 1
+                ))
+                hide(NSRange(
+                    location: full.location + full.length - 1,
+                    length: 1
+                ))
+            }
+        }
+
+        // MARK: - Code Block Detection
+
+        private static func findCodeBlockRanges(
+            in text: String
+        ) -> [NSRange] {
+            // swiftlint:disable:next force_try
+            let regex = try! NSRegularExpression(
+                pattern:
+                    "(?<=\\n|\\A)```[a-zA-Z0-9]*\\n([\\s\\S]*?)\\n```(?=\\n|\\Z)"
+            )
+            return regex.matches(
+                in: text,
+                range: NSRange(location: 0, length: text.utf16.count)
+            ).map(\.range)
+        }
+
+        private func codeBlockContaining(
+            _ editedRange: NSRange, in text: String
+        ) -> NSRange? {
+            // Re-scan from current text to catch newly formed blocks
+            let current = Self.findCodeBlockRanges(in: text)
+            return current.first { block in
+                NSIntersectionRange(block, editedRange).length > 0
+                    || editedRange.location == NSMaxRange(block)
+            }
         }
 
         private func loadInlineImages(
@@ -2394,19 +1933,47 @@ struct MarkdownEditor: NSViewRepresentable {
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = textView else { return }
+
+            // Re-format old/new cursor paragraphs so syntax hides
+            // on lines the user navigates away from and reveals on
+            // the line the cursor lands on.
+            if let storage = textView.textStorage,
+               !isFormatting,
+               UserDefaults.standard.bool(forKey: "hideSyntax") {
+                let nsString = storage.string as NSString
+                let cursor = textView.selectedRange().location
+                if cursor <= nsString.length {
+                    let newPara = nsString.paragraphRange(
+                        for: NSRange(location: cursor, length: 0)
+                    )
+                    if newPara != lastCursorParagraph {
+                        let oldPara = lastCursorParagraph
+                        lastCursorParagraph = newPara
+                        isFormatting = true
+                        if let oldPara,
+                           oldPara.location + oldPara.length
+                               <= storage.length {
+                            formatRange(
+                                oldPara, in: storage,
+                                cursorLocation: cursor
+                            )
+                        }
+                        formatRange(
+                            newPara, in: storage,
+                            cursorLocation: cursor
+                        )
+                        isFormatting = false
+                    }
+                }
+            }
+
             let range = textView.selectedRange()
             if range.length > 0 {
-                let nsString = textView.string as NSString
-                let text = nsString.substring(with: range)
-                // Count newlines without allocating arrays
-                var startLine = 1
-                let beforeEnd = min(range.location, nsString.length)
-                nsString.enumerateSubstrings(
-                    in: NSRange(location: 0, length: beforeEnd),
-                    options: [.byLines, .substringNotRequired]
-                ) { _, _, _, _ in startLine += 1 }
-                var selectedLines = 1
-                for char in text where char == "\n" { selectedLines += 1 }
+                let text = (textView.string as NSString).substring(with: range)
+                let beforeSelection = (textView.string as NSString)
+                    .substring(to: range.location)
+                let startLine = beforeSelection.components(separatedBy: "\n").count
+                let selectedLines = text.components(separatedBy: "\n").count
                 let endLine = startLine + selectedLines - 1
                 DispatchQueue.main.async {
                     self.parent.selectedText = text
@@ -2419,5 +1986,4 @@ struct MarkdownEditor: NSViewRepresentable {
                 }
             }
         }
-    }
 }

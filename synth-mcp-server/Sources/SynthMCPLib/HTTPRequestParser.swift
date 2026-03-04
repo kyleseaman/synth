@@ -1,21 +1,21 @@
 import Foundation
 
 /// Parsed HTTP/1.1 request — lightweight replacement for Vapor's Request type.
-struct HTTPRequest {
-    let method: String
-    let path: String
-    let httpVersion: String
-    let headers: HTTPHeaders
-    let body: Data?
+public struct HTTPRequest {
+    public let method: String
+    public let path: String
+    public let httpVersion: String
+    public let headers: HTTPHeaders
+    public let body: Data?
 
     /// Parse raw HTTP/1.1 request data into a structured HTTPRequest.
     /// Returns nil if the data does not contain a valid HTTP request line.
-    static func parse(_ data: Data) -> HTTPRequest? {
+    public static func parse(_ data: Data) -> HTTPRequest? {
         guard let raw = String(data: data, encoding: .utf8) else { return nil }
         return parse(raw)
     }
 
-    static func parse(_ raw: String) -> HTTPRequest? {
+    public static func parse(_ raw: String) -> HTTPRequest? {
         // Split headers from body at the blank line
         let headerBody = raw.split(
             separator: "\r\n\r\n",
@@ -71,26 +71,28 @@ struct HTTPRequest {
 }
 
 /// Case-insensitive HTTP header storage supporting multiple values per name.
-struct HTTPHeaders {
+public struct HTTPHeaders {
     private var storage: [(name: String, value: String)] = []
 
-    mutating func add(name: String, value: String) {
+    public init() {}
+
+    public mutating func add(name: String, value: String) {
         storage.append((name: name, value: value))
     }
 
     /// Returns the first value for the given header name (case-insensitive).
-    func first(name: String) -> String? {
+    public func first(name: String) -> String? {
         let lower = name.lowercased()
         return storage.first { $0.name.lowercased() == lower }?.value
     }
 
     /// Returns all values for the given header name (case-insensitive).
-    func all(name: String) -> [String] {
+    public func all(name: String) -> [String] {
         let lower = name.lowercased()
         return storage.filter { $0.name.lowercased() == lower }.map(\.value)
     }
 
-    subscript(name: String) -> String? {
+    public subscript(name: String) -> String? {
         first(name: name)
     }
 }

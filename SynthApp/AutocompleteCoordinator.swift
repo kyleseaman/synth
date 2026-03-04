@@ -223,7 +223,6 @@ class AutocompleteCoordinator {
         // e.g. "Today" → "2026-02-07", "Next Monday" → "2026-02-10"
         // The rendering layer displays them relatively (@Today, etc.)
         var completionTitle = title
-        var templateCursorOffset: Int?
         if case .slashActive = previousState {
             guard let template = templateStore?.template(named: title) else { return }
             // Get context for variable expansion
@@ -233,7 +232,6 @@ class AutocompleteCoordinator {
             let expanded = templateStore?.expandTemplate(template, title: docTitle, filename: filename)
                 ?? ExpandedTemplate(content: template.content, cursorOffset: nil)
             completionTitle = expanded.content
-            templateCursorOffset = expanded.cursorOffset
         } else if let resolved = DailyNoteResolver.resolveDate(title),
                   title.range(
                       of: "^\\d{4}-\\d{2}-\\d{2}$",
@@ -243,8 +241,7 @@ class AutocompleteCoordinator {
         }
 
         let result = textView.completeAutocomplete(
-            title: completionTitle,
-            cursorOffset: templateCursorOffset
+            title: completionTitle
         )
         wikiLinkPopover.dismiss()
 

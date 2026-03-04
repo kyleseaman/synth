@@ -1,13 +1,13 @@
 import Foundation
 
-class StdioTransport {
-    let handler: MCPProtocolHandler
+public class StdioTransport {
+    public let handler: MCPProtocolHandler
 
-    init(handler: MCPProtocolHandler) {
+    public init(handler: MCPProtocolHandler) {
         self.handler = handler
     }
 
-    func run() {
+    public func run() {
         let stdinHandle = FileHandle.standardInput
         var buffer = Data()
 
