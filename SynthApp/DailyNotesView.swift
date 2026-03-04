@@ -160,7 +160,7 @@ struct DailyNoteSection: View {
 
             if isToday {
                 Text("Today")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -607,7 +607,7 @@ struct DailyNoteBacklinks: View {
                         Text(
                             "Incoming backlinks (\(links.count))"
                         )
-                        .font(.system(size: 12, weight: .medium))
+                        .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         Spacer()
                     }

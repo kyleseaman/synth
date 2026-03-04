@@ -116,7 +116,7 @@ struct RelatedNotesSection: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text("Related Notes (\(notes.count))")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -178,16 +178,16 @@ struct RelatedNoteRow: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Image(systemName: "doc.text")
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.secondary)
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                 Spacer()
             }
             if !reason.isEmpty {
                 Text(reason)
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)

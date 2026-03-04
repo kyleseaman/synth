@@ -51,7 +51,7 @@ struct ChatInputBar: View {
                             onRemoveImage?(chatImage.id)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
+                                .font(Theme.uiSwiftUIFont(size: 12))
                                 .foregroundStyle(.white, .black.opacity(0.6))
                         }
                         .buttonStyle(.plain)
@@ -74,9 +74,9 @@ struct ChatInputBar: View {
                 } label: {
                     HStack(spacing: 8) {
                         Text("/\(cmd.name)")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .font(Theme.terminalSwiftUIFont(size: 12, weight: .medium))
                         Text(cmd.description)
-                            .font(.system(size: 11))
+                            .font(Theme.uiSwiftUIFont(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                         Spacer()
@@ -103,14 +103,14 @@ struct ChatInputBar: View {
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .semibold))
+                .font(Theme.uiSwiftUIFont(size: 12, weight: .semibold))
                 .foregroundStyle(Color.accentColor.opacity(0.9))
                 .padding(6)
                 .background(Color.accentColor.opacity(0.12))
                 .clipShape(Circle())
 
             TextField(placeholder, text: $input, axis: .vertical)
-                .font(.system(size: 13))
+                .font(Theme.uiSwiftUIFont(size: 13))
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .focused($isInputFocused)
@@ -135,7 +135,7 @@ struct ChatInputBar: View {
 
             Button(action: onSend) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(Theme.uiSwiftUIFont(size: 11, weight: .bold))
                     .foregroundStyle(
                         input.isEmpty || isDisabled
                             ? Color.secondary.opacity(0.45)

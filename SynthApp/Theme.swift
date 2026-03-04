@@ -90,7 +90,7 @@ struct Theme {
     ) -> [String] {
         configuredCandidates(
             customKey: editorFontCandidatesKey,
-            fallback: [],
+            fallback: sourceSerifCandidates(for: weight),
             defaults: defaults
         )
     }
@@ -214,6 +214,43 @@ struct Theme {
         publicSansCandidates(for: .regular).joined(separator: ", ")
     }
 
+    // MARK: - Font Cache
+
+    /// Thread-safe cache for resolved NSFont instances keyed by (category, size, weight).
+    final class FontCache: @unchecked Sendable {
+        private var store: [String: NSFont] = [:]
+        private let lock = NSLock()
+
+        func font(forKey key: String) -> NSFont? {
+            lock.lock()
+            defer { lock.unlock() }
+            return store[key]
+        }
+
+        func setFont(_ font: NSFont, forKey key: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            store[key] = font
+        }
+
+        func clear() {
+            lock.lock()
+            defer { lock.unlock() }
+            store.removeAll()
+        }
+    }
+
+    static let fontCache = FontCache()
+
+    /// Invalidate cached fonts (call when user changes font preferences).
+    static func invalidateFontCache() {
+        fontCache.clear()
+    }
+
+    private static func cacheKey(_ category: String, size: CGFloat, weight: NSFont.Weight) -> String {
+        "\(category)-\(size)-\(weight.rawValue)"
+    }
+
     static func editorNSFont(
         ofSize size: CGFloat,
         weight: NSFont.Weight = .regular,
@@ -222,12 +259,15 @@ struct Theme {
             NSFont(name: fontName, size: fontSize)
         }
     ) -> NSFont {
-        resolveFont(
+        let key = cacheKey("editor", size: size, weight: weight)
+        if let cached = fontCache.font(forKey: key) { return cached }
+        let font = resolveFont(
             candidates: editorCandidateNames(weight: weight, defaults: defaults),
             size: size,
             resolver: resolver
-        )
-            ?? NSFont.systemFont(ofSize: size, weight: weight)
+        ) ?? NSFont.systemFont(ofSize: size, weight: weight)
+        fontCache.setFont(font, forKey: key)
+        return font
     }
 
     static func terminalNSFont(
@@ -235,11 +275,14 @@ struct Theme {
         weight: NSFont.Weight = .regular,
         defaults: UserDefaults = .standard
     ) -> NSFont {
-        resolveFont(
+        let key = cacheKey("terminal", size: size, weight: weight)
+        if let cached = fontCache.font(forKey: key) { return cached }
+        let font = resolveFont(
             candidates: terminalCandidateNames(weight: weight, defaults: defaults),
             size: size
-        )
-            ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+        ) ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+        fontCache.setFont(font, forKey: key)
+        return font
     }
 
     private static func defaultSidebarCandidates(
@@ -281,11 +324,14 @@ struct Theme {
         weight: NSFont.Weight = .regular,
         defaults: UserDefaults = .standard
     ) -> NSFont {
-        resolveFont(
+        let key = cacheKey("sidebar", size: size, weight: weight)
+        if let cached = fontCache.font(forKey: key) { return cached }
+        let font = resolveFont(
             candidates: sidebarCandidateNames(weight: weight, defaults: defaults),
             size: size
-        )
-            ?? NSFont.systemFont(ofSize: size, weight: weight)
+        ) ?? NSFont.systemFont(ofSize: size, weight: weight)
+        fontCache.setFont(font, forKey: key)
+        return font
     }
 
     private static func swiftUIFontWeight(_ weight: NSFont.Weight) -> Font.Weight {
@@ -319,5 +365,10 @@ struct Theme {
 
     static func terminalSwiftUIFont(size: CGFloat, weight: NSFont.Weight = .regular) -> Font {
         swiftUIFont(from: terminalNSFont(ofSize: size, weight: weight), size: size, weight: weight)
+    }
+
+    /// General-purpose UI font for views like browsers, backlinks, chat, etc.
+    static func uiSwiftUIFont(size: CGFloat, weight: NSFont.Weight = .regular) -> Font {
+        sidebarSwiftUIFont(size: size, weight: weight)
     }
 }

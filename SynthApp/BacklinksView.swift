@@ -27,7 +27,7 @@ struct BacklinksSection: View {
         if links.isEmpty {
             VStack(spacing: 0) {
                 Text("No backlinks yet")
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -53,7 +53,7 @@ struct BacklinksSection: View {
                 } label: {
                     HStack(spacing: 4) {
                         Text("Backlinks (\(links.count))")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -83,10 +83,10 @@ struct BacklinkRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Image(systemName: "doc.text")
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.secondary)
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                 Spacer()
                 Button {
@@ -104,7 +104,7 @@ struct BacklinkRow: View {
                             ? "rectangle.compress.vertical"
                             : "rectangle.expand.vertical"
                     )
-                    .font(.system(size: 10))
+                    .font(Theme.uiSwiftUIFont(size: 10))
                     .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
@@ -115,7 +115,7 @@ struct BacklinkRow: View {
 
             if !showFullNote && !snippet.isEmpty {
                 Text(snippet)
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.tail)
@@ -124,7 +124,7 @@ struct BacklinkRow: View {
 
             if showFullNote, let content = fullContent {
                 Text(content)
-                    .font(.system(size: 12))
+                    .font(Theme.uiSwiftUIFont(size: 12))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(8)

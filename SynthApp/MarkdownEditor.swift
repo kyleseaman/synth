@@ -14,6 +14,26 @@ struct MarkdownFormat: DocumentFormat {
         let attachmentRange: NSRange
     }
 
+    // MARK: - Precompiled Patterns
+
+    // swiftlint:disable force_try
+    static let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
+    static let datePattern = try! NSRegularExpression(pattern: "@(\\d{4}-\\d{2}-\\d{2})")
+    static let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
+    static let italicPattern = try! NSRegularExpression(
+        pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
+    )
+    static let underscoreItalicPattern = try! NSRegularExpression(
+        pattern: "(?<!_)_([^_]+)_(?!_)"
+    )
+    static let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
+    static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
+    static let listPattern = try! NSRegularExpression(pattern: #"^(\s*)([-*])\s+"#)
+    static let imagePattern = try! NSRegularExpression(
+        pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
+    )
+    // swiftlint:enable force_try
+
     var noteIndex: NoteIndex?
     var baseURL: URL?
     var hideSyntax: Bool {
@@ -115,15 +135,11 @@ struct MarkdownFormat: DocumentFormat {
         var pendingRenders: [PendingImageRender] = []
 
         // Match ![alt](path) or ![alt](path =WIDTHx)
-        // swiftlint:disable:next force_try
-        let imagePattern = try! NSRegularExpression(
-            pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
-        )
         let fullRange = NSRange(
             location: 0, length: attributedText.string.utf16.count
         )
 
-        for imageMatch in imagePattern.matches(
+        for imageMatch in MarkdownFormat.imagePattern.matches(
             in: attributedText.string, range: fullRange
         ).reversed() {
             let markupRange = imageMatch.range
@@ -305,14 +321,10 @@ struct MarkdownFormat: DocumentFormat {
 
     private func applyListFormatting(_ str: NSMutableAttributedString) {
         // Markdown bullets: "- item" or "* item" (with optional indentation).
-        // swiftlint:disable:next force_try
-        let listPattern = try! NSRegularExpression(
-            pattern: #"^(\s*)([-*])\s+"#
-        )
         let fullRange = NSRange(
             location: 0, length: str.string.utf16.count
         )
-        guard let match = listPattern.firstMatch(
+        guard let match = MarkdownFormat.listPattern.firstMatch(
             in: str.string,
             range: fullRange
         ) else { return }
@@ -353,6 +365,9 @@ struct MarkdownFormat: DocumentFormat {
         let dimInlineAttrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: NSColor.tertiaryLabelColor
         ]
+        let mediumFont = Theme.editorNSFont(ofSize: baseFont.pointSize, weight: .medium)
+        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+        let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
 
         func hideInlineSyntax(range syntaxRange: NSRange) {
             guard syntaxRange.location >= 0,
@@ -367,10 +382,8 @@ struct MarkdownFormat: DocumentFormat {
 
         // MARK: Wiki links [[Note Title]]
         // Must run BEFORE bold/italic so link content isn't further reformatted
-        // swiftlint:disable:next force_try
-        let wikiPattern = try! NSRegularExpression(pattern: "\\[\\[(.+?)\\]\\]")
         let wikiRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
+        for match in MarkdownFormat.wikiPattern.matches(in: str.string, range: wikiRange).reversed() {
             let fullNSRange = match.range
             let innerNSRange = match.range(at: 1)
             guard let innerSwiftRange = Range(innerNSRange, in: str.string) else { continue }
@@ -382,10 +395,6 @@ struct MarkdownFormat: DocumentFormat {
             ) ?? noteTitle
             // swiftlint:disable:next force_unwrapping
             let linkURL = URL(string: "synth://wiki/\(encodedTitle)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
 
             // Broken link detection: check if target exists in noteIndex
             // If noteIndex hasn't populated yet, assume note exists to avoid broken-link flash on load
@@ -429,14 +438,10 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: @Date mentions (@2026-02-07) — styled as daily note links
-        // swiftlint:disable:next force_try
-        let datePattern = try! NSRegularExpression(
-            pattern: "@(\\d{4}-\\d{2}-\\d{2})"
-        )
         let dateRange = NSRange(
             location: 0, length: str.string.utf16.count
         )
-        for match in datePattern.matches(
+        for match in MarkdownFormat.datePattern.matches(
             in: str.string, range: dateRange
         ).reversed() {
             let fullNSRange = match.range
@@ -449,10 +454,7 @@ struct MarkdownFormat: DocumentFormat {
             let linkURL = URL(string: "synth://daily/\(dateStr)")!
             // Style the date part as a link
             let linkAttrs: [NSAttributedString.Key: Any] = [
-                .font: Theme.editorNSFont(
-                    ofSize: baseFont.pointSize,
-                    weight: .medium
-                ),
+                .font: mediumFont,
                 .foregroundColor: NSColor.controlAccentColor,
                 .link: linkURL,
                 .cursor: NSCursor.pointingHand
@@ -483,10 +485,6 @@ struct MarkdownFormat: DocumentFormat {
             let personLower = personName.lowercased()
             // swiftlint:disable:next force_unwrapping
             let personURL = URL(string: "synth://person/\(personLower)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
             let replacement = NSAttributedString(
                 string: "@\(personName)",
                 attributes: [
@@ -513,10 +511,6 @@ struct MarkdownFormat: DocumentFormat {
             let tagLower = tagName.lowercased()
             // swiftlint:disable:next force_unwrapping
             let tagURL = URL(string: "synth://tag/\(tagLower)")!
-            let mediumFont = Theme.editorNSFont(
-                ofSize: baseFont.pointSize,
-                weight: .medium
-            )
             let replacement = NSAttributedString(
                 string: "#\(tagName)",
                 attributes: [
@@ -531,14 +525,9 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Bold **text** — style inner text, hide markers
-        // swiftlint:disable:next force_try
-        let boldPattern = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*")
         let boldRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in boldPattern.matches(in: str.string, range: boldRange) {
+        for match in MarkdownFormat.boldPattern.matches(in: str.string, range: boldRange) {
             let innerRange = match.range(at: 1)
-            let boldFont = NSFontManager.shared.convert(
-                baseFont, toHaveTrait: .boldFontMask
-            )
             str.addAttribute(.font, value: boldFont, range: innerRange)
 
             let fullRange = match.range
@@ -552,16 +541,9 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Italic *text* — style inner text, hide markers
-        // swiftlint:disable:next force_try
-        let italicPattern = try! NSRegularExpression(
-            pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
-        )
         let italicRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in italicPattern.matches(in: str.string, range: italicRange) {
+        for match in MarkdownFormat.italicPattern.matches(in: str.string, range: italicRange) {
             let innerRange = match.range(at: 1)
-            let italicFont = NSFontManager.shared.convert(
-                baseFont, toHaveTrait: .italicFontMask
-            )
             str.addAttribute(.font, value: italicFont, range: innerRange)
 
             let fullRange = match.range
@@ -575,21 +557,14 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Italic _text_ — style inner text, hide markers
-        // swiftlint:disable:next force_try
-        let underscoreItalicPattern = try! NSRegularExpression(
-            pattern: "(?<!_)_([^_]+)_(?!_)"
-        )
         let underscoreItalicRange = NSRange(
             location: 0, length: str.string.utf16.count
         )
-        for match in underscoreItalicPattern.matches(
+        for match in MarkdownFormat.underscoreItalicPattern.matches(
             in: str.string,
             range: underscoreItalicRange
         ) {
             let innerRange = match.range(at: 1)
-            let italicFont = NSFontManager.shared.convert(
-                baseFont, toHaveTrait: .italicFontMask
-            )
             str.addAttribute(.font, value: italicFont, range: innerRange)
 
             let fullRange = match.range
@@ -603,10 +578,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Underline __text__ — style inner text, hide markers
-        // swiftlint:disable:next force_try
-        let underlinePattern = try! NSRegularExpression(pattern: "__(.+?)__")
         let underlineRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in underlinePattern.matches(in: str.string, range: underlineRange) {
+        for match in MarkdownFormat.underlinePattern.matches(in: str.string, range: underlineRange) {
             let innerRange = match.range(at: 1)
             str.addAttribute(
                 .underlineStyle,
@@ -625,10 +598,8 @@ struct MarkdownFormat: DocumentFormat {
         }
 
         // MARK: Inline code `text` — style inner text, keep backticks
-        // swiftlint:disable:next force_try
-        let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
         let codeRange = NSRange(location: 0, length: str.string.utf16.count)
-        for match in codePattern.matches(in: str.string, range: codeRange) {
+        for match in MarkdownFormat.codePattern.matches(in: str.string, range: codeRange) {
             let innerRange = match.range(at: 1)
             str.addAttributes([
                 .font: Theme.terminalNSFont(ofSize: 14),
@@ -2299,6 +2270,15 @@ struct MarkdownEditor: NSViewRepresentable {
             let dimAttrs: [NSAttributedString.Key: Any] = [
                 .foregroundColor: NSColor.tertiaryLabelColor
             ]
+            let medFont = Theme.editorNSFont(
+                ofSize: baseFont.pointSize, weight: .medium
+            )
+            let cachedBoldFont = NSFontManager.shared.convert(
+                baseFont, toHaveTrait: .boldFontMask
+            )
+            let cachedItalicFont = NSFontManager.shared.convert(
+                baseFont, toHaveTrait: .italicFontMask
+            )
 
             func shouldHideAt(_ syntaxRange: NSRange) -> Bool {
                 guard shouldHide else { return false }
@@ -2323,11 +2303,7 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Wiki links [[Note Title]]
-            // swiftlint:disable:next force_try
-            let wikiRx = try! NSRegularExpression(
-                pattern: "\\[\\[(.+?)\\]\\]"
-            )
-            for match in wikiRx.matches(
+            for match in MarkdownFormat.wikiPattern.matches(
                 in: text, range: range
             ).reversed() {
                 let full = match.range
@@ -2345,9 +2321,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 let linkURL = URL(
                     string: "synth://wiki/\(encoded)"
                 )!
-                let medFont = Theme.editorNSFont(
-                    ofSize: baseFont.pointSize, weight: .medium
-                )
                 let noteExists: Bool
                 if let idx = store?.noteIndex, idx.isPopulated {
                     noteExists = idx.findExact(title) != nil
@@ -2396,11 +2369,7 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // @Date mentions
-            // swiftlint:disable:next force_try
-            let dateRx = try! NSRegularExpression(
-                pattern: "@(\\d{4}-\\d{2}-\\d{2})"
-            )
-            for match in dateRx.matches(
+            for match in MarkdownFormat.datePattern.matches(
                 in: text, range: range
             ).reversed() {
                 let full = match.range
@@ -2413,9 +2382,7 @@ struct MarkdownEditor: NSViewRepresentable {
                     string: "synth://daily/\(dateStr)"
                 )!
                 storage.addAttributes([
-                    .font: Theme.editorNSFont(
-                        ofSize: baseFont.pointSize, weight: .medium
-                    ),
+                    .font: medFont,
                     .foregroundColor: NSColor.controlAccentColor,
                     .link: linkURL,
                     .cursor: NSCursor.pointingHand
@@ -2447,9 +2414,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 let url = URL(
                     string: "synth://person/\(lower)"
                 )!
-                let medFont = Theme.editorNSFont(
-                    ofSize: baseFont.pointSize, weight: .medium
-                )
                 storage.addAttributes([
                     .font: medFont,
                     .foregroundColor: NSColor.systemPurple,
@@ -2475,9 +2439,6 @@ struct MarkdownEditor: NSViewRepresentable {
                 let url = URL(
                     string: "synth://tag/\(lower)"
                 )!
-                let medFont = Theme.editorNSFont(
-                    ofSize: baseFont.pointSize, weight: .medium
-                )
                 storage.addAttributes([
                     .font: medFont,
                     .foregroundColor: NSColor.systemTeal,
@@ -2489,17 +2450,10 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Bold **text**
-            // swiftlint:disable:next force_try
-            let boldRx = try! NSRegularExpression(
-                pattern: "\\*\\*(.+?)\\*\\*"
-            )
-            for match in boldRx.matches(in: text, range: range) {
+            for match in MarkdownFormat.boldPattern.matches(in: text, range: range) {
                 let inner = match.range(at: 1)
-                let boldFont = NSFontManager.shared.convert(
-                    baseFont, toHaveTrait: .boldFontMask
-                )
                 storage.addAttribute(
-                    .font, value: boldFont, range: inner
+                    .font, value: cachedBoldFont, range: inner
                 )
                 let full = match.range
                 hide(NSRange(
@@ -2512,17 +2466,10 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Italic *text*
-            // swiftlint:disable:next force_try
-            let italicRx = try! NSRegularExpression(
-                pattern: "(?<!\\*)\\*([^*]+)\\*(?!\\*)"
-            )
-            for match in italicRx.matches(in: text, range: range) {
+            for match in MarkdownFormat.italicPattern.matches(in: text, range: range) {
                 let inner = match.range(at: 1)
-                let italicFont = NSFontManager.shared.convert(
-                    baseFont, toHaveTrait: .italicFontMask
-                )
                 storage.addAttribute(
-                    .font, value: italicFont, range: inner
+                    .font, value: cachedItalicFont, range: inner
                 )
                 let full = match.range
                 hide(NSRange(
@@ -2535,19 +2482,12 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Italic _text_
-            // swiftlint:disable:next force_try
-            let underItalicRx = try! NSRegularExpression(
-                pattern: "(?<!_)_([^_]+)_(?!_)"
-            )
-            for match in underItalicRx.matches(
+            for match in MarkdownFormat.underscoreItalicPattern.matches(
                 in: text, range: range
             ) {
                 let inner = match.range(at: 1)
-                let italicFont = NSFontManager.shared.convert(
-                    baseFont, toHaveTrait: .italicFontMask
-                )
                 storage.addAttribute(
-                    .font, value: italicFont, range: inner
+                    .font, value: cachedItalicFont, range: inner
                 )
                 let full = match.range
                 hide(NSRange(
@@ -2560,11 +2500,7 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Underline __text__
-            // swiftlint:disable:next force_try
-            let underlineRx = try! NSRegularExpression(
-                pattern: "__(.+?)__"
-            )
-            for match in underlineRx.matches(
+            for match in MarkdownFormat.underlinePattern.matches(
                 in: text, range: range
             ) {
                 let inner = match.range(at: 1)
@@ -2584,11 +2520,7 @@ struct MarkdownEditor: NSViewRepresentable {
             }
 
             // Inline code `text`
-            // swiftlint:disable:next force_try
-            let codeRx = try! NSRegularExpression(
-                pattern: "`([^`]+)`"
-            )
-            for match in codeRx.matches(in: text, range: range) {
+            for match in MarkdownFormat.codePattern.matches(in: text, range: range) {
                 let inner = match.range(at: 1)
                 storage.addAttributes([
                     .font: Theme.terminalNSFont(ofSize: 14),
@@ -2608,15 +2540,16 @@ struct MarkdownEditor: NSViewRepresentable {
 
         // MARK: - Code Block Detection
 
+        // swiftlint:disable:next force_try
+        private static let codeBlockRegex = try! NSRegularExpression(
+            pattern:
+                "(?<=\\n|\\A)```[a-zA-Z0-9]*\\n([\\s\\S]*?)\\n```(?=\\n|\\Z)"
+        )
+
         private static func findCodeBlockRanges(
             in text: String
         ) -> [NSRange] {
-            // swiftlint:disable:next force_try
-            let regex = try! NSRegularExpression(
-                pattern:
-                    "(?<=\\n|\\A)```[a-zA-Z0-9]*\\n([\\s\\S]*?)\\n```(?=\\n|\\Z)"
-            )
-            return regex.matches(
+            return codeBlockRegex.matches(
                 in: text,
                 range: NSRange(location: 0, length: text.utf16.count)
             ).map(\.range)

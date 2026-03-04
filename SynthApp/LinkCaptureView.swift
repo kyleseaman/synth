@@ -16,7 +16,7 @@ struct LinkCaptureView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Save Link")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Theme.uiSwiftUIFont(size: 16, weight: .semibold))
 
             TextField("Paste a link", text: $linkText)
                 .textFieldStyle(.roundedBorder)
@@ -25,7 +25,7 @@ struct LinkCaptureView: View {
 
             if !linkText.isEmpty && !isValid {
                 Text("Enter a valid URL")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
             }
 

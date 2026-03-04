@@ -36,10 +36,10 @@ struct LinksView: View {
     private var header: some View {
         HStack {
             Text("Links")
-                .font(.system(size: 16, weight: .semibold))
+                .font(Theme.uiSwiftUIFont(size: 16, weight: .semibold))
 
             Text("\(linkStore.links.count)")
-                .font(.system(size: 12, weight: .medium))
+                .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -59,12 +59,12 @@ struct LinksView: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "link")
-                .font(.system(size: 24))
+                .font(Theme.uiSwiftUIFont(size: 24))
                 .foregroundStyle(.secondary)
             Text("No links yet")
                 .foregroundStyle(.secondary)
             Text("Press ⌘⇧L to add one")
-                .font(.system(size: 12))
+                .font(Theme.uiSwiftUIFont(size: 12))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -93,9 +93,9 @@ struct LinkRow: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayTitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .medium))
                 Text(link.urlString)
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

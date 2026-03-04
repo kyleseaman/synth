@@ -134,10 +134,10 @@ struct DocumentChatTray: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Collaborate with Assistant")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
                 HStack(spacing: 8) {
                     Label(documentURL.lastPathComponent, systemImage: "doc.text")
-                        .font(.system(size: 11))
+                        .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.secondary)
                     connectionBadge
                 }
@@ -151,7 +151,7 @@ struct DocumentChatTray: View {
                 chatState.newChat()
             } label: {
                 Image(systemName: "plus.message")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
                     .background(Color.primary.opacity(0.08))
@@ -168,7 +168,7 @@ struct DocumentChatTray: View {
                 Image(systemName: store.chatPlacement == .bottom
                       ? "rectangle.righthalf.inset.filled"
                       : "rectangle.bottomhalf.inset.filled")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
                     .background(Color.primary.opacity(0.08))
@@ -181,7 +181,7 @@ struct DocumentChatTray: View {
                 store.toggleChatForCurrentTab()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(Theme.uiSwiftUIFont(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
                     .frame(width: 18, height: 18)
                     .background(Color.primary.opacity(0.08))
@@ -214,9 +214,9 @@ struct DocumentChatTray: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: Self.agentSymbolName())
-                        .font(.system(size: 11))
+                        .font(Theme.uiSwiftUIFont(size: 11))
                     Text(currentModeName)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -239,9 +239,9 @@ struct DocumentChatTray: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: Self.agentSymbolName())
-                        .font(.system(size: 11))
+                        .font(Theme.uiSwiftUIFont(size: 11))
                     Text(selectedAgent ?? "Auto Agent")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -263,7 +263,7 @@ struct DocumentChatTray: View {
 
     private var connectionBadge: some View {
         Text(connectionTitle)
-            .font(.system(size: 10, weight: .semibold))
+            .font(Theme.uiSwiftUIFont(size: 10, weight: .semibold))
             .foregroundStyle(connectionColor)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
@@ -379,9 +379,9 @@ struct DocumentChatTray: View {
     private var emptyStateView: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Start a collaborative turn")
-                .font(.system(size: 13, weight: .semibold))
+                .font(Theme.uiSwiftUIFont(size: 13, weight: .semibold))
             Text("I can read, edit, and reason over this workspace with your approval.")
-                .font(.system(size: 11))
+                .font(Theme.uiSwiftUIFont(size: 11))
                 .foregroundStyle(.secondary)
         }
         .padding(12)
@@ -397,9 +397,9 @@ struct DocumentChatTray: View {
         if let selectedLineRange, selectedText != nil {
             HStack(spacing: 5) {
                 Image(systemName: "text.line.first.and.arrowtriangle.forward")
-                    .font(.system(size: 10))
+                    .font(Theme.uiSwiftUIFont(size: 10))
                 Text("Using selection context: \(selectedLineRange)")
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                 Spacer()
             }
             .foregroundStyle(.secondary)
@@ -424,7 +424,7 @@ struct DocumentChatTray: View {
                             sendMessage()
                         }
                         .buttonStyle(.plain)
-                        .font(.system(size: 10.5))
+                        .font(Theme.uiSwiftUIFont(size: 10.5))
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                         .padding(.horizontal, 10)
@@ -449,7 +449,7 @@ struct DocumentChatTray: View {
         if let permission = chatState.pendingPermission {
             VStack(alignment: .leading, spacing: 6) {
                 Text(permission.title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                     .lineLimit(2)
                 if let diff = permission.diffContent {
                     ScrollView {
@@ -467,7 +467,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("Deny")
-                            Text("[esc]").font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text("[esc]").font(Theme.uiSwiftUIFont(size: 10)).foregroundStyle(.secondary)
                         }
                     }
                     .buttonStyle(.bordered)
@@ -477,7 +477,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(alignment: .center, spacing: 4) {
                             Text("Allow")
-                            Text("[↩]").font(.system(size: 11)).baselineOffset(-2.5)
+                            Text("[↩]").font(Theme.uiSwiftUIFont(size: 11)).baselineOffset(-2.5)
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -487,7 +487,7 @@ struct DocumentChatTray: View {
                     } label: {
                         HStack(alignment: .center, spacing: 4) {
                             Text("Always Allow")
-                            Text("[⌘↩]").font(.system(size: 10)).baselineOffset(-2)
+                            Text("[⌘↩]").font(Theme.uiSwiftUIFont(size: 10)).baselineOffset(-2)
                         }
                     }
                     .buttonStyle(.bordered)
@@ -524,7 +524,7 @@ struct DocumentChatTray: View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Add:")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(Theme.uiSwiftUIFont(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                 Text(Self.displayedPermissionDiffText(diff.newText))
                     .font(Theme.terminalSwiftUIFont(size: 11))
@@ -533,7 +533,7 @@ struct DocumentChatTray: View {
             if !diff.oldText.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remove:")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(Theme.uiSwiftUIFont(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                     Text(Self.displayedPermissionDiffText(diff.oldText))
                         .font(Theme.terminalSwiftUIFont(size: 11))
@@ -554,7 +554,7 @@ struct DocumentChatTray: View {
                 ProgressView()
                     .controlSize(.small)
                 Text(status)
-                    .font(.system(size: 11))
+                    .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
             }
