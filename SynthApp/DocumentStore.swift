@@ -50,8 +50,12 @@ final class DocumentStore {
     var recentFiles: [URL] = []
     var expandedFolders: Set<URL> = []
     var chatVisibleTabs: Set<URL> = []
-    var chatPlacement: ChatPlacement = .bottom
-    var chatWidth: CGFloat = 360
+    var chatPlacement: ChatPlacement = .bottom {
+        didSet { UserDefaults.standard.set(chatPlacement.rawValue, forKey: "chatPlacement") }
+    }
+    var chatWidth: CGFloat = 360 {
+        didSet { UserDefaults.standard.set(chatWidth, forKey: "chatWidth") }
+    }
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
@@ -107,6 +111,12 @@ final class DocumentStore {
     @ObservationIgnored private var recentSaves: [URL: Date] = [:]
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: "chatPlacement"),
+           let saved = ChatPlacement(rawValue: raw) {
+            chatPlacement = saved
+        }
+        let savedWidth = UserDefaults.standard.double(forKey: "chatWidth")
+        if savedWidth > 0 { chatWidth = savedWidth }
         loadRecentFiles()
         dailyNoteManager.onSave = { [weak self] url, content in
             self?.backlinkIndex.updateFile(url, content: content)
