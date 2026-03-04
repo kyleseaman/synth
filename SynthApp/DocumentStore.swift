@@ -64,7 +64,7 @@ final class DocumentStore {
     var columnVisibility: NavigationSplitViewVisibility = .all
     var activeModal: ActiveModal?
     var imageDetailURL: URL?
-    var showBacklinks = true
+    var showBacklinks = false
     var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
