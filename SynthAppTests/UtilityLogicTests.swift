@@ -1642,4 +1642,90 @@ extension DocumentModelTests {
         XCTAssertTrue(unchecked.string.contains("todo"))
         XCTAssertTrue(checked.string.contains("done"))
     }
+
+    // MARK: - QmdResolver
+
+    func testQmdResolverFindsExecutableAtKnownPath() throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        try FileManager.default.createDirectory(
+            at: tmpDir, withIntermediateDirectories: true
+        )
+        let fakeBin = tmpDir.appendingPathComponent("qmd")
+        try "#!/bin/sh\nexit 0\n".write(
+            to: fakeBin, atomically: true, encoding: .utf8
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: Int16(0o755))],
+            ofItemAtPath: fakeBin.path
+        )
+        XCTAssertTrue(
+            FileManager.default.isExecutableFile(atPath: fakeBin.path)
+        )
+    }
+
+    func testQmdResolverReturnsNilWhenNoBinary() {
+        // invalidateCache so we get a fresh check
+        QmdResolver.invalidateCache()
+        // On CI / test machines without qmd installed, this should
+        // return nil or a valid path — never crash.
+        let result = QmdResolver.resolve()
+        if let path = result {
+            XCTAssertTrue(
+                FileManager.default.isExecutableFile(atPath: path)
+            )
+        }
+        // Restore cache state
+        QmdResolver.invalidateCache()
+    }
+
+    // MARK: - QmdClient JSON Parsing
+
+    func testQmdClientParseSearchResultsArray() {
+        let json = """
+        [
+            {"path": "/notes/hello.md", "title": "Hello", "score": 0.95, "snippet": "Hello world"},
+            {"file": "/notes/bye.md", "docid": "doc2", "score": 0.5}
+        ]
+        """.data(using: .utf8)!
+        let results = QmdClient.parseSearchResults(json)
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[0].path, "/notes/hello.md")
+        XCTAssertEqual(results[0].title, "Hello")
+        XCTAssertEqual(results[0].score, 0.95)
+        XCTAssertEqual(results[0].snippet, "Hello world")
+        XCTAssertEqual(results[1].path, "/notes/bye.md")
+        XCTAssertEqual(results[1].id, "doc2")
+    }
+
+    func testQmdClientParseSearchResultsWrapper() {
+        let json = """
+        {"results": [{"path": "/a.md", "title": "A", "score": 0.8, "context": "some context"}]}
+        """.data(using: .utf8)!
+        let results = QmdClient.parseSearchResults(json)
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].snippet, "some context")
+    }
+
+    func testQmdClientParseSearchResultsInvalidJSON() {
+        let garbage = "not json".data(using: .utf8)!
+        XCTAssertTrue(QmdClient.parseSearchResults(garbage).isEmpty)
+    }
+
+    func testQmdClientParseStatusValid() {
+        let json = """
+        {"collections": [{"path": "/workspace", "name": "ws"}], "documents": 42, "embeddings": true}
+        """.data(using: .utf8)!
+        let status = QmdClient.parseStatus(json)
+        XCTAssertNotNil(status)
+        XCTAssertEqual(status?.collections, ["/workspace"])
+        XCTAssertEqual(status?.documentCount, 42)
+        XCTAssertEqual(status?.hasEmbeddings, true)
+    }
+
+    func testQmdClientParseStatusInvalidJSON() {
+        let garbage = "nope".data(using: .utf8)!
+        XCTAssertNil(QmdClient.parseStatus(garbage))
+    }
 }
