@@ -130,7 +130,20 @@ jobs:
           rm Synth.zip
           zip -r -y Synth.zip Synth.app
 
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict $RUNNER_TEMP/export/Synth.app
+          spctl --assess --type execute --verbose=4 $RUNNER_TEMP/export/Synth.app
+
+      - name: Upload build artifact
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Synth.zip
+          path: ${{ runner.temp }}/export/Synth.zip
+
       - name: Create release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
