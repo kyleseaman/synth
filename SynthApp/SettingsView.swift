@@ -274,6 +274,18 @@ struct SettingsView: View {
                                 result.contains("✓") ? .green : .red
                             )
                     }
+                    if !qmdClient.isWorkspaceIndexed && !qmdSetupInProgress {
+                        Text(
+                            "Click \"Set up QMD\" to index this workspace. "
+                            + "This runs `qmd collection add` and `qmd embed` "
+                            + "to build a full-text and vector search index. "
+                            + "The file launcher (⌘P) will then use QMD for "
+                            + "higher-quality results on Enter, and AI chat "
+                            + "gets better workspace context."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 } header: {
                     Text("Workspace")
                 }
