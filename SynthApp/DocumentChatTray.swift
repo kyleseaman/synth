@@ -319,7 +319,6 @@ struct DocumentChatTray: View {
                     selectionIndicator
                     inputBar
                 }
-                .background(.ultraThinMaterial)
             }
             .onChange(of: chatState.messages.count) {
                 if let lastMessage = chatState.messages.last {
