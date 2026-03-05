@@ -5,6 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: package-app
+  cancel-in-progress: true
+
 jobs:
   package:
     runs-on: macos-26
@@ -35,6 +42,10 @@ jobs:
           # Add to search list so xcodebuild finds it
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Verify signing identity
+        run: |
+          security find-identity -v -p codesigning $RUNNER_TEMP/signing.keychain-db | grep "Developer ID Application"
 
       - name: Set version
         run: |
