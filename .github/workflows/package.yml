@@ -54,6 +54,13 @@ jobs:
           plutil -replace CFBundleShortVersionString -string "$VERSION" SynthApp/Info.plist
           plutil -replace CFBundleVersion -string "$SHORT_SHA" SynthApp/Info.plist
 
+      - name: Cache SPM dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: synth-mcp-server/.build
+          key: spm-${{ hashFiles('synth-mcp-server/Package.resolved') }}
+          restore-keys: spm-
+
       - name: Build MCP server
         run: cd synth-mcp-server && swift build -c release
 
@@ -101,13 +108,6 @@ jobs:
           cd $RUNNER_TEMP/export
           rm Synth.zip
           zip -r -y Synth.zip Synth.app
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: Synth-1.0.0-preview-${{ github.sha }}
-          path: ${{ runner.temp }}/export/Synth.zip
-          retention-days: 30
 
       - name: Create release
         env:
