@@ -54,14 +54,7 @@ struct DocumentChatTray: View {
                 if !isTrailing { dragHandle }
                 headerBar
                 Divider().opacity(0.3)
-                ZStack(alignment: .bottom) {
-                    messageList
-                    VStack(spacing: 0) {
-                        statusBanner
-                        selectionIndicator
-                        inputBar
-                    }
-                }
+                messageList
             }
         }
         .frame(height: isTrailing ? nil : trayHeight)
@@ -317,9 +310,17 @@ struct DocumentChatTray: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 70)
+                .padding(.bottom, 8)
             }
             .scrollIndicators(.hidden)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    statusBanner
+                    selectionIndicator
+                    inputBar
+                }
+                .background(.ultraThinMaterial)
+            }
             .onChange(of: chatState.messages.count) {
                 if let lastMessage = chatState.messages.last {
                     withAnimation(.easeOut(duration: 0.2)) {
