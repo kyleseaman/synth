@@ -3,6 +3,8 @@ name: Package App
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -81,9 +83,17 @@ jobs:
           cp -R $RUNNER_TEMP/Synth.xcarchive/Products/Applications/Synth.app $RUNNER_TEMP/export/
           cp synth-mcp-server/.build/release/synth-mcp-server $RUNNER_TEMP/export/Synth.app/Contents/MacOS/
 
-          # Re-sign after adding the MCP binary
-          codesign --force --deep --sign "Developer ID Application" \
-            --timestamp $RUNNER_TEMP/export/Synth.app
+          # Sign the MCP binary explicitly with hardened runtime
+          codesign --force --sign "Developer ID Application" \
+            --options runtime \
+            --timestamp \
+            $RUNNER_TEMP/export/Synth.app/Contents/MacOS/synth-mcp-server
+
+          # Re-sign the app bundle
+          codesign --force --sign "Developer ID Application" \
+            --options runtime \
+            --timestamp \
+            $RUNNER_TEMP/export/Synth.app
 
           cd $RUNNER_TEMP/export
           zip -r -y Synth.zip Synth.app
@@ -95,11 +105,24 @@ jobs:
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          xcrun notarytool submit $RUNNER_TEMP/export/Synth.zip \
+          RESULT=$(xcrun notarytool submit $RUNNER_TEMP/export/Synth.zip \
             --apple-id "$NOTARY_APPLE_ID" \
             --password "$NOTARY_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait --output-format json)
+
+          echo "$RESULT"
+          STATUS=$(echo "$RESULT" | plutil -extract status raw -)
+          ID=$(echo "$RESULT" | plutil -extract id raw -)
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS"
+            xcrun notarytool log "$ID" \
+              --apple-id "$NOTARY_APPLE_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
 
           # Staple the notarization ticket to the app
           xcrun stapler staple $RUNNER_TEMP/export/Synth.app
