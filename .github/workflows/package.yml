@@ -36,6 +36,13 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+      - name: Set version
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          VERSION="1.0.0-preview+${SHORT_SHA}"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" SynthApp/Info.plist
+          plutil -replace CFBundleVersion -string "$SHORT_SHA" SynthApp/Info.plist
+
       - name: Build MCP server
         run: cd synth-mcp-server && swift build -c release
 
@@ -87,7 +94,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Synth-${{ github.sha }}
+          name: Synth-1.0.0-preview-${{ github.sha }}
           path: ${{ runner.temp }}/export/Synth.zip
           retention-days: 30
 
