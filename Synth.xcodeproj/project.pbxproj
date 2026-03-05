@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C1A000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000002 /* Assets.xcassets */; };
 		1A0000000000000000000001 /* SynthApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000011 /* SynthApp.swift */; };
 		1A0000000000000000000041 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000015 /* Theme.swift */; };
 		1A0000000000000000000042 /* Document.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000016 /* Document.swift */; };
@@ -88,6 +89,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C1A000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A0000000000000000000010 /* Synth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Synth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000011 /* SynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthApp.swift; sourceTree = "<group>"; };
 
@@ -185,6 +187,7 @@
 				isa = PBXResourcesBuildPhase;
 				buildActionMask = 2147483647;
 				files = (
+					C1A000000000000000000001 /* Assets.xcassets in Resources */,
 					B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */,
 					B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */,
 					B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */,
@@ -264,6 +267,7 @@
 					4A0000000000000000000131 /* SynthMcpResolver.swift */,
 					4A0000000000000000000132 /* MCPServerManager.swift */,
 					B1F000000000000000000300 /* Fonts */,
+					C1A000000000000000000002 /* Assets.xcassets */,
 
 				);
 				path = SynthApp;
