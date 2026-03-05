@@ -83,6 +83,7 @@ final class DocumentStore {
     let peopleIndex = PeopleIndex()
     let dailyNoteManager = DailyNoteManager()
     let mcpServer = MCPServerManager()
+    var qmdClient: QmdClient?
 
     private let saveQueue: OperationQueue = {
         let queue = OperationQueue()
@@ -132,6 +133,7 @@ final class DocumentStore {
             loadKiroConfig()
             checkKiroSetup()
             mcpServer.start(workspace: restoredWorkspace)
+            initializeQmd(workspace: restoredWorkspace)
         }
     }
 
@@ -143,6 +145,18 @@ final class DocumentStore {
         }
         stopWatching()
         mcpServer.stop()
+    }
+
+    private func initializeQmd(workspace: URL) {
+        let client = QmdClient()
+        guard client.isAvailable else {
+            qmdClient = nil
+            return
+        }
+        qmdClient = client
+        Task {
+            await client.refreshWorkspaceStatus(workspace: workspace)
+        }
     }
 
     private func startWatching() {
@@ -194,6 +208,7 @@ final class DocumentStore {
         checkKiroSetup()
         dailyNoteManager.ensureFutureDays(workspace: url)
         mcpServer.start(workspace: url)
+        initializeQmd(workspace: url)
         loadFileTree()
         // Clean orphaned media only on workspace open, not every scan
         Task(priority: .utility) { [weak self] in

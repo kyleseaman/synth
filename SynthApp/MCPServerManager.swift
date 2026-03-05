@@ -121,6 +121,15 @@ struct MCPRuntimeLease: Codable, Equatable {
             "disabled": false
         ] as [String: Any]
 
+        // Register QMD MCP server when available
+        if let qmdPath = QmdResolver.resolve() {
+            servers["qmd"] = [
+                "command": qmdPath,
+                "args": ["mcp"],
+                "disabled": false
+            ] as [String: Any]
+        }
+
         existing["mcpServers"] = servers
 
         if let data = try? JSONSerialization.data(

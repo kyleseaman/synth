@@ -20,11 +20,15 @@ struct SettingsView: View {
     @State private var draftDescription = ""
     @State private var showVariablesHelp = false
     @State private var selectedCategoryFilter: String?
+    @State private var qmdDetectedPath = ""
+    @State private var qmdSetupInProgress = false
+    @State private var qmdSetupResult: String?
 
     var body: some View {
         TabView {
             generalTab.tabItem { Label("General", systemImage: "gear") }
             fontsTab.tabItem { Label("Fonts", systemImage: "textformat") }
+            searchTab.tabItem { Label("Search", systemImage: "magnifyingglass") }
             contextTab.tabItem { Label("Context", systemImage: "doc.text.magnifyingglass") }
             mcpTab.tabItem { Label("MCP", systemImage: "server.rack") }
             agentsTab.tabItem { Label("Agents", systemImage: "cpu") }
@@ -34,6 +38,7 @@ struct SettingsView: View {
         .onAppear {
             store.loadKiroConfig()
             detectedPath = KiroCliResolver.resolve() ?? "Not found"
+            qmdDetectedPath = QmdResolver.resolve() ?? "Not found"
             if selectedTemplateIdentifier == nil {
                 selectedTemplateIdentifier = templateStore.templates.first?.identifier
             }
@@ -173,6 +178,130 @@ struct SettingsView: View {
         .onChange(of: editorFontCandidates) { Theme.invalidateFontCache() }
         .onChange(of: terminalFontCandidates) { Theme.invalidateFontCache() }
         .onChange(of: sidebarFontCandidates) { Theme.invalidateFontCache() }
+    }
+
+    // MARK: - Search (QMD)
+
+    private var searchTab: some View {
+        List {
+            Section {
+                HStack {
+                    if qmdDetectedPath != "Not found" {
+                        Label("Installed", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Text(qmdDetectedPath)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Label("Not found", systemImage: "xmark.circle")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Refresh") {
+                            QmdResolver.invalidateCache()
+                            qmdDetectedPath = QmdResolver.resolve() ?? "Not found"
+                        }
+                        .controlSize(.small)
+                    }
+                }
+                if qmdDetectedPath == "Not found" {
+                    Text("Install QMD to enable enhanced search:\nnpm install -g @tobilu/qmd")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } header: {
+                Text("QMD Status")
+            }
+
+            if let qmdClient = store.qmdClient, qmdClient.isAvailable {
+                Section {
+                    HStack {
+                        Label(
+                            qmdClient.isWorkspaceIndexed ? "Workspace indexed" : "Not indexed",
+                            systemImage: qmdClient.isWorkspaceIndexed
+                                ? "checkmark.circle.fill" : "circle"
+                        )
+                        .foregroundStyle(
+                            qmdClient.isWorkspaceIndexed ? .green : .secondary
+                        )
+                        Spacer()
+                        if qmdSetupInProgress {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Setting up…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button(qmdClient.isWorkspaceIndexed ? "Re-index" : "Set up QMD") {
+                                setupQmd()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    if let result = qmdSetupResult {
+                        Text(result)
+                            .font(.caption)
+                            .foregroundStyle(
+                                result.contains("✓") ? .green : .red
+                            )
+                    }
+                } header: {
+                    Text("Workspace")
+                }
+            }
+
+            Section {
+                Text(
+                    "QMD is an optional add-on that enhances search with BM25 full-text "
+                    + "indexing and semantic vector search. When set up, the file launcher "
+                    + "(⌘P) uses QMD for higher-quality results, and the AI chat gets "
+                    + "better workspace context.\n\n"
+                    + "Synth works perfectly without QMD — the built-in search remains "
+                    + "available as a fast fallback."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } header: {
+                Text("About QMD")
+            }
+        }
+    }
+
+    private func setupQmd() {
+        guard let workspace = store.workspace,
+              let qmdClient = store.qmdClient else { return }
+        qmdSetupInProgress = true
+        qmdSetupResult = nil
+        Task {
+            let name = workspace.lastPathComponent
+                .lowercased()
+                .replacingOccurrences(
+                    of: "[^a-z0-9-]",
+                    with: "-",
+                    options: .regularExpression
+                )
+            let added = await qmdClient.collectionAdd(
+                path: workspace.path, name: name
+            )
+            guard added else {
+                await MainActor.run {
+                    qmdSetupResult = "✗ Failed to add collection"
+                    qmdSetupInProgress = false
+                }
+                return
+            }
+            let embedded = await qmdClient.embed()
+            await qmdClient.refreshWorkspaceStatus(workspace: workspace)
+            await MainActor.run {
+                qmdSetupResult = embedded
+                    ? "✓ Workspace indexed successfully"
+                    : "✓ Collection added (embeddings skipped)"
+                qmdSetupInProgress = false
+            }
+        }
     }
 
     // MARK: - Context
