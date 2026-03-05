@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-26
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install signing certificate
         env:
@@ -92,7 +92,7 @@ jobs:
           zip -r -y Synth.zip Synth.app
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Synth-1.0.0-preview-${{ github.sha }}
           path: ${{ runner.temp }}/export/Synth.zip
