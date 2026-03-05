@@ -62,6 +62,7 @@ struct ChatBubble: View {
     let message: ChatMessage
     var onInsert: ((String) -> Void)?
     @State private var isHovered = false
+    @State private var showCopied = false
 
     var body: some View {
         HStack {
@@ -96,11 +97,17 @@ struct ChatBubble: View {
                                 .help("Insert into document")
                             }
                             Button {
+                                let unwrapped = Self.unwrapLines(message.content)
                                 NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(message.content, forType: .string)
+                                NSPasteboard.general.setString(unwrapped, forType: .string)
+                                showCopied = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    showCopied = false
+                                }
                             } label: {
-                                Image(systemName: "doc.on.doc")
+                                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
                                     .font(Theme.uiSwiftUIFont(size: 10))
+                                    .foregroundStyle(showCopied ? .green : .secondary)
                                     .padding(4)
                                     .background(.regularMaterial)
                                     .cornerRadius(4)
@@ -117,6 +124,14 @@ struct ChatBubble: View {
         }
     }
 
+    /// Remove soft line wraps while preserving paragraph breaks and list items.
+    private static func unwrapLines(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: "(?<!\\n)\\n(?!\\n|\\s*[-*•\\d])",
+            with: " ",
+            options: .regularExpression
+        )
+    }
 }
 
 // MARK: - Streaming Bubble
