@@ -642,4 +642,64 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertEqual(store.openFiles[openIndex].content.string, "Edited by agent")
         XCTAssertFalse(store.openFiles[openIndex].isDirty)
     }
+
+    @MainActor
+    func testShowKanbanModalSetsActiveModal() {
+        let store = DocumentStore()
+        store.showKanbanModal()
+        XCTAssertEqual(store.activeModal, .kanban)
+    }
+
+    @MainActor
+    func testBootstrapKanbanFoldersCreatesDirectories() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(
+            at: workspaceURL, withIntermediateDirectories: true
+        )
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.bootstrapKanbanFolders()
+
+        for folder in ["Ideas", "Drafts", "Ready for Review", "Archive"] {
+            let folderURL = workspaceURL.appendingPathComponent(folder)
+            var isDir: ObjCBool = false
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDir)
+            )
+            XCTAssertTrue(isDir.boolValue)
+        }
+    }
+
+    @MainActor
+    func testKanbanFilesReturnsSortedMarkdownFiles() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        let ideasDir = workspaceURL.appendingPathComponent("Ideas")
+        try FileManager.default.createDirectory(
+            at: ideasDir, withIntermediateDirectories: true
+        )
+        try "# Bravo".write(
+            to: ideasDir.appendingPathComponent("Bravo.md"),
+            atomically: true, encoding: .utf8
+        )
+        try "# Alpha".write(
+            to: ideasDir.appendingPathComponent("Alpha.txt"),
+            atomically: true, encoding: .utf8
+        )
+        try Data("img".utf8).write(
+            to: ideasDir.appendingPathComponent("photo.png")
+        )
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        let files = store.kanbanFiles(in: "Ideas")
+
+        XCTAssertEqual(files.count, 2)
+        XCTAssertEqual(files[0].lastPathComponent, "Alpha.txt")
+        XCTAssertEqual(files[1].lastPathComponent, "Bravo.md")
+    }
 }

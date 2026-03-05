@@ -53,6 +53,7 @@
 		3A0000000000000000000805 /* RelatedNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000125 /* RelatedNotesView.swift */; };
 		3A0000000000000000000806 /* PeopleIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000126 /* PeopleIndex.swift */; };
 		3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000127 /* PeopleBrowserView.swift */; };
+		6A0000000000000000000001 /* KanbanBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000002 /* KanbanBoardView.swift */; };
 		5A0000000000000000001001 /* UnifiedIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001002 /* UnifiedIndexer.swift */; };
 		5A0000000000000000001003 /* MediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001004 /* MediaManager.swift */; };
 		5A0000000000000000001005 /* WorkspaceImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A0000000000000000001006 /* WorkspaceImageLoader.swift */; };
@@ -61,20 +62,20 @@
 		1A0000000000000000000207 /* MeetingNoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* MeetingNoteView.swift */; };
 		4A0000000000000000000901 /* DailyNoteManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000131 /* DailyNoteManager.swift */; };
 		4A0000000000000000000902 /* DailyNotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000132 /* DailyNotesView.swift */; };
-			4A0000000000000000000903 /* CalendarSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000133 /* CalendarSidebarView.swift */; };
-			4A0000000000000000000904 /* AutocompleteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000134 /* AutocompleteCoordinator.swift */; };
-			4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000131 /* SynthMcpResolver.swift */; };
-			4A0000000000000000000906 /* MCPServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000132 /* MCPServerManager.swift */; };
-			B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */; };
-			B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */; };
-			B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */; };
-			B1F000000000000000000104 /* mesloLGS_NF_bold_italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000204 /* mesloLGS_NF_bold_italic.ttf */; };
-			B1F000000000000000000105 /* PublicSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000205 /* PublicSans-Regular.ttf */; };
-			B1F000000000000000000106 /* PublicSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000206 /* PublicSans-SemiBold.ttf */; };
-			B1F000000000000000000107 /* PublicSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000207 /* PublicSans-Bold.ttf */; };
-			B1F000000000000000000108 /* SourceSerif4-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000208 /* SourceSerif4-Regular.ttf */; };
-			B1F000000000000000000109 /* SourceSerif4-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000209 /* SourceSerif4-SemiBold.ttf */; };
-			B1F000000000000000000110 /* SourceSerif4-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000210 /* SourceSerif4-Bold.ttf */; };
+		4A0000000000000000000903 /* CalendarSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000133 /* CalendarSidebarView.swift */; };
+		4A0000000000000000000904 /* AutocompleteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000134 /* AutocompleteCoordinator.swift */; };
+		4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000131 /* SynthMcpResolver.swift */; };
+		4A0000000000000000000906 /* MCPServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000132 /* MCPServerManager.swift */; };
+		B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */; };
+		B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */; };
+		B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */; };
+		B1F000000000000000000104 /* mesloLGS_NF_bold_italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000204 /* mesloLGS_NF_bold_italic.ttf */; };
+		B1F000000000000000000105 /* PublicSans-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000205 /* PublicSans-Regular.ttf */; };
+		B1F000000000000000000106 /* PublicSans-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000206 /* PublicSans-SemiBold.ttf */; };
+		B1F000000000000000000107 /* PublicSans-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000207 /* PublicSans-Bold.ttf */; };
+		B1F000000000000000000108 /* SourceSerif4-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000208 /* SourceSerif4-Regular.ttf */; };
+		B1F000000000000000000109 /* SourceSerif4-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000209 /* SourceSerif4-SemiBold.ttf */; };
+		B1F000000000000000000110 /* SourceSerif4-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000210 /* SourceSerif4-Bold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -138,6 +139,7 @@
 		1A0000000000000000000125 /* RelatedNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelatedNotesView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000126 /* PeopleIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleIndex.swift; sourceTree = "<group>"; };
 		1A0000000000000000000127 /* PeopleBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleBrowserView.swift; sourceTree = "<group>"; };
+		6A0000000000000000000002 /* KanbanBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KanbanBoardView.swift; sourceTree = "<group>"; };
 		5A0000000000000000001002 /* UnifiedIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedIndexer.swift; sourceTree = "<group>"; };
 		5A0000000000000000001004 /* MediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaManager.swift; sourceTree = "<group>"; };
 		5A0000000000000000001006 /* WorkspaceImageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceImageLoader.swift; sourceTree = "<group>"; };
@@ -147,19 +149,19 @@
 		1A0000000000000000000131 /* DailyNoteManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNoteManager.swift; sourceTree = "<group>"; };
 		1A0000000000000000000132 /* DailyNotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyNotesView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000133 /* CalendarSidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSidebarView.swift; sourceTree = "<group>"; };
-			1A0000000000000000000134 /* AutocompleteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutocompleteCoordinator.swift; sourceTree = "<group>"; };
-			4A0000000000000000000131 /* SynthMcpResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthMcpResolver.swift; sourceTree = "<group>"; };
-			4A0000000000000000000132 /* MCPServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerManager.swift; sourceTree = "<group>"; };
-			B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_regular.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_bold.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_italic.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000204 /* mesloLGS_NF_bold_italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_bold_italic.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000205 /* PublicSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-Regular.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000206 /* PublicSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-SemiBold.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000207 /* PublicSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-Bold.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000208 /* SourceSerif4-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-Regular.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000209 /* SourceSerif4-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-SemiBold.ttf; sourceTree = "<group>"; };
-			B1F000000000000000000210 /* SourceSerif4-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-Bold.ttf; sourceTree = "<group>"; };
+		1A0000000000000000000134 /* AutocompleteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutocompleteCoordinator.swift; sourceTree = "<group>"; };
+		4A0000000000000000000131 /* SynthMcpResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthMcpResolver.swift; sourceTree = "<group>"; };
+		4A0000000000000000000132 /* MCPServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerManager.swift; sourceTree = "<group>"; };
+		B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_regular.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_bold.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_italic.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000204 /* mesloLGS_NF_bold_italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_bold_italic.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000205 /* PublicSans-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-Regular.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000206 /* PublicSans-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-SemiBold.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000207 /* PublicSans-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PublicSans-Bold.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000208 /* SourceSerif4-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-Regular.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000209 /* SourceSerif4-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-SemiBold.ttf; sourceTree = "<group>"; };
+		B1F000000000000000000210 /* SourceSerif4-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = SourceSerif4-Bold.ttf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,23 +183,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
-			B1F000000000000000000400 /* Resources */ = {
-				isa = PBXResourcesBuildPhase;
-				buildActionMask = 2147483647;
-				files = (
-					B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */,
-					B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */,
-					B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */,
-					B1F000000000000000000104 /* mesloLGS_NF_bold_italic.ttf in Resources */,
-					B1F000000000000000000105 /* PublicSans-Regular.ttf in Resources */,
-					B1F000000000000000000106 /* PublicSans-SemiBold.ttf in Resources */,
-					B1F000000000000000000107 /* PublicSans-Bold.ttf in Resources */,
-					B1F000000000000000000108 /* SourceSerif4-Regular.ttf in Resources */,
-					B1F000000000000000000109 /* SourceSerif4-SemiBold.ttf in Resources */,
-					B1F000000000000000000110 /* SourceSerif4-Bold.ttf in Resources */,
-				);
-				runOnlyForDeploymentPostprocessing = 0;
-			};
+		B1F000000000000000000400 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */,
+				B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */,
+				B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */,
+				B1F000000000000000000104 /* mesloLGS_NF_bold_italic.ttf in Resources */,
+				B1F000000000000000000105 /* PublicSans-Regular.ttf in Resources */,
+				B1F000000000000000000106 /* PublicSans-SemiBold.ttf in Resources */,
+				B1F000000000000000000107 /* PublicSans-Bold.ttf in Resources */,
+				B1F000000000000000000108 /* SourceSerif4-Regular.ttf in Resources */,
+				B1F000000000000000000109 /* SourceSerif4-SemiBold.ttf in Resources */,
+				B1F000000000000000000110 /* SourceSerif4-Bold.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -256,6 +258,7 @@
 				1A0000000000000000000125 /* RelatedNotesView.swift */,
 					1A0000000000000000000126 /* PeopleIndex.swift */,
 					1A0000000000000000000127 /* PeopleBrowserView.swift */,
+					6A0000000000000000000002 /* KanbanBoardView.swift */,
 					5A0000000000000000001002 /* UnifiedIndexer.swift */,
 					5A0000000000000000001004 /* MediaManager.swift */,
 					5A0000000000000000001006 /* WorkspaceImageLoader.swift */,
@@ -325,14 +328,14 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-			1A000000000000000000000F /* Synth */ = {
-				isa = PBXNativeTarget;
-				buildConfigurationList = 1A0000000000000000000020 /* Build configuration list for PBXNativeTarget "Synth" */;
-				buildPhases = (
-					1A000000000000000000000C /* Sources */,
-					1A000000000000000000000D /* Frameworks */,
-					B1F000000000000000000400 /* Resources */,
-				);
+		1A000000000000000000000F /* Synth */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A0000000000000000000020 /* Build configuration list for PBXNativeTarget "Synth" */;
+			buildPhases = (
+				1A000000000000000000000C /* Sources */,
+				1A000000000000000000000D /* Frameworks */,
+				B1F000000000000000000400 /* Resources */,
+			);
 			buildRules = (
 			);
 			dependencies = (
@@ -446,6 +449,7 @@
 				3A0000000000000000000805 /* RelatedNotesView.swift in Sources */,
 				3A0000000000000000000806 /* PeopleIndex.swift in Sources */,
 				3A0000000000000000000807 /* PeopleBrowserView.swift in Sources */,
+				6A0000000000000000000001 /* KanbanBoardView.swift in Sources */,
 				5A0000000000000000001001 /* UnifiedIndexer.swift in Sources */,
 				5A0000000000000000001003 /* MediaManager.swift in Sources */,
 				5A0000000000000000001005 /* WorkspaceImageLoader.swift in Sources */,
@@ -577,7 +581,6 @@
 		1A0000000000000000000021 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
@@ -592,7 +595,6 @@
 		1A0000000000000000000022 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
