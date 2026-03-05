@@ -297,7 +297,8 @@ struct DocumentChatTray: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(chatState.messages) { message in
-                        ChatBubble(message: message).id(message.id)
+                        ChatBubble(message: message, onInsert: insertIntoDocument)
+                            .id(message.id)
                     }
                     ForEach(chatState.toolCalls.filter { $0.status != "completed" }) { call in
                         ToolCallBubble(toolCall: call).id(call.id)
@@ -648,6 +649,15 @@ struct DocumentChatTray: View {
         DispatchQueue.main.async {
             self.isInputFocused = true
         }
+    }
+
+    private func insertIntoDocument(_ text: String) {
+        guard let window = NSApp.keyWindow else { return }
+        let responders = sequence(first: window.firstResponder) { $0?.nextResponder }
+        guard let textView = responders.compactMap({ $0 as? FormattingTextView }).first else {
+            return
+        }
+        textView.insertText(text, replacementRange: textView.selectedRange())
     }
 
     private func waitAndSend(prompt: String, retries: Int) {

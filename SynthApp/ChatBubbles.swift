@@ -60,6 +60,7 @@ private extension Int {
 
 struct ChatBubble: View {
     let message: ChatMessage
+    var onInsert: ((String) -> Void)?
     @State private var isHovered = false
 
     var body: some View {
@@ -79,18 +80,34 @@ struct ChatBubble: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(alignment: .bottomTrailing) {
                     if message.role == .assistant && isHovered {
-                        Button {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(message.content, forType: .string)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(Theme.uiSwiftUIFont(size: 10))
-                                .padding(4)
-                                .background(.regularMaterial)
-                                .cornerRadius(4)
+                        HStack(spacing: 2) {
+                            if let onInsert {
+                                Button {
+                                    onInsert(message.content)
+                                } label: {
+                                    Image(systemName: "text.insert")
+                                        .font(Theme.uiSwiftUIFont(size: 10))
+                                        .padding(4)
+                                        .background(.regularMaterial)
+                                        .cornerRadius(4)
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .help("Insert into document")
+                            }
+                            Button {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(message.content, forType: .string)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(Theme.uiSwiftUIFont(size: 10))
+                                    .padding(4)
+                                    .background(.regularMaterial)
+                                    .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
                         .padding(4)
                     }
                 }
