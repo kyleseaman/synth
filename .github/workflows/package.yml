@@ -98,6 +98,18 @@ jobs:
           path: ${{ runner.temp }}/export/Synth.zip
           retention-days: 30
 
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          TAG="v1.0.0-preview+${SHORT_SHA}"
+          gh release create "$TAG" \
+            $RUNNER_TEMP/export/Synth.zip \
+            --title "Synth 1.0.0-preview (${SHORT_SHA})" \
+            --notes "Built from commit ${GITHUB_SHA}" \
+            --prerelease
+
       - name: Clean up keychain
         if: always()
         run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true
