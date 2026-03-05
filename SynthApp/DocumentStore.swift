@@ -148,6 +148,10 @@ final class DocumentStore {
     }
 
     private func initializeQmd(workspace: URL) {
+        guard UserDefaults.standard.object(forKey: "qmdEnabled") as? Bool ?? true else {
+            qmdClient = nil
+            return
+        }
         let client = QmdClient()
         guard client.isAvailable else {
             qmdClient = nil
@@ -157,6 +161,14 @@ final class DocumentStore {
         Task {
             await client.refreshWorkspaceStatus(workspace: workspace)
         }
+    }
+
+    func enableQmd(workspace: URL) {
+        initializeQmd(workspace: workspace)
+    }
+
+    func disableQmd() {
+        qmdClient = nil
     }
 
     private func startWatching() {

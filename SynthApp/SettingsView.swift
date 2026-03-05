@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("kiroCliPath") private var kiroCliPath = ""
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
     @AppStorage("hideSyntax") private var hideSyntax = true
+    @AppStorage("qmdEnabled") private var qmdEnabled = true
     @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
     @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
     @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
@@ -222,6 +223,23 @@ struct SettingsView: View {
                 }
             } header: {
                 Text("QMD Status")
+            }
+
+            if qmdDetectedPath != "Not found" {
+                Section {
+                    Toggle("Enable QMD enhanced search", isOn: $qmdEnabled)
+                        .onChange(of: qmdEnabled) {
+                            if let workspace = store.workspace {
+                                if qmdEnabled {
+                                    store.enableQmd(workspace: workspace)
+                                } else {
+                                    store.disableQmd()
+                                }
+                            }
+                        }
+                } header: {
+                    Text("Preferences")
+                }
             }
 
             if let qmdClient = store.qmdClient, qmdClient.isAvailable {
