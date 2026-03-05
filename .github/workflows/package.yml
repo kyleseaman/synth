@@ -3,6 +3,8 @@ name: Package App
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -71,7 +73,7 @@ jobs:
           zip -r -y Synth.zip Synth.app
 
       - name: Notarize app
-        if: ${{ secrets.NOTARY_APPLE_ID != '' }}
+        if: env.NOTARY_APPLE_ID != ''
         env:
           NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
