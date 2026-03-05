@@ -313,6 +313,7 @@ struct DailyNoteEditor: NSViewRepresentable {
                   let storage = textView.textStorage
             else { return }
             isFormatting = true
+            textView.isFormattingStorage = true
             let cursor = textView.selectedRange()
             let cleanText = MarkdownFormat.restoreMarkup(
                 in: textView.attributedString()
@@ -339,6 +340,7 @@ struct DailyNoteEditor: NSViewRepresentable {
             )
             textView.setSelectedRange(cursor)
             isFormatting = false
+            textView.isFormattingStorage = false
         }
 
         private func loadInlineImages(

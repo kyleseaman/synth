@@ -37,6 +37,9 @@ class FormattingTextView: NSTextView {
     private var resizeDragAspectRatio: CGFloat = 1
     /// Set during live resize to suppress textDidChange reformatting.
     var isResizing = false
+    /// Set by the Coordinator during formatting passes to prevent
+    /// mouse-tracking from accessing stale text storage indices.
+    var isFormattingStorage = false
 
     private lazy var resizeHandle: ResizeGripView = {
         let handle = ResizeGripView(
@@ -63,6 +66,7 @@ class FormattingTextView: NSTextView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        guard !isFormattingStorage else { return }
         super.mouseMoved(with: event)
         updateImageOverlay(for: event)
         let point = convert(event.locationInWindow, from: nil)
@@ -1366,6 +1370,7 @@ extension MarkdownEditor.Coordinator {
             if hash == lastContentHash { return }
 
             isFormatting = true
+            textView.isFormattingStorage = true
             let cursor = textView.selectedRange()
             let format = MarkdownFormat(noteIndex: store?.noteIndex)
             storage.setAttributedString(
@@ -1391,6 +1396,7 @@ extension MarkdownEditor.Coordinator {
             lastContentHash = hash
             textView.setSelectedRange(cursor)
             isFormatting = false
+            textView.isFormattingStorage = false
         }
 
         // MARK: - NSTextStorageDelegate (Incremental Formatting)
@@ -1407,7 +1413,11 @@ extension MarkdownEditor.Coordinator {
                       !isFormatting
                 else { return }
                 isFormatting = true
-                defer { isFormatting = false }
+                textView?.isFormattingStorage = true
+                defer {
+                    isFormatting = false
+                    textView?.isFormattingStorage = false
+                }
 
                 let nsString = storage.string as NSString
                 var formatTarget = nsString.paragraphRange(
