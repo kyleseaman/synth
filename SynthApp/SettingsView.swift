@@ -207,10 +207,18 @@ struct SettingsView: View {
                     }
                 }
                 if qmdDetectedPath == "Not found" {
-                    Text("Install QMD to enable enhanced search:\nnpm install -g @tobilu/qmd")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    Text(
+                        "Install QMD to enable enhanced search with BM25 "
+                        + "full-text indexing:\n\n"
+                        + "  npm install -g @tobilu/qmd\n\n"
+                        + "Or with Bun:\n\n"
+                        + "  bun install -g @tobilu/qmd\n\n"
+                        + "Requires Node.js ≥ 22 or Bun ≥ 1.0. "
+                        + "More info: github.com/tobi/qmd"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
                 }
             } header: {
                 Text("QMD Status")
