@@ -10,6 +10,12 @@
 	<string>Synth</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>SUFeedURL</key>
+	<string>https://kyleseaman.github.io/synth/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>sV+i0wUlFdKZWm5r1Es/mbzb3uAgt0IQMxcGmg83jKo=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>

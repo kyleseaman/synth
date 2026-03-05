@@ -1,0 +1,266 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # ── Parse version from tag ──────────────────────────────────────
+      - name: Parse version
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [[ "$TAG" == *"-beta"* ]]; then
+            IS_BETA=true
+          else
+            IS_BETA=false
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "short_version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "bundle_version=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "is_beta=$IS_BETA" >> "$GITHUB_OUTPUT"
+
+      # ── Install signing certificate ─────────────────────────────────
+      - name: Install signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Verify signing identity
+        run: |
+          security find-identity -v -p codesigning $RUNNER_TEMP/signing.keychain-db | grep "Developer ID Application"
+
+      # ── Set version in Info.plist ───────────────────────────────────
+      - name: Set version
+        run: |
+          plutil -replace CFBundleShortVersionString -string "${{ steps.version.outputs.short_version }}" SynthApp/Info.plist
+          plutil -replace CFBundleVersion -string "${{ steps.version.outputs.bundle_version }}" SynthApp/Info.plist
+
+      # ── Build ───────────────────────────────────────────────────────
+      - name: Cache SPM dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: synth-mcp-server/.build
+          key: spm-${{ hashFiles('synth-mcp-server/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Build MCP server
+        run: cd synth-mcp-server && swift build -c release
+
+      - name: Archive app
+        run: |
+          xcodebuild archive \
+            -project Synth.xcodeproj \
+            -scheme Synth \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Synth.xcarchive \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application"
+
+      # ── Package & sign ──────────────────────────────────────────────
+      - name: Export and sign app bundle
+        run: |
+          mkdir -p $RUNNER_TEMP/export
+          cp -R $RUNNER_TEMP/Synth.xcarchive/Products/Applications/Synth.app $RUNNER_TEMP/export/
+          cp synth-mcp-server/.build/release/synth-mcp-server $RUNNER_TEMP/export/Synth.app/Contents/MacOS/
+
+          codesign --force --sign "Developer ID Application" \
+            --options runtime --timestamp \
+            $RUNNER_TEMP/export/Synth.app/Contents/MacOS/synth-mcp-server
+
+          codesign --force --sign "Developer ID Application" \
+            --options runtime --timestamp \
+            $RUNNER_TEMP/export/Synth.app
+
+          cd $RUNNER_TEMP/export
+          zip -r -y Synth.zip Synth.app
+
+      # ── Notarize ────────────────────────────────────────────────────
+      - name: Notarize app
+        if: env.NOTARY_APPLE_ID != ''
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          RESULT=$(xcrun notarytool submit $RUNNER_TEMP/export/Synth.zip \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json)
+
+          echo "$RESULT"
+          STATUS=$(echo "$RESULT" | plutil -extract status raw -)
+          ID=$(echo "$RESULT" | plutil -extract id raw -)
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS"
+            xcrun notarytool log "$ID" \
+              --apple-id "$NOTARY_APPLE_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
+
+          xcrun stapler staple $RUNNER_TEMP/export/Synth.app
+          cd $RUNNER_TEMP/export
+          rm Synth.zip
+          zip -r -y Synth.zip Synth.app
+
+      # ── Sparkle EdDSA signature ─────────────────────────────────────
+      - name: Sign with Sparkle EdDSA
+        id: sparkle_sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          # Resolve Sparkle's sign_update from SPM checkout
+          SIGN_TOOL=$(find ~/Library/Developer/Xcode/DerivedData -name sign_update -type f 2>/dev/null | head -1)
+          if [ -z "$SIGN_TOOL" ]; then
+            # Fallback: download from Sparkle releases
+            curl -sL "https://github.com/sparkle-project/Sparkle/releases/latest/download/Sparkle-2.7.5.tar.xz" \
+              | tar -xJ -C $RUNNER_TEMP
+            SIGN_TOOL="$RUNNER_TEMP/bin/sign_update"
+          fi
+
+          SIGNATURE=$("$SIGN_TOOL" $RUNNER_TEMP/export/Synth.zip --ed-key-file <(echo "$SPARKLE_PRIVATE_KEY") | grep "sparkle:edSignature" | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/')
+          LENGTH=$(stat -f%z $RUNNER_TEMP/export/Synth.zip)
+
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+          echo "length=$LENGTH" >> "$GITHUB_OUTPUT"
+
+      # ── GitHub Release ──────────────────────────────────────────────
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [ "${{ steps.version.outputs.is_beta }}" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+
+          gh release create "${{ github.ref_name }}" \
+            $RUNNER_TEMP/export/Synth.zip \
+            --title "Synth ${{ steps.version.outputs.short_version }}" \
+            --notes "Built from commit ${GITHUB_SHA}" \
+            $PRERELEASE_FLAG
+
+      # ── Update appcast on gh-pages ──────────────────────────────────
+      - name: Update appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Synth.zip"
+          VERSION="${{ steps.version.outputs.short_version }}"
+          BUNDLE_VERSION="${{ steps.version.outputs.bundle_version }}"
+          SIGNATURE="${{ steps.sparkle_sign.outputs.signature }}"
+          LENGTH="${{ steps.sparkle_sign.outputs.length }}"
+          IS_BETA="${{ steps.version.outputs.is_beta }}"
+          PUB_DATE=$(date -u '+%a, %d %b %Y %H:%M:%S %z')
+
+          # Build the new <item>
+          CHANNEL_LINE=""
+          if [ "$IS_BETA" = "true" ]; then
+            CHANNEL_LINE="      <sparkle:channel>beta</sparkle:channel>"
+          fi
+
+          NEW_ITEM=$(cat <<ITEM_EOF
+            <item>
+              <title>Synth $VERSION</title>
+              <pubDate>$PUB_DATE</pubDate>
+              <sparkle:version>$BUNDLE_VERSION</sparkle:version>
+              <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+              <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+          $CHANNEL_LINE
+              <enclosure
+                url="$DOWNLOAD_URL"
+                length="$LENGTH"
+                type="application/octet-stream"
+                sparkle:edSignature="$SIGNATURE" />
+            </item>
+          ITEM_EOF
+          )
+
+          # Clone gh-pages
+          git clone --branch gh-pages --single-branch --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" \
+            $RUNNER_TEMP/gh-pages
+
+          cd $RUNNER_TEMP/gh-pages
+
+          # Build new appcast with latest stable + latest beta
+          # Remove existing item of the same channel
+          if [ "$IS_BETA" = "true" ]; then
+            # Remove existing beta item (has <sparkle:channel>beta</sparkle:channel>)
+            python3 -c "
+          import re, sys
+          content = open('appcast.xml').read()
+          content = re.sub(r'\s*<item>(?:(?!</item>).)*<sparkle:channel>beta</sparkle:channel>(?:(?!</item>).)*</item>', '', content, flags=re.DOTALL)
+          open('appcast.xml', 'w').write(content)
+          "
+          else
+            # Remove existing stable item (no <sparkle:channel> tag)
+            python3 -c "
+          import re, sys
+          content = open('appcast.xml').read()
+          # Match items that do NOT contain a channel tag
+          items = list(re.finditer(r'\s*<item>((?:(?!</item>).)*)</item>', content, re.DOTALL))
+          for match in reversed(items):
+              if '<sparkle:channel>' not in match.group(1):
+                  content = content[:match.start()] + content[match.end():]
+          open('appcast.xml', 'w').write(content)
+          "
+          fi
+
+          # Insert new item before </channel>
+          python3 -c "
+          content = open('appcast.xml').read()
+          import sys
+          new_item = sys.argv[1]
+          content = content.replace('  </channel>', new_item + '\n  </channel>')
+          open('appcast.xml', 'w').write(content)
+          " "$NEW_ITEM"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "chore: update appcast for ${{ github.ref_name }}"
+          git push origin gh-pages
+
+      # ── Cleanup ─────────────────────────────────────────────────────
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true
