@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: package-app
@@ -135,25 +135,12 @@ jobs:
           codesign --verify --deep --strict $RUNNER_TEMP/export/Synth.app
           spctl --assess --type execute --verbose=4 $RUNNER_TEMP/export/Synth.app
 
-      - name: Upload build artifact
-        if: github.ref != 'refs/heads/main'
+      - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: Synth.zip
+          name: Synth-preview-${{ github.sha }}
           path: ${{ runner.temp }}/export/Synth.zip
-
-      - name: Create release
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          SHORT_SHA=${GITHUB_SHA::7}
-          TAG="v1.0.0-preview+${SHORT_SHA}"
-          gh release create "$TAG" \
-            $RUNNER_TEMP/export/Synth.zip \
-            --title "Synth 1.0.0-preview (${SHORT_SHA})" \
-            --notes "Built from commit ${GITHUB_SHA}" \
-            --prerelease
+          retention-days: 30
 
       - name: Clean up keychain
         if: always()
