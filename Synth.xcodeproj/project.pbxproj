@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		6A0000000000000000000001 /* EmailParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000003 /* EmailParser.swift */; };
+		6A0000000000000000000002 /* EmailParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000004 /* EmailParserTests.swift */; };
 		SP0000000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = SP0000000000000000000002 /* Sparkle */; };
 		SP0000000000000000000004 /* SoftwareUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0000000000000000000005 /* SoftwareUpdater.swift */; };
 		C1A000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000002 /* Assets.xcassets */; };
@@ -91,6 +93,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		6A0000000000000000000003 /* EmailParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailParser.swift; sourceTree = "<group>"; };
+		6A0000000000000000000004 /* EmailParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailParserTests.swift; sourceTree = "<group>"; };
 		C1A000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A0000000000000000000010 /* Synth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Synth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000011 /* SynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthApp.swift; sourceTree = "<group>"; };
@@ -271,6 +275,7 @@
 					5A000000000000000000100A /* KiroConfigManager.swift */,
 					4A0000000000000000000131 /* SynthMcpResolver.swift */,
 					4A0000000000000000000132 /* MCPServerManager.swift */,
+					6A0000000000000000000003 /* EmailParser.swift */,
 					B1F000000000000000000300 /* Fonts */,
 					C1A000000000000000000002 /* Assets.xcassets */,
 
@@ -309,6 +314,7 @@
 				1A0000000000000000000149 /* KiroConfigManagerTests.swift */,
 				1A000000000000000000014A /* UnifiedIndexerTests.swift */,
 				1A000000000000000000014B /* ACPSessionStoreTests.swift */,
+				6A0000000000000000000004 /* EmailParserTests.swift */,
 				1A0000000000000000000106 /* Info.plist */,
 			);
 			path = SynthAppTests;
@@ -469,6 +475,7 @@
 				5A0000000000000000001009 /* KiroConfigManager.swift in Sources */,
 				4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */,
 				4A0000000000000000000906 /* MCPServerManager.swift in Sources */,
+				6A0000000000000000000001 /* EmailParser.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -487,6 +494,7 @@
 				1A0000000000000000000219 /* KiroConfigManagerTests.swift in Sources */,
 				1A000000000000000000021A /* UnifiedIndexerTests.swift in Sources */,
 				1A000000000000000000021B /* ACPSessionStoreTests.swift in Sources */,
+				6A0000000000000000000002 /* EmailParserTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

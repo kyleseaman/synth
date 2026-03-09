@@ -611,6 +611,47 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testNewEmailNoteCreatesFileFromEml() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let emlContent = """
+        From: alice@example.com
+        Subject: Project Update
+        Date: Mon, 10 Jun 2024 09:00:00 -0400
+
+        Here is the update for the project.
+        """
+        let emlURL = workspaceURL.appendingPathComponent("test-email.eml")
+        try emlContent.write(to: emlURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+
+        store.newEmailNote(from: emlURL)
+
+        let emailsDirectory = workspaceURL.appendingPathComponent("emails", isDirectory: true)
+        let emailFiles = try FileManager.default.contentsOfDirectory(
+            at: emailsDirectory,
+            includingPropertiesForKeys: nil
+        )
+        XCTAssertEqual(emailFiles.count, 1)
+
+        let createdFile = emailFiles[0]
+        XCTAssertTrue(createdFile.lastPathComponent.hasSuffix(".md"))
+
+        let fileContent = try String(contentsOf: createdFile, encoding: .utf8)
+        XCTAssertTrue(fileContent.contains("# Project Update"))
+        XCTAssertTrue(fileContent.contains("**From:** alice@example.com"))
+        XCTAssertTrue(fileContent.contains("update for the project"))
+        XCTAssertEqual(store.openFiles.count, 1)
+    }
+
+    @MainActor
     func testReloadOpenDocumentFromDiskRefreshesContentAndClearsDirtyFlag() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,
