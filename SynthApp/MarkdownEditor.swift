@@ -974,6 +974,9 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isEditable = true
         textView.isRichText = true
         textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
         textView.textContainerInset = NSSize(width: 20, height: 20)
         textView.allowsUndo = true
         textView.drawsBackground = false
@@ -1489,6 +1492,9 @@ extension MarkdownEditor.Coordinator {
                     bodyParagraph: bodyParagraph,
                     cursorParagraph: cursorParagraph
                 )
+                self.formatListIndent(
+                    paraRange, in: storage, bodyFont: bodyFont
+                )
             }
 
             // Apply inline formatting within the range
@@ -1557,6 +1563,31 @@ extension MarkdownEditor.Coordinator {
                     range: prefixRange
                 )
             }
+        }
+
+        private func formatListIndent(
+            _ paraRange: NSRange, in storage: NSTextStorage,
+            bodyFont: NSFont
+        ) {
+            let nsString = storage.string as NSString
+            let line = nsString.substring(with: paraRange)
+            guard let match = MarkdownFormat.listPattern.firstMatch(
+                in: line,
+                range: NSRange(location: 0, length: line.utf16.count)
+            ) else { return }
+            let markerLoc = match.range(at: 2).location
+            let bulletPrefix = (line as NSString).substring(
+                to: markerLoc + 1
+            ) + " "
+            let prefixWidth = (bulletPrefix as NSString).size(
+                withAttributes: [.font: bodyFont]
+            ).width
+            let para = NSMutableParagraphStyle()
+            para.lineHeightMultiple = 1.25
+            para.headIndent = prefixWidth
+            storage.addAttribute(
+                .paragraphStyle, value: para, range: paraRange
+            )
         }
 
         // swiftlint:disable:next function_body_length

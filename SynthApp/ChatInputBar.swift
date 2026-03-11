@@ -101,16 +101,20 @@ struct ChatInputBar: View {
     // MARK: - Input Row
 
     private var inputRow: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 8) {
             TextField(placeholder, text: $input, axis: .vertical)
                 .font(Theme.uiSwiftUIFont(size: 14))
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .focused($isInputFocused)
-                .onSubmit {
-                    if !isDisabled {
+                .onKeyPress(.return) {
+                    if !isDisabled && !input.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty {
                         onSend()
+                        return .handled
                     }
+                    return .ignored
                 }
                 .disabled(isDisabled)
                 .onPasteCommand(of: [.image]) { providers in
@@ -148,7 +152,10 @@ struct ChatInputBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(Color.primary.opacity(0.05))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(Color.primary.opacity(0.12), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+        )
     }
 }

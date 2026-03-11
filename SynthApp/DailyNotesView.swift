@@ -99,6 +99,7 @@ struct DailyNoteSection: View {
     let entry: DailyNoteEntry
     let onContentChange: (String) -> Void
     weak var store: DocumentStore?
+    @State private var editorHeight: CGFloat = 120
 
     private var isToday: Bool {
         DailyNoteManager.isToday(entry.date)
@@ -106,6 +107,10 @@ struct DailyNoteSection: View {
 
     private var dateLabel: String {
         DailyNoteManager.displayDate(entry.date)
+    }
+
+    private var minimumHeight: CGFloat {
+        isToday ? 240 : 120
     }
 
     var body: some View {
@@ -119,9 +124,11 @@ struct DailyNoteSection: View {
                 noteURL: entry.url,
                 onTextChange: onContentChange,
                 noteIndex: store?.noteIndex,
-                store: store
+                store: store,
+                reportedHeight: $editorHeight
             )
-            .frame(minHeight: isToday ? 240 : 120)
+            .frame(height: max(minimumHeight, editorHeight))
+            .clipped()
             .padding(.leading, 20)
             .padding(.trailing, 16)
 
@@ -183,6 +190,7 @@ struct DailyNoteEditor: NSViewRepresentable {
     let onTextChange: (String) -> Void
     var noteIndex: NoteIndex?
     weak var store: DocumentStore?
+    @Binding var reportedHeight: CGFloat
 
     func makeNSView(context: Context) -> FormattingTextView {
         let textView = FormattingTextView()
@@ -198,6 +206,7 @@ struct DailyNoteEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.delegate = context.coordinator
         textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.insertionPointColor = NSColor.textColor
@@ -248,6 +257,7 @@ struct DailyNoteEditor: NSViewRepresentable {
             }
             context.coordinator.isFormatting = false
         }
+        context.coordinator.recalculateHeight()
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -264,6 +274,20 @@ struct DailyNoteEditor: NSViewRepresentable {
         let autocomplete = AutocompleteCoordinator()
 
         init(_ parent: DailyNoteEditor) { self.parent = parent }
+
+        func recalculateHeight() {
+            guard let textView = textView,
+                  let container = textView.textContainer,
+                  let layoutManager = textView.layoutManager
+            else { return }
+            layoutManager.ensureLayout(for: container)
+            let usedRect = layoutManager.usedRect(for: container)
+            let inset = textView.textContainerInset
+            let newHeight = usedRect.height + inset.height * 2
+            if abs(parent.reportedHeight - newHeight) > 1 {
+                parent.reportedHeight = newHeight
+            }
+        }
 
         func setupAutocomplete() {
             autocomplete.textView = textView
@@ -341,6 +365,7 @@ struct DailyNoteEditor: NSViewRepresentable {
             textView.setSelectedRange(cursor)
             isFormatting = false
             textView.isFormattingStorage = false
+            recalculateHeight()
         }
 
         private func loadInlineImages(
