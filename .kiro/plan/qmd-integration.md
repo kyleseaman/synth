@@ -8,7 +8,7 @@ Synth's current search is a hand-rolled in-memory keyword scorer (`NoteIndex`) w
 - Settings UI: "Set up QMD" button that runs `qmd collection add <workspace>` + `qmd embed`; manual, user-initiated
 - Settings UI: detect QMD availability, show status
 - Launcher (Cmd+P): when QMD is enabled, pressing Enter triggers QMD-backed search with a loading indicator; keystroke filtering stays in-memory via `NoteIndex`
-- AI context: `global_search` MCP tool transparently delegates to `qmd search --json` when QMD is available, falls back to regex grep when not
+- AI context: `global_search` MCP tool transparently delegates to `qmd query --json` when QMD is available, falls back to regex grep when not
 - Additionally register QMD's MCP server in `.kiro/settings/mcp.json` so the AI also has access to `qmd_deep_search` for semantic queries
 
 ## Background

@@ -55,7 +55,15 @@ enum GlobalSearch {
 
     // MARK: - QMD Search
 
-    private static var qmdPath: String? = {
+    private static var _qmdPath: String??
+    private static var qmdPath: String? {
+        if let cached = _qmdPath { return cached }
+        let resolved = resolveQmdPath()
+        if resolved != nil { _qmdPath = resolved }
+        return resolved
+    }
+
+    private static func resolveQmdPath() -> String? {
         let candidates = [
             "/usr/local/bin/qmd",
             "/opt/homebrew/bin/qmd",
@@ -84,7 +92,7 @@ enum GlobalSearch {
             return path
         }
         return nil
-    }()
+    }
 
     private static func tryQmdSearch(
         query: String,

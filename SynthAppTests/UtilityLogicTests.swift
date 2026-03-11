@@ -1646,23 +1646,23 @@ extension DocumentModelTests {
     // MARK: - QmdResolver
 
     func testQmdResolverFindsExecutableAtKnownPath() throws {
-        let tmpDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-        try FileManager.default.createDirectory(
-            at: tmpDir, withIntermediateDirectories: true
-        )
-        let fakeBin = tmpDir.appendingPathComponent("qmd")
-        try "#!/bin/sh\nexit 0\n".write(
-            to: fakeBin, atomically: true, encoding: .utf8
-        )
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: Int16(0o755))],
-            ofItemAtPath: fakeBin.path
-        )
-        XCTAssertTrue(
-            FileManager.default.isExecutableFile(atPath: fakeBin.path)
-        )
+        QmdResolver.invalidateCache()
+        let result = QmdResolver.resolve()
+        // On machines with qmd installed, verify the path is executable.
+        // On machines without qmd, nil is acceptable.
+        if let path = result {
+            XCTAssertTrue(
+                FileManager.default.isExecutableFile(atPath: path),
+                "Resolved path should be executable"
+            )
+            XCTAssertTrue(
+                path.hasSuffix("/qmd"),
+                "Resolved path should end with /qmd"
+            )
+        }
+        // Calling resolve() again should return the cached value.
+        XCTAssertEqual(QmdResolver.resolve(), result)
+        QmdResolver.invalidateCache()
     }
 
     func testQmdResolverReturnsNilWhenNoBinary() {
