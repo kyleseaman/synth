@@ -1683,14 +1683,14 @@ extension DocumentModelTests {
     // MARK: - QmdClient JSON Parsing
 
     func testQmdClientParseSearchResultsArray() {
-        let json = """
+        let json = Data("""
         [
             {"path": "/notes/hello.md", "title": "Hello", "score": 0.95, \
         "snippet": "Hello world", "displayPath": "notes/hello.md", \
         "context": "Personal notes"},
             {"file": "/notes/bye.md", "docid": "doc2", "score": 0.5}
         ]
-        """.data(using: .utf8)!
+        """.utf8)
         let results = QmdClient.parseSearchResults(json)
         XCTAssertEqual(results.count, 2)
         XCTAssertEqual(results[0].path, "/notes/hello.md")
@@ -1705,23 +1705,23 @@ extension DocumentModelTests {
     }
 
     func testQmdClientParseSearchResultsWrapper() {
-        let json = """
+        let json = Data("""
         {"results": [{"path": "/a.md", "title": "A", "score": 0.8, "context": "some context"}]}
-        """.data(using: .utf8)!
+        """.utf8)
         let results = QmdClient.parseSearchResults(json)
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results[0].snippet, "some context")
     }
 
     func testQmdClientParseSearchResultsInvalidJSON() {
-        let garbage = "not json".data(using: .utf8)!
+        let garbage = Data("not json".utf8)
         XCTAssertTrue(QmdClient.parseSearchResults(garbage).isEmpty)
     }
 
     func testQmdClientParseStatusValid() {
-        let json = """
+        let json = Data("""
         {"collections": [{"path": "/workspace", "name": "ws"}], "documents": 42, "embeddings": true}
-        """.data(using: .utf8)!
+        """.utf8)
         let status = QmdClient.parseStatus(json)
         XCTAssertNotNil(status)
         XCTAssertEqual(status?.collections, ["/workspace"])
@@ -1730,7 +1730,7 @@ extension DocumentModelTests {
     }
 
     func testQmdClientParseStatusInvalidJSON() {
-        let garbage = "nope".data(using: .utf8)!
+        let garbage = Data("nope".utf8)
         XCTAssertNil(QmdClient.parseStatus(garbage))
     }
 }
