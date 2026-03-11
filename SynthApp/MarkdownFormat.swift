@@ -275,6 +275,23 @@ struct MarkdownFormat: DocumentFormat {
                 length: 1
             )
         )
+
+        // Set paragraph indent so wrapped lines align with text after bullet.
+        let bodyFont = Theme.editorNSFont(ofSize: 16)
+        let bulletPrefix = str.string.prefix(
+            markerRange.location + 1
+        ) + " "
+        let prefixWidth = (bulletPrefix as NSString).size(
+            withAttributes: [.font: bodyFont]
+        ).width
+        let para = NSMutableParagraphStyle()
+        para.lineHeightMultiple = 1.25
+        para.headIndent = prefixWidth
+        str.addAttribute(
+            .paragraphStyle,
+            value: para,
+            range: NSRange(location: 0, length: str.length)
+        )
     }
 
     // swiftlint:disable:next function_body_length
