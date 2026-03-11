@@ -116,6 +116,10 @@ struct UndoSnapshot: Equatable {
             self?.messages.append(ChatMessage(role: .user, content: text))
         }
 
+        client.onAssistantMessageReplay = { [weak self] text in
+            self?.messages.append(ChatMessage(role: .assistant, content: text))
+        }
+
         // Session ready: persist the session ID
         client.onSessionReady = { [weak self] sessionId in
             guard let self = self, let docURL = self.documentURL else { return }

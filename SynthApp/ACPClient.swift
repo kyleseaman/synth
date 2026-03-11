@@ -39,6 +39,7 @@ import Observation
     @ObservationIgnored var onPermissionRequest: ((ACPPermissionRequest) -> Void)?
     @ObservationIgnored var onError: ((String) -> Void)?
     @ObservationIgnored var onUserMessageReplay: ((String) -> Void)?
+    @ObservationIgnored var onAssistantMessageReplay: ((String) -> Void)?
     @ObservationIgnored var onSessionReady: ((String) -> Void)?
     @ObservationIgnored var onSessionLoadFailed: (() -> Void)?
     @ObservationIgnored var onOAuthRequest: ((URL) -> Void)?
@@ -298,11 +299,15 @@ import Observation
 
         switch kind {
         case .agentMessageChunk:
-            if let content = update["content"]?.dictValue,
-               let text = content["text"]?.stringValue {
-                onUpdate?(text)
-            } else if let text = update["text"]?.stringValue {
-                onUpdate?(text)
+            let text = update["content"]?.dictValue?["text"]?.stringValue
+                ?? update["text"]?.stringValue
+            if let text {
+                let hasPendingPrompt = queue.sync { pendingPromptRequest }
+                if hasPendingPrompt {
+                    onUpdate?(text)
+                } else {
+                    onAssistantMessageReplay?(text)
+                }
             }
 
         case .userMessageChunk:

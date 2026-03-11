@@ -926,6 +926,60 @@ extension DocumentStore {
         open(url)
     }
 
+    func newEmailNote(from emlURL: URL) {
+        guard let workspace = workspace else { return }
+        guard let emlContent = try? String(
+            contentsOf: emlURL, encoding: .utf8
+        ) else { return }
+
+        let parsed = EmailParser.parse(emlContent: emlContent)
+
+        let emailsDir = workspace.appendingPathComponent("emails")
+        try? FileManager.default.createDirectory(
+            at: emailsDir, withIntermediateDirectories: true
+        )
+
+        let sanitizedSubject = parsed.subject.replacingOccurrences(
+            of: "[/:\\x00-\\x1F\\x7F]",
+            with: "-",
+            options: .regularExpression
+        )
+
+        let datePrefix = parsed.date.isEmpty
+            ? "" : "\(parsed.date) "
+        let baseName = "\(datePrefix)\(sanitizedSubject)"
+            .trimmingCharacters(in: .whitespaces)
+        let safeName = baseName.isEmpty ? "Email Note" : baseName
+
+        var fileName = "\(safeName).md"
+        var counter = 2
+        while FileManager.default.fileExists(
+            atPath: emailsDir.appendingPathComponent(fileName).path
+        ) {
+            fileName = "\(safeName) \(counter).md"
+            counter += 1
+        }
+
+        let noteURL = emailsDir.appendingPathComponent(fileName)
+        let titleText = parsed.subject.isEmpty
+            ? "Email Note" : parsed.subject
+        let template = """
+        # \(titleText)
+
+        **From:** \(parsed.sender)
+        **Date:** \(parsed.date)
+
+        ---
+
+        \(parsed.body)
+        """
+        try? template.write(
+            to: noteURL, atomically: true, encoding: .utf8
+        )
+        loadFileTree()
+        open(noteURL)
+    }
+
     func newMeetingNote(name: String) {
         guard let workspace = workspace else { return }
         let meetingDir = workspace.appendingPathComponent("meetings")

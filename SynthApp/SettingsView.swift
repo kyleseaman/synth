@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("mcpHttpBridgeEnabled") private var mcpHttpBridgeEnabled = false
     @AppStorage("hideSyntax") private var hideSyntax = true
     @AppStorage("qmdEnabled") private var qmdEnabled = true
+    @AppStorage("betaUpdates") private var betaUpdates = false
     @AppStorage(Theme.editorFontCandidatesKey) private var editorFontCandidates = ""
     @AppStorage(Theme.terminalFontCandidatesKey) private var terminalFontCandidates = ""
     @AppStorage(Theme.sidebarFontCandidatesKey) private var sidebarFontCandidates = ""
@@ -59,6 +60,15 @@ struct SettingsView: View {
                 Text(
                     "When enabled, markdown markers like **, *, [[, ]], and ` are hidden. "
                     + "The formatted text remains visible."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Section("Updates") {
+                Toggle("Beta updates", isOn: $betaUpdates)
+                Text(
+                    "When enabled, you'll receive pre-release updates in addition to stable releases."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
