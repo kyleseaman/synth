@@ -209,8 +209,8 @@ struct SettingsView: View {
                 }
                 if qmdDetectedPath == "Not found" {
                     Text(
-                        "Install QMD to enable enhanced search with BM25 "
-                        + "full-text indexing:\n\n"
+                        "Install QMD v2.0+ to enable hybrid search with BM25, "
+                        + "vector similarity, and LLM re-ranking:\n\n"
                         + "  npm install -g @tobilu/qmd\n\n"
                         + "Or with Bun:\n\n"
                         + "  bun install -g @tobilu/qmd\n\n"
@@ -293,11 +293,11 @@ struct SettingsView: View {
 
             Section {
                 Text(
-                    "QMD is an optional add-on that enhances search with BM25 full-text "
-                    + "indexing and semantic vector search. When set up, the file launcher "
-                    + "(⌘P) uses QMD for higher-quality results, and the AI chat gets "
-                    + "better workspace context.\n\n"
-                    + "Synth works perfectly without QMD — the built-in search remains "
+                    "QMD is an optional add-on that enhances search with hybrid retrieval: "
+                    + "BM25 full-text, vector similarity, and LLM re-ranking — all running "
+                    + "locally. When set up, the file launcher (⌘P) uses QMD for "
+                    + "higher-quality results, and the AI chat gets better workspace context."
+                    + "\n\nSynth works perfectly without QMD — the built-in search remains "
                     + "available as a fast fallback."
                 )
                 .font(.caption)

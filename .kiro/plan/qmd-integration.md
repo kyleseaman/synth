@@ -49,6 +49,7 @@ Synth's current search is a hand-rolled in-memory keyword scorer (`NoteIndex`) w
 - **Implementation:** In `DocumentStore`, add `qmdClient` property. On workspace set, instantiate if QMD is available.
 
 ## Key Design Decisions
+- **QMD v2.0 hybrid pipeline** — uses `qmd query` (BM25 + vector + LLM re-ranking) instead of `qmd search` (BM25-only) for significantly better search quality
 - **Write minimal code** — QMD does the heavy lifting; Synth just shells out and parses JSON
 - **Graceful degradation** — every QMD call has a fallback path; timeouts, missing binary, parse errors all fall back silently
 - **Follow existing patterns** — `QmdResolver` mirrors `KiroCliResolver`, MCP config follows `MCPServerManager.writeMcpConfig()`

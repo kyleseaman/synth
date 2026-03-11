@@ -9,6 +9,8 @@ struct QmdSearchResult: Identifiable {
     let title: String
     let score: Double
     let snippet: String
+    let displayPath: String?
+    let context: String?
 }
 
 struct QmdStatus {
@@ -42,11 +44,12 @@ struct QmdStatus {
         limit: Int = 20
     ) async -> [QmdSearchResult] {
         guard let path = qmdPath else { return [] }
-        var args = ["search", query, "--json", "-n", String(limit)]
+        var args = ["query", query, "--json", "-n", String(limit)]
         if let collection {
             args += ["-c", collection]
         }
-        guard let output = await run(path, arguments: args) else {
+        guard let output = await run(path, arguments: args,
+                                     timeout: 15) else {
             return []
         }
         return Self.parseSearchResults(output)
@@ -169,12 +172,16 @@ struct QmdStatus {
             let snippet = (entry["snippet"] as? String)
                 ?? (entry["context"] as? String)
                 ?? ""
+            let displayPath = entry["displayPath"] as? String
+            let context = entry["context"] as? String
             return QmdSearchResult(
                 id: docid,
                 path: path,
                 title: title,
                 score: score,
-                snippet: snippet
+                snippet: snippet,
+                displayPath: displayPath,
+                context: context
             )
         }
     }

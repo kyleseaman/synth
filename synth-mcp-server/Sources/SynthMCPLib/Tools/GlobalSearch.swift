@@ -94,7 +94,7 @@ enum GlobalSearch {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: qmd)
         proc.arguments = [
-            "search", query, "--json",
+            "query", query, "--json",
             "-n", String(maxResults)
         ]
         let stdout = Pipe()
@@ -133,7 +133,7 @@ enum GlobalSearch {
         guard !entries.isEmpty else { return nil }
 
         var result = "## Search Results for \"\(query)\"\n\n"
-        result += "Found \(entries.count) result(s) via QMD\n\n"
+        result += "Found \(entries.count) result(s) via QMD (hybrid search)\n\n"
 
         for entry in entries {
             let path = (entry["path"] as? String)
@@ -142,9 +142,13 @@ enum GlobalSearch {
             let score = (entry["score"] as? Double) ?? 0
             let snippet = (entry["snippet"] as? String)
                 ?? (entry["context"] as? String) ?? ""
+            let context = entry["context"] as? String
             let scorePercent = Int(score * 100)
             result += "### \(path)\n"
             result += "**\(title)** (score: \(scorePercent)%)\n"
+            if let context, !context.isEmpty {
+                result += "Context: \(context)\n"
+            }
             if !snippet.isEmpty {
                 result += "```\n\(snippet)\n```\n"
             }

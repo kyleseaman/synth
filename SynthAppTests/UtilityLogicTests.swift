@@ -1685,7 +1685,9 @@ extension DocumentModelTests {
     func testQmdClientParseSearchResultsArray() {
         let json = """
         [
-            {"path": "/notes/hello.md", "title": "Hello", "score": 0.95, "snippet": "Hello world"},
+            {"path": "/notes/hello.md", "title": "Hello", "score": 0.95, \
+        "snippet": "Hello world", "displayPath": "notes/hello.md", \
+        "context": "Personal notes"},
             {"file": "/notes/bye.md", "docid": "doc2", "score": 0.5}
         ]
         """.data(using: .utf8)!
@@ -1695,8 +1697,11 @@ extension DocumentModelTests {
         XCTAssertEqual(results[0].title, "Hello")
         XCTAssertEqual(results[0].score, 0.95)
         XCTAssertEqual(results[0].snippet, "Hello world")
+        XCTAssertEqual(results[0].displayPath, "notes/hello.md")
+        XCTAssertEqual(results[0].context, "Personal notes")
         XCTAssertEqual(results[1].path, "/notes/bye.md")
         XCTAssertEqual(results[1].id, "doc2")
+        XCTAssertNil(results[1].displayPath)
     }
 
     func testQmdClientParseSearchResultsWrapper() {
