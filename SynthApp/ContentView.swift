@@ -19,6 +19,7 @@ extension Notification.Name {
     static let insertTemplate = Notification.Name("insertTemplate")
     static let formatParagraphNow = Notification.Name("formatParagraphNow")
     static let reloadEditor = Notification.Name("reloadEditor")
+    static let insertTableNow = Notification.Name("insertTableNow")
 }
 
 struct EditorSelectionContext {

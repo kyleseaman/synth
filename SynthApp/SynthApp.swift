@@ -201,6 +201,15 @@ struct SynthApp: App {
                     sendFindPanelAction(tag: 3)
                 }
                 .keyboardShortcut("g", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Insert Table") {
+                    NotificationCenter.default.post(
+                        name: .insertTableNow, object: nil
+                    )
+                }
+                .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             CommandMenu("Templates") {

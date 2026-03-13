@@ -321,7 +321,15 @@ class FormattingTextView: NSTextView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard event.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: event) }
+        guard event.modifierFlags.contains(.command) else {
+            return super.performKeyEquivalent(with: event)
+        }
+        // Cmd+Option+T: Insert Table
+        if event.modifierFlags.contains(.option),
+           event.charactersIgnoringModifiers == "t" {
+            insertTable()
+            return true
+        }
         switch event.charactersIgnoringModifiers {
         case "b": toggleBold(); return true
         case "i": toggleItalic(); return true
@@ -668,24 +676,97 @@ extension FormattingTextView {
     }
 
     override func insertTab(_ sender: Any?) {
-        guard let storage = textStorage else { super.insertTab(sender); return }
-        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
-        let line = (storage.string as NSString).substring(with: lineRange)
+        guard let storage = textStorage else {
+            super.insertTab(sender); return
+        }
+        let text = storage.string
+        let cursor = selectedRange().location
 
-        if line.contains("•") {
-            storage.insert(NSAttributedString(string: "\t"), at: lineRange.location)
+        // Table cell navigation: move to next cell
+        if TableNavigator.isInsideTable(
+            text: text, cursorPosition: cursor
+        ) {
+            if let nextPos = TableNavigator.nextCellPosition(
+                text: text, cursorPosition: cursor
+            ) {
+                setSelectedRange(NSRange(
+                    location: nextPos, length: 0
+                ))
+                return
+            }
+            // At the last cell of the last row: insert new row
+            let lineRange = (text as NSString).lineRange(
+                for: NSRange(location: cursor, length: 0)
+            )
+            let line = (text as NSString).substring(with: lineRange)
+            let colCount = TableNavigator.tableColumnCount(line)
+            let newRow = TableNavigator.newRowTemplate(
+                columnCount: colCount
+            )
+            let insertPos = NSMaxRange(lineRange)
+            storage.insert(
+                NSAttributedString(string: newRow),
+                at: insertPos
+            )
+            // Move cursor to the first cell of the new row
+            if let firstCell = TableNavigator.nextCellPosition(
+                text: storage.string,
+                cursorPosition: insertPos
+            ) {
+                setSelectedRange(NSRange(
+                    location: firstCell, length: 0
+                ))
+            } else {
+                setSelectedRange(NSRange(
+                    location: insertPos + 2, length: 0
+                ))
+            }
+            return
+        }
+
+        let lineRange = (text as NSString).lineRange(
+            for: selectedRange()
+        )
+        let line = (text as NSString).substring(with: lineRange)
+        if line.contains("\u{2022}") {
+            storage.insert(
+                NSAttributedString(string: "\t"),
+                at: lineRange.location
+            )
             return
         }
         super.insertTab(sender)
     }
 
     override func insertBacktab(_ sender: Any?) {
-        guard let storage = textStorage else { super.insertBacktab(sender); return }
-        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
-        let line = (storage.string as NSString).substring(with: lineRange)
+        guard let storage = textStorage else {
+            super.insertBacktab(sender); return
+        }
+        let text = storage.string
+        let cursor = selectedRange().location
 
-        if line.hasPrefix("\t") && line.contains("•") {
-            storage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
+        // Table cell navigation: move to previous cell
+        if TableNavigator.isInsideTable(
+            text: text, cursorPosition: cursor
+        ) {
+            if let prevPos = TableNavigator.previousCellPosition(
+                text: text, cursorPosition: cursor
+            ) {
+                setSelectedRange(NSRange(
+                    location: prevPos, length: 0
+                ))
+            }
+            return
+        }
+
+        let lineRange = (text as NSString).lineRange(
+            for: selectedRange()
+        )
+        let line = (text as NSString).substring(with: lineRange)
+        if line.hasPrefix("\t") && line.contains("\u{2022}") {
+            storage.deleteCharacters(in: NSRange(
+                location: lineRange.location, length: 1
+            ))
             return
         }
         super.insertBacktab(sender)
@@ -693,6 +774,19 @@ extension FormattingTextView {
 
     func toggleBold() { toggleMarkdownWrap("**") }
     func toggleItalic() { toggleMarkdownWrap("*") }
+
+    /// Inserts a 3-column, 2-row markdown table template at the
+    /// current cursor position.
+    func insertTable() {
+        guard let storage = textStorage else { return }
+        let cursor = selectedRange()
+        let template = TableNavigator.insertionTemplate
+        storage.replaceCharacters(in: cursor, with: template)
+        // Position cursor at the first header cell
+        setSelectedRange(NSRange(
+            location: cursor.location + 2, length: 0
+        ))
+    }
 
     private func toggleMarkdownWrap(_ marker: String) {
         let selectedRangeValue = selectedRange()
@@ -1095,6 +1189,7 @@ struct MarkdownEditor: NSViewRepresentable {
         var lastHideSyntax: Bool?
         private var lastCursorParagraph: NSRange?
         private var codeBlockRanges: [NSRange] = []
+        private var tableBlockRanges: [NSRange] = []
 
         init(_ parent: MarkdownEditor) { self.parent = parent }
 
@@ -1398,6 +1493,9 @@ extension MarkdownEditor.Coordinator {
             codeBlockRanges = Self.findCodeBlockRanges(
                 in: storage.string
             )
+            tableBlockRanges = Self.findTableBlockRanges(
+                in: storage.string
+            )
             lastContentHash = hash
             textView.setSelectedRange(cursor)
             isFormatting = false
@@ -1438,11 +1536,23 @@ extension MarkdownEditor.Coordinator {
                     )
                 }
 
+                // Extend to full table block if edit touches one
+                if let tableRange = tableBlockContaining(
+                    editedRange, in: storage.string
+                ) {
+                    formatTarget = NSUnionRange(
+                        formatTarget, tableRange
+                    )
+                }
+
                 formatRange(
                     formatTarget, in: storage,
                     cursorLocation: textView?.selectedRange().location
                 )
                 codeBlockRanges = Self.findCodeBlockRanges(
+                    in: storage.string
+                )
+                tableBlockRanges = Self.findTableBlockRanges(
                     in: storage.string
                 )
                 lastContentHash = storage.string.fnv1a
@@ -1501,6 +1611,184 @@ extension MarkdownEditor.Coordinator {
                 range, in: storage, baseFont: bodyFont,
                 cursorParagraph: cursorParagraph
             )
+
+            // Apply table block styling within the range
+            formatTableBlocks(range, in: storage)
+        }
+
+        // MARK: - Table Block Formatting (Incremental)
+
+        private func formatTableBlocks(
+            _ range: NSRange, in storage: NSTextStorage
+        ) {
+            let nsString = storage.string as NSString
+            let monoFont = Theme.terminalNSFont(ofSize: 14)
+            let monoBoldFont = NSFontManager.shared.convert(
+                monoFont, toHaveTrait: .boldFontMask
+            )
+
+            // Find table blocks that overlap the range
+            var lineStart = range.location
+            while lineStart < NSMaxRange(range) {
+                let lineRange = nsString.lineRange(
+                    for: NSRange(location: lineStart, length: 0)
+                )
+                let line = nsString.substring(with: lineRange)
+                let trimmedLine = line.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+                if trimmedLine.hasPrefix("|") {
+                    // Collect consecutive table lines
+                    var tableStart = lineRange.location
+                    var tableEnd = NSMaxRange(lineRange)
+                    var tableLines: [(String, NSRange)] = [
+                        (line, lineRange)
+                    ]
+
+                    // Look backwards for table start
+                    var scanBack = lineRange.location
+                    while scanBack > 0 {
+                        let prevRange = nsString.lineRange(
+                            for: NSRange(
+                                location: scanBack - 1, length: 0
+                            )
+                        )
+                        let prevLine = nsString.substring(
+                            with: prevRange
+                        )
+                        let prevTrimmed = prevLine
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            )
+                        if prevTrimmed.hasPrefix("|") {
+                            tableStart = prevRange.location
+                            tableLines.insert(
+                                (prevLine, prevRange), at: 0
+                            )
+                            scanBack = prevRange.location
+                        } else {
+                            break
+                        }
+                    }
+
+                    // Look forwards for table end
+                    var scanFwd = NSMaxRange(lineRange)
+                    while scanFwd < nsString.length {
+                        let nextRange = nsString.lineRange(
+                            for: NSRange(
+                                location: scanFwd, length: 0
+                            )
+                        )
+                        let nextLine = nsString.substring(
+                            with: nextRange
+                        )
+                        let nextTrimmed = nextLine
+                            .trimmingCharacters(
+                                in: .whitespacesAndNewlines
+                            )
+                        if nextTrimmed.hasPrefix("|") {
+                            tableEnd = NSMaxRange(nextRange)
+                            tableLines.append(
+                                (nextLine, nextRange)
+                            )
+                            scanFwd = NSMaxRange(nextRange)
+                        } else {
+                            break
+                        }
+                    }
+
+                    // Determine if first row is header
+                    let isHeader = tableLines.count >= 2
+                        && TableNavigator.isSeparatorRow(
+                            tableLines[1].0
+                        )
+
+                    // Apply styling to each table line
+                    for (rowIdx, entry) in tableLines.enumerated() {
+                        let (rowText, rowRange) = entry
+                        let clipped = NSIntersectionRange(
+                            rowRange, NSRange(
+                                location: 0,
+                                length: storage.length
+                            )
+                        )
+                        guard clipped.length > 0 else { continue }
+
+                        storage.addAttribute(
+                            .font, value: monoFont, range: clipped
+                        )
+
+                        if TableNavigator.isSeparatorRow(rowText) {
+                            storage.addAttribute(
+                                .foregroundColor,
+                                value: NSColor.tertiaryLabelColor,
+                                range: clipped
+                            )
+                        } else {
+                            // Dim pipe characters
+                            let chars = Array(rowText.utf16)
+                            let pipeVal: UInt16 = 0x7C
+                            for (cIdx, char) in chars.enumerated()
+                                where char == pipeVal {
+                                let pipeRange = NSRange(
+                                    location: rowRange.location
+                                        + cIdx,
+                                    length: 1
+                                )
+                                if pipeRange.location
+                                    + pipeRange.length
+                                    <= storage.length {
+                                    storage.addAttribute(
+                                        .foregroundColor,
+                                        value: NSColor
+                                            .tertiaryLabelColor,
+                                        range: pipeRange
+                                    )
+                                }
+                            }
+                            // Bold header row
+                            if isHeader && rowIdx == 0 {
+                                let pipePositions = chars
+                                    .enumerated()
+                                    .filter { $0.element == pipeVal }
+                                    .map(\.offset)
+                                for pIdx in 0..<(
+                                    pipePositions.count - 1
+                                ) {
+                                    let cellStart =
+                                        pipePositions[pIdx] + 1
+                                    let cellEnd =
+                                        pipePositions[pIdx + 1]
+                                    guard cellEnd > cellStart
+                                    else { continue }
+                                    let boldRange = NSRange(
+                                        location:
+                                            rowRange.location
+                                            + cellStart,
+                                        length: cellEnd - cellStart
+                                    )
+                                    if boldRange.location
+                                        + boldRange.length
+                                        <= storage.length {
+                                        storage.addAttribute(
+                                            .font,
+                                            value: monoBoldFont,
+                                            range: boldRange
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Skip past the table block
+                    lineStart = tableEnd
+                    continue
+                }
+
+                lineStart = NSMaxRange(lineRange)
+            }
         }
 
         private func formatParagraphHeading(
@@ -1870,6 +2158,63 @@ extension MarkdownEditor.Coordinator {
         ) -> NSRange? {
             // Re-scan from current text to catch newly formed blocks
             let current = Self.findCodeBlockRanges(in: text)
+            return current.first { block in
+                NSIntersectionRange(block, editedRange).length > 0
+                    || editedRange.location == NSMaxRange(block)
+            }
+        }
+
+        // MARK: - Table Block Detection
+
+        /// Finds ranges of consecutive table rows (lines starting
+        /// with optional whitespace then `|`).
+        private static func findTableBlockRanges(
+            in text: String
+        ) -> [NSRange] {
+            let nsText = text as NSString
+            var ranges: [NSRange] = []
+            var blockStart: Int?
+            var lineStart = 0
+
+            while lineStart < nsText.length {
+                let lineRange = nsText.lineRange(
+                    for: NSRange(location: lineStart, length: 0)
+                )
+                let line = nsText.substring(with: lineRange)
+                let trimmedLine = line.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+                if trimmedLine.hasPrefix("|") {
+                    if blockStart == nil {
+                        blockStart = lineRange.location
+                    }
+                } else {
+                    if let start = blockStart {
+                        let end = lineRange.location
+                        ranges.append(NSRange(
+                            location: start,
+                            length: end - start
+                        ))
+                        blockStart = nil
+                    }
+                }
+                lineStart = NSMaxRange(lineRange)
+            }
+            // Close any block that extends to the end of text
+            if let start = blockStart {
+                ranges.append(NSRange(
+                    location: start,
+                    length: nsText.length - start
+                ))
+            }
+            return ranges
+        }
+
+        private func tableBlockContaining(
+            _ editedRange: NSRange, in text: String
+        ) -> NSRange? {
+            let current = Self.findTableBlockRanges(in: text)
             return current.first { block in
                 NSIntersectionRange(block, editedRange).length > 0
                     || editedRange.location == NSMaxRange(block)

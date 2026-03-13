@@ -1,5 +1,21 @@
 # Agent Changelog
 
+## Table Support
+
+**Feature:** Markdown table support with visual rendering, insertion command (Cmd+Option+T), and Tab/Shift+Tab cell navigation.
+
+### Files Added
+- `SynthApp/TableNavigator.swift` - Pure enum with static methods for table cell navigation and detection. Includes `isInsideTable()`, `nextCellPosition()`, `previousCellPosition()`, `newRowTemplate()`, `tableColumnCount()`, `isSeparatorRow()`, and `insertionTemplate`. No AppKit dependencies for testability.
+- `SynthAppTests/TableSupportTests.swift` - Comprehensive tests covering table detection, column counting, row templates, separator detection, cell navigation (forward/backward/cross-row), insertion template validation, and regex pattern matching.
+
+### Files Modified
+- `SynthApp/MarkdownFormat.swift` - Added `tableRowPattern` static regex for detecting table rows. Modified `render()` to detect consecutive table lines and process them as blocks with monospace font, bold headers, and dimmed pipes/separators via new `renderTableBlock()` method. Added helper methods `dimPipeCharacters()` and `boldCellContent()`.
+- `SynthApp/MarkdownEditor.swift` - Modified `performKeyEquivalent()` to handle Cmd+Option+T for table insertion. Added `insertTable()` method to FormattingTextView. Updated `insertTab()` and `insertBacktab()` to handle table cell navigation using TableNavigator before falling through to existing bullet-indent behavior. Added `tableBlockRanges` tracking, `findTableBlockRanges()`, `tableBlockContaining()`, and `formatTableBlocks()` in the Coordinator for incremental table formatting as block units.
+- `SynthApp/AutocompleteCoordinator.swift` - Added notification observer for `.insertTableNow` that calls `textView.insertTable()`.
+- `SynthApp/ContentView.swift` - Added `.insertTableNow` notification name.
+- `SynthApp/SynthApp.swift` - Added "Insert Table" command with Cmd+Option+T shortcut that posts `.insertTableNow` notification.
+- `Synth.xcodeproj/project.pbxproj` - Registered `TableNavigator.swift` (app sources) and `TableSupportTests.swift` (test sources) in all 4 required sections with 7B-prefixed IDs.
+
 ## Find and Replace
 
 **Feature:** Native macOS Find and Replace support using NSTextView's built-in NSTextFinder, with standard keyboard shortcuts (Cmd+F, Cmd+G, Cmd+Shift+G, Cmd+Option+F).
