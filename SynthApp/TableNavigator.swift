@@ -115,7 +115,6 @@ enum TableNavigator {
             }
             scanStart = NSMaxRange(nextLineRange)
         }
-        }
 
         return nil
     }
