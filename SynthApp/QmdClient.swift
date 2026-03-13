@@ -204,7 +204,7 @@ struct QmdStatus {
             ?? 0
         let hasEmbed = (json["embeddings"] as? Bool)
             ?? (json["has_embeddings"] as? Bool)
-            ?? (docCount > 0)
+            ?? false
         return QmdStatus(
             collections: collections,
             documentCount: docCount,

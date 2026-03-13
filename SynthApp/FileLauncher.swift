@@ -522,27 +522,21 @@ struct FileLauncher: View {
         base: [LauncherResult]
     ) -> [LauncherResult] {
         guard !qmdResults.isEmpty else { return base }
-        let baseURLs = Set(base.compactMap { result -> URL? in
+        let qmdURLs = Set(qmdResults.compactMap { result -> URL? in
             switch result {
             case .note(let note): return note.url
             case .file(let node, _): return node.url
             case .person: return nil
             }
         })
-        // QMD results first (deduped), then base results
-        let dedupedQmd = qmdResults.filter { result in
+        let uniqueBase = base.filter { result in
             switch result {
-            case .note(let note): return !baseURLs.contains(note.url)
-            case .file(let node, _): return !baseURLs.contains(node.url)
+            case .note(let note): return !qmdURLs.contains(note.url)
+            case .file(let node, _): return !qmdURLs.contains(node.url)
             case .person: return true
             }
         }
-        return (qmdResults.filter { result in
-            if case .note(let note) = result {
-                return baseURLs.contains(note.url)
-            }
-            return false
-        } + dedupedQmd + base).sorted { $0.sortScore > $1.sortScore }
+        return (qmdResults + uniqueBase).sorted { $0.sortScore > $1.sortScore }
     }
 }
 
