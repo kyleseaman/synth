@@ -991,12 +991,17 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
 
+        // MARK: Find and Replace (NSTextFinder)
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.documentView = textView
         scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.isFindBarVisible = false
 
         context.coordinator.textView = textView
         context.coordinator.scrollView = scrollView
