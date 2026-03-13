@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Add Find and Replace functionality to the editor using NSTextView's built-in NSTextFinder (usesFindBar) support, with Cmd+F shortcut registration.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1: Enable NSTextFinder on FormattingTextView in SynthApp/MarkdownEditor.swift. In the makeNSView() method of MarkdownEditor (NSViewRepresentable), set textView.usesFindBar = true and scrollView.isFindBarVisible = false (default hidden). The NSScrollView must be the one that hosts the find bar. Also set textView.isIncrementalSearchingEnabled = true for live highlighting.",
     "Step 2: Add Cmd+F keyboard shortcut in SynthApp/SynthApp.swift. In the commands section, add a CommandGroup (e.g., after .textEditing or replacing .textEditing) with a 'Find...' button using .keyboardShortcut('f'). The action should post a notification (e.g., .performFindAction) or use NSApp.sendAction to invoke the standard find panel action: NSApp.sendAction(#selector(NSTextView.performFindPanelAction(_:)), to: nil, from: NSMenuItem() with tag 1 for 'Find...'). Also add Cmd+Shift+F or Cmd+Option+F for 'Find and Replace' (tag 12), Cmd+G for 'Find Next' (tag 2), Cmd+Shift+G for 'Find Previous' (tag 3).",
@@ -30,5 +30,5 @@
     "Verify project.pbxproj has the new test file in all 4 required sections"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "SwiftLint binary not compatible with sandbox glibc (requires 2.38, system has 2.34). Manual code review performed for conventions: line lengths under 120 chars, variable names 3+ chars, no force unwraps, proper MARK comments. All changes follow existing patterns."
 }
