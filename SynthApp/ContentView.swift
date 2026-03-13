@@ -107,6 +107,7 @@ struct ContentView: View {
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
     @State private var hoveredSidebarMode: DetailViewMode?
+    @State private var isEmailDropTargeted = false
 
     private var settingsToolbarButton: some CustomizableToolbarContent {
         ToolbarItem(id: "toolbarSettingsLink", placement: .automatic) {
@@ -407,6 +408,31 @@ struct ContentView: View {
                 backlinksToolbarButton
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let emlURL = urls.first,
+                      emlURL.pathExtension.lowercased() == "eml"
+                else { return false }
+                store.newEmailNote(from: emlURL)
+                return true
+            } isTargeted: { targeted in
+                isEmailDropTargeted = targeted
+            }
+            .overlay {
+                if isEmailDropTargeted {
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(
+                            Color.accentColor,
+                            style: StrokeStyle(
+                                lineWidth: 2, dash: [8, 4]
+                            )
+                        )
+                        .background(
+                            Color.accentColor.opacity(0.05)
+                        )
+                        .padding(4)
+                        .allowsHitTesting(false)
+                }
+            }
         }
         .frame(minWidth: 800, minHeight: 500)
         .overlay {

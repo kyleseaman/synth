@@ -1,0 +1,147 @@
+name: Package App
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-app
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: macos-26
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          echo "$CERTIFICATE_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Add to search list so xcodebuild finds it
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Verify signing identity
+        run: |
+          security find-identity -v -p codesigning $RUNNER_TEMP/signing.keychain-db | grep "Developer ID Application"
+
+      - name: Set version
+        run: |
+          SHORT_SHA=${GITHUB_SHA::7}
+          VERSION="1.0.0-preview+${SHORT_SHA}"
+          plutil -replace CFBundleShortVersionString -string "$VERSION" SynthApp/Info.plist
+          plutil -replace CFBundleVersion -string "$SHORT_SHA" SynthApp/Info.plist
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+        with:
+          path: synth-mcp-server/.build
+          key: spm-${{ hashFiles('synth-mcp-server/Package.resolved') }}
+          restore-keys: spm-
+
+      - name: Build MCP server
+        run: cd synth-mcp-server && swift build -c release
+
+      - name: Archive app
+        run: |
+          xcodebuild archive \
+            -project Synth.xcodeproj \
+            -scheme Synth \
+            -configuration Release \
+            -archivePath $RUNNER_TEMP/Synth.xcarchive \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application"
+
+      - name: Export app bundle
+        run: |
+          mkdir -p $RUNNER_TEMP/export
+          cp -R $RUNNER_TEMP/Synth.xcarchive/Products/Applications/Synth.app $RUNNER_TEMP/export/
+          cp synth-mcp-server/.build/release/synth-mcp-server $RUNNER_TEMP/export/Synth.app/Contents/MacOS/
+
+          # Sign the MCP binary explicitly with hardened runtime
+          codesign --force --sign "Developer ID Application" \
+            --options runtime \
+            --timestamp \
+            $RUNNER_TEMP/export/Synth.app/Contents/MacOS/synth-mcp-server
+
+          # Re-sign the app bundle
+          codesign --force --sign "Developer ID Application" \
+            --options runtime \
+            --timestamp \
+            $RUNNER_TEMP/export/Synth.app
+
+          cd $RUNNER_TEMP/export
+          zip -r -y Synth.zip Synth.app
+
+      - name: Notarize app
+        if: env.NOTARY_APPLE_ID != ''
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          RESULT=$(xcrun notarytool submit $RUNNER_TEMP/export/Synth.zip \
+            --apple-id "$NOTARY_APPLE_ID" \
+            --password "$NOTARY_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json)
+
+          echo "$RESULT"
+          STATUS=$(echo "$RESULT" | plutil -extract status raw -)
+          ID=$(echo "$RESULT" | plutil -extract id raw -)
+
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::Notarization failed with status: $STATUS"
+            xcrun notarytool log "$ID" \
+              --apple-id "$NOTARY_APPLE_ID" \
+              --password "$NOTARY_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
+
+          # Staple the notarization ticket to the app
+          xcrun stapler staple $RUNNER_TEMP/export/Synth.app
+
+          # Re-zip with stapled app
+          cd $RUNNER_TEMP/export
+          rm Synth.zip
+          zip -r -y Synth.zip Synth.app
+
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict $RUNNER_TEMP/export/Synth.app
+          spctl --assess --type execute --verbose=4 $RUNNER_TEMP/export/Synth.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Synth-preview-${{ github.sha }}
+          path: ${{ runner.temp }}/export/Synth.zip
+          retention-days: 30
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true

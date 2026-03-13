@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var store: DocumentStore?
@@ -29,12 +30,19 @@ struct SynthApp: App {
     @State private var store = DocumentStore()
     @State private var linkStore = LinkStore()
     @State private var templateStore = TemplateStore()
+    private let updaterDelegate = UpdaterDelegate()
+    private let updaterController: SPUStandardUpdaterController
 
     init() {
         // Ignore SIGPIPE so broken pipes from kiro-cli don't kill the app
         signal(SIGPIPE, SIG_IGN)
         Theme.registerBundledFonts()
         UserDefaults.standard.register(defaults: ["hideSyntax": true])
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: updaterDelegate,
+            userDriverDelegate: nil
+        )
     }
 
     private var templatesSortedForMenu: [SavedTemplate] {
@@ -83,6 +91,9 @@ struct SynthApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 SettingsLink()
+            }
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
             }
             CommandGroup(replacing: .newItem) {
                 Button("New Draft") { store.newDraft() }

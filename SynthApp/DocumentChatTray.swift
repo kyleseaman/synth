@@ -54,14 +54,7 @@ struct DocumentChatTray: View {
                 if !isTrailing { dragHandle }
                 headerBar
                 Divider().opacity(0.3)
-                ZStack(alignment: .bottom) {
-                    messageList
-                    VStack(spacing: 0) {
-                        statusBanner
-                        selectionIndicator
-                        inputBar
-                    }
-                }
+                messageList
             }
         }
         .frame(height: isTrailing ? nil : trayHeight)
@@ -297,7 +290,8 @@ struct DocumentChatTray: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(chatState.messages) { message in
-                        ChatBubble(message: message).id(message.id)
+                        ChatBubble(message: message, onInsert: insertIntoDocument)
+                            .id(message.id)
                     }
                     ForEach(chatState.toolCalls.filter { $0.status != "completed" }) { call in
                         ToolCallBubble(toolCall: call).id(call.id)
@@ -316,9 +310,16 @@ struct DocumentChatTray: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 70)
+                .padding(.bottom, 8)
             }
             .scrollIndicators(.hidden)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    statusBanner
+                    selectionIndicator
+                    inputBar
+                }
+            }
             .onChange(of: chatState.messages.count) {
                 if let lastMessage = chatState.messages.last {
                     withAnimation(.easeOut(duration: 0.2)) {
@@ -648,6 +649,15 @@ struct DocumentChatTray: View {
         DispatchQueue.main.async {
             self.isInputFocused = true
         }
+    }
+
+    private func insertIntoDocument(_ text: String) {
+        guard let window = NSApp.keyWindow else { return }
+        let responders = sequence(first: window.firstResponder) { $0?.nextResponder }
+        guard let textView = responders.compactMap({ $0 as? FormattingTextView }).first else {
+            return
+        }
+        textView.insertText(text, replacementRange: textView.selectedRange())
     }
 
     private func waitAndSend(prompt: String, retries: Int) {
