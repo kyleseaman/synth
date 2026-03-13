@@ -1,0 +1,43 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Add markdown table support: (1) visual rendering of markdown tables with monospace alignment and styled headers/separators, (2) table insertion command (Cmd+Shift+T is taken by Tag Browser, so use a menu item or Cmd+Option+T), (3) Tab key navigation between table cells while editing, (4) tests for table parsing and formatting logic.",
+  "status": "completed",
+  "steps": [
+    "Step 1: Add a table regex pattern to MarkdownFormat in SynthApp/MarkdownFormat.swift. A markdown table consists of: header row (| col1 | col2 |), separator row (|---|---|), and data rows (| val1 | val2 |). The pattern should detect lines starting with | that form a valid table structure. Add a static let tablePattern similar to existing patterns (wikiPattern, boldPattern, etc.).",
+    "Step 2: Add table rendering in MarkdownFormat.render() in SynthApp/MarkdownFormat.swift. When a table is detected, apply monospace font (Theme.terminalNSFont) for alignment, style the header row with bold, dim the pipe characters and separator row, and add subtle background color to header cells. Process table blocks (consecutive lines starting with |) as a unit rather than line-by-line. Add a helper method renderTableBlock() that takes the table lines and returns styled NSAttributedString.",
+    "Step 3: Add incremental table formatting in the Coordinator's formatRange() method in SynthApp/MarkdownEditor.swift. Similar to how code blocks are detected and formatted as a unit (see codeBlockContaining()), add table block detection so that editing inside a table reformats the entire table. Add a static method findTableBlockRanges() and a tableBlockContaining() method, following the existing codeBlock pattern.",
+    "Step 4: Add table insertion in FormattingTextView in SynthApp/MarkdownEditor.swift. Add a method insertTable() that inserts a 3-column, 2-row markdown table template at the cursor position: '| Header 1 | Header 2 | Header 3 |\\n|----------|----------|----------|\\n| Cell 1   | Cell 2   | Cell 3   |'. Wire this to performKeyEquivalent for Cmd+Option+T.",
+    "Step 5: Add Tab key navigation for tables in FormattingTextView in SynthApp/MarkdownEditor.swift. Override insertTab(_:) to check if the cursor is inside a table (line starts with |). If so, move the cursor to the next cell (find the next | character and position after it, skipping whitespace). If at the last cell of a row, move to the first cell of the next row. If at the last cell of the last row, insert a new row. If not in a table, call super.insertTab(sender). Similarly, override insertBacktab(_:) for Shift+Tab to navigate backwards.",
+    "Step 6: Add a keyboard shortcut for table insertion in SynthApp/SynthApp.swift. Add 'Insert Table' in the commands section with Cmd+Option+T. The action should post a NotificationCenter notification (e.g., .insertTableNow) that FormattingTextView or the Coordinator observes. Add the notification name in ContentView.swift alongside existing notification names.",
+    "Step 7: Create SynthAppTests/TableSupportTests.swift with tests for: (a) table regex detection - valid tables with 2+ columns, header + separator + data rows; (b) table regex rejection - lines with | that are not valid tables (e.g., single pipe, no separator); (c) table template insertion produces correct markdown; (d) table cell navigation logic - given a cursor position in a table string, compute next/previous cell positions. Extract the navigation logic into a pure static helper (e.g., TableNavigator enum) for testability.",
+    "Step 8: Register TableSupportTests.swift in Synth.xcodeproj/project.pbxproj in all 4 sections. Use 7B-prefixed unique IDs to distinguish from FEAT-001's 7A IDs.",
+    "Step 9: Run swiftlint on all modified and new files and fix any warnings.",
+    "Step 10: Update agent/agent-changelog.md with entries for both Find and Replace (FEAT-001) and Table Support (FEAT-002), listing all files added and modified."
+  ],
+  "acceptance_criteria": [
+    "Markdown tables with | delimiters are detected by a regex pattern in MarkdownFormat",
+    "Table headers are rendered bold with monospace font for alignment",
+    "Pipe characters and separator rows are visually dimmed",
+    "Inserting a table via Cmd+Option+T places a formatted 3x2 table template at cursor",
+    "Tab key inside a table moves cursor to the next cell; Shift+Tab moves to previous cell",
+    "Tab at the last cell of the last row inserts a new empty row",
+    "Tab outside a table inserts a normal tab character (existing behavior preserved)",
+    "Incremental formatting treats table blocks as a unit (like code blocks)",
+    "Tests cover table detection, insertion template, and cell navigation logic",
+    "Test file registered in Xcode project (all 4 pbxproj sections)",
+    "SwiftLint passes on all files",
+    "agent/agent-changelog.md is updated with both features"
+  ],
+  "verification": [
+    "Read MarkdownFormat.swift and confirm table pattern and rendering logic exists",
+    "Read MarkdownEditor.swift and confirm insertTable(), Tab key handling, and table block detection",
+    "Read SynthApp.swift and confirm Cmd+Option+T shortcut",
+    "Read TableSupportTests.swift and confirm tests cover detection, insertion, and navigation",
+    "Run swiftlint on all changed files",
+    "Verify project.pbxproj has new test file in all 4 sections",
+    "Read agent/agent-changelog.md and confirm both features are documented"
+  ],
+  "blocked_reason": null,
+  "findings": "SwiftLint binary not compatible with sandbox glibc (same as FEAT-001). Manual code review performed for conventions: line lengths under 120 chars, variable names 3+ chars, no force unwraps, proper MARK comments. TableNavigator is a pure enum with static methods -- no AppKit dependency for testability. Separator rows are properly skipped during Tab/Shift+Tab navigation. Table blocks are treated as formatting units in both full render() and incremental formatRange(). All 4 pbxproj sections updated for both TableNavigator.swift and TableSupportTests.swift with 7B-prefixed IDs."
+}
