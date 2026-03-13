@@ -5,9 +5,7 @@ import SwiftUI
 struct KanbanBoardView: View {
     @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
-    @State private var ideasFiles: [URL] = []
-    @State private var draftsFiles: [URL] = []
-    @State private var reviewFiles: [URL] = []
+    @State private var filesByColumn: [String: [URL]] = [:]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,33 +30,20 @@ struct KanbanBoardView: View {
 
             // Columns
             HStack(alignment: .top, spacing: 12) {
-                KanbanColumn(
-                    title: "Ideas",
-                    files: $ideasFiles,
-                    folderName: "Ideas",
-                    store: store,
-                    onOpen: openNote,
-                    onArchive: archiveNote,
-                    onDrop: handleDrop
-                )
-                KanbanColumn(
-                    title: "Drafts",
-                    files: $draftsFiles,
-                    folderName: "Drafts",
-                    store: store,
-                    onOpen: openNote,
-                    onArchive: archiveNote,
-                    onDrop: handleDrop
-                )
-                KanbanColumn(
-                    title: "Ready for Review",
-                    files: $reviewFiles,
-                    folderName: "Ready for Review",
-                    store: store,
-                    onOpen: openNote,
-                    onArchive: archiveNote,
-                    onDrop: handleDrop
-                )
+                ForEach(DocumentStore.kanbanColumns, id: \.self) { column in
+                    KanbanColumn(
+                        title: column,
+                        files: Binding(
+                            get: { filesByColumn[column] ?? [] },
+                            set: { filesByColumn[column] = $0 }
+                        ),
+                        folderName: column,
+                        store: store,
+                        onOpen: openNote,
+                        onArchive: archiveNote,
+                        onDrop: handleDrop
+                    )
+                }
             }
             .padding(12)
         }
@@ -81,9 +66,9 @@ struct KanbanBoardView: View {
     }
 
     private func reloadAll() {
-        ideasFiles = store.kanbanFiles(in: "Ideas")
-        draftsFiles = store.kanbanFiles(in: "Drafts")
-        reviewFiles = store.kanbanFiles(in: "Ready for Review")
+        for column in DocumentStore.kanbanColumns {
+            filesByColumn[column] = store.kanbanFiles(in: column)
+        }
     }
 
     private func openNote(_ url: URL) {
@@ -97,14 +82,26 @@ struct KanbanBoardView: View {
             DocumentStore.kanbanArchive
         )
         store.moveFile(from: url, to: archiveFolder)
-        reloadAll()
+        removeFromColumn(url)
     }
 
     private func handleDrop(_ url: URL, _ targetFolder: String) {
         guard let workspace = store.workspace else { return }
         let targetURL = workspace.appendingPathComponent(targetFolder)
         store.moveFile(from: url, to: targetURL)
-        reloadAll()
+        removeFromColumn(url)
+        filesByColumn[targetFolder, default: []].append(url)
+        filesByColumn[targetFolder]?.sort {
+            $0.lastPathComponent.localizedCaseInsensitiveCompare(
+                $1.lastPathComponent
+            ) == .orderedAscending
+        }
+    }
+
+    private func removeFromColumn(_ url: URL) {
+        for column in DocumentStore.kanbanColumns {
+            filesByColumn[column]?.removeAll { $0 == url }
+        }
     }
 }
 

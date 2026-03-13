@@ -1148,9 +1148,13 @@ extension DocumentStore {
         for folder in allFolders {
             let url = workspace.appendingPathComponent(folder)
             if !FileManager.default.fileExists(atPath: url.path) {
-                try? FileManager.default.createDirectory(
-                    at: url, withIntermediateDirectories: true
-                )
+                do {
+                    try FileManager.default.createDirectory(
+                        at: url, withIntermediateDirectories: true
+                    )
+                } catch {
+                    print("Error creating Kanban folder at \(url.path): \(error.localizedDescription)")
+                }
             }
         }
         loadFileTree()
@@ -1159,9 +1163,15 @@ extension DocumentStore {
     func kanbanFiles(in folderName: String) -> [URL] {
         guard let workspace else { return [] }
         let folder = workspace.appendingPathComponent(folderName)
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: folder, includingPropertiesForKeys: nil
-        ) else { return [] }
+        let contents: [URL]
+        do {
+            contents = try FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: nil
+            )
+        } catch {
+            print("Error reading Kanban folder \(folderName): \(error.localizedDescription)")
+            return []
+        }
         let validExtensions: Set<String> = ["md", "txt"]
         return contents
             .filter { validExtensions.contains($0.pathExtension.lowercased()) }
