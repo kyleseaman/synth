@@ -71,6 +71,8 @@
 			4A0000000000000000000904 /* AutocompleteCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000134 /* AutocompleteCoordinator.swift */; };
 			4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000131 /* SynthMcpResolver.swift */; };
 			4A0000000000000000000906 /* MCPServerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A0000000000000000000132 /* MCPServerManager.swift */; };
+			6A0000000000000000000021 /* QmdResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000011 /* QmdResolver.swift */; };
+			6A0000000000000000000022 /* QmdClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000012 /* QmdClient.swift */; };
 			B1F000000000000000000101 /* mesloLGS_NF_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */; };
 			B1F000000000000000000102 /* mesloLGS_NF_bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */; };
 			B1F000000000000000000103 /* mesloLGS_NF_italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */; };
@@ -161,6 +163,8 @@
 			1A0000000000000000000134 /* AutocompleteCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutocompleteCoordinator.swift; sourceTree = "<group>"; };
 			4A0000000000000000000131 /* SynthMcpResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthMcpResolver.swift; sourceTree = "<group>"; };
 			4A0000000000000000000132 /* MCPServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerManager.swift; sourceTree = "<group>"; };
+			6A0000000000000000000011 /* QmdResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QmdResolver.swift; sourceTree = "<group>"; };
+			6A0000000000000000000012 /* QmdClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QmdClient.swift; sourceTree = "<group>"; };
 			B1F000000000000000000201 /* mesloLGS_NF_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_regular.ttf; sourceTree = "<group>"; };
 			B1F000000000000000000202 /* mesloLGS_NF_bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_bold.ttf; sourceTree = "<group>"; };
 			B1F000000000000000000203 /* mesloLGS_NF_italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = mesloLGS_NF_italic.ttf; sourceTree = "<group>"; };
@@ -278,6 +282,8 @@
 					5A000000000000000000100A /* KiroConfigManager.swift */,
 					4A0000000000000000000131 /* SynthMcpResolver.swift */,
 					4A0000000000000000000132 /* MCPServerManager.swift */,
+					6A0000000000000000000011 /* QmdResolver.swift */,
+					6A0000000000000000000012 /* QmdClient.swift */,
 					6A0000000000000000000003 /* EmailParser.swift */,
 					B1F000000000000000000300 /* Fonts */,
 					C1A000000000000000000002 /* Assets.xcassets */,
@@ -479,6 +485,8 @@
 				5A0000000000000000001009 /* KiroConfigManager.swift in Sources */,
 				4A0000000000000000000905 /* SynthMcpResolver.swift in Sources */,
 				4A0000000000000000000906 /* MCPServerManager.swift in Sources */,
+				6A0000000000000000000021 /* QmdResolver.swift in Sources */,
+				6A0000000000000000000022 /* QmdClient.swift in Sources */,
 				6A0000000000000000000001 /* EmailParser.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

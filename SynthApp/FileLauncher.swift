@@ -84,6 +84,9 @@ struct FileLauncher: View {
     @State private var cachedFiles: [FileTreeNode] = []
     @State private var previewCache: [URL: String] = [:]
     @State private var noteLookup: [URL: NoteSearchResult] = [:]
+    @State private var qmdResults: [LauncherResult] = []
+    @State private var isQmdSearching = false
+    @State private var qmdSearchTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
     var results: [LauncherResult] {
@@ -128,8 +131,10 @@ struct FileLauncher: View {
             recentFiles: Set(store.recentFiles)
         )
 
-        return (semanticResults + fileResults + peopleResults)
-            .sorted { $0.sortScore > $1.sortScore }
+        return blendWithQmdResults(
+            base: (semanticResults + fileResults + peopleResults)
+                .sorted { $0.sortScore > $1.sortScore }
+        )
     }
 
     private var selectedNoteResult: NoteSearchResult? {
@@ -165,7 +170,12 @@ struct FileLauncher: View {
             cachedFiles = Self.flattenFiles(store.fileTree)
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
         }
-        .onChange(of: query) { _, _ in selectedIndex = 0 }
+        .onChange(of: query) { _, _ in
+            selectedIndex = 0
+            qmdResults = []
+            qmdSearchTask?.cancel()
+            isQmdSearching = false
+        }
         .onChange(of: results.count) { _, newValue in
             guard newValue > 0 else {
                 selectedIndex = 0
@@ -198,7 +208,11 @@ struct FileLauncher: View {
                     .textFieldStyle(.plain)
                     .font(Theme.uiSwiftUIFont(size: 18))
                     .focused($isSearchFocused)
-                    .onSubmit { openSelected() }
+                    .onSubmit { handleSubmit() }
+                if isQmdSearching {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
@@ -208,7 +222,10 @@ struct FileLauncher: View {
                 Image(systemName: "sparkle.magnifyingglass")
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
-                Text("Try: tag:project  person:alex  path:meetings  \"exact phrase\"")
+                let hint = store.qmdClient?.isWorkspaceIndexed == true
+                    ? "Press Enter to deep search · tag:project  person:alex  \"exact phrase\""
+                    : "Try: tag:project  person:alex  path:meetings  \"exact phrase\""
+                Text(hint)
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -441,6 +458,85 @@ struct FileLauncher: View {
             store.showPeopleBrowserModal(person: name)
         }
         isPresented = false
+    }
+
+    // MARK: - QMD Integration
+
+    private func handleSubmit() {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        // If there's a selected result, open it directly
+        if !results.isEmpty && selectedIndex < results.count && !trimmed.isEmpty {
+            // If QMD is available and we haven't searched yet, trigger QMD search
+            if store.qmdClient?.isWorkspaceIndexed == true && qmdResults.isEmpty {
+                triggerQmdSearch(trimmed)
+                return
+            }
+            openSelected()
+            return
+        }
+        if !results.isEmpty {
+            openSelected()
+        }
+    }
+
+    private func triggerQmdSearch(_ searchQuery: String) {
+        qmdSearchTask?.cancel()
+        guard let qmdClient = store.qmdClient,
+              qmdClient.isWorkspaceIndexed,
+              let workspace = store.workspace else { return }
+        isQmdSearching = true
+        qmdSearchTask = Task {
+            let qmdHits = await qmdClient.search(query: searchQuery, limit: 15)
+            guard !Task.isCancelled else { return }
+            let mapped: [LauncherResult] = qmdHits.compactMap { hit in
+                let fileURL: URL
+                if hit.path.hasPrefix("/") {
+                    fileURL = URL(fileURLWithPath: hit.path)
+                } else {
+                    fileURL = workspace.appendingPathComponent(hit.path)
+                }
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    return nil
+                }
+                let boostScore = Int(hit.score * 30_000) + 10_000
+                let result = NoteSearchResult(
+                    id: fileURL,
+                    title: hit.title,
+                    relativePath: fileURL.deletingLastPathComponent()
+                        .lastPathComponent,
+                    url: fileURL,
+                    preview: hit.snippet,
+                    score: boostScore
+                )
+                return .note(result: result)
+            }
+            await MainActor.run {
+                qmdResults = mapped
+                isQmdSearching = false
+                selectedIndex = 0
+            }
+        }
+    }
+
+    private func blendWithQmdResults(
+        base: [LauncherResult]
+    ) -> [LauncherResult] {
+        guard !qmdResults.isEmpty else { return base }
+        let qmdURLs = Set(qmdResults.compactMap { result -> URL? in
+            switch result {
+            case .note(let note): return note.url
+            case .file(let node, _): return node.url
+            case .person: return nil
+            }
+        })
+        let uniqueBase = base.filter { result in
+            switch result {
+            case .note(let note): return !qmdURLs.contains(note.url)
+            case .file(let node, _): return !qmdURLs.contains(node.url)
+            case .person: return true
+            }
+        }
+        return (qmdResults + uniqueBase).sorted { $0.sortScore > $1.sortScore }
     }
 }
 
