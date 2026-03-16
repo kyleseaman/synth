@@ -81,27 +81,54 @@ struct KanbanBoardView: View {
         let archiveFolder = workspace.appendingPathComponent(
             DocumentStore.kanbanArchive
         )
-        store.moveFile(from: url, to: archiveFolder)
+        guard store.moveFile(from: url, to: archiveFolder) != nil else { return }
         removeFromColumn(url)
     }
 
     private func handleDrop(_ url: URL, _ targetFolder: String) {
-        guard let workspace = store.workspace else { return }
-        let targetURL = workspace.appendingPathComponent(targetFolder)
-        store.moveFile(from: url, to: targetURL)
-        removeFromColumn(url)
-        filesByColumn[targetFolder, default: []].append(url)
-        filesByColumn[targetFolder]?.sort {
-            $0.lastPathComponent.localizedCaseInsensitiveCompare(
-                $1.lastPathComponent
-            ) == .orderedAscending
-        }
+        filesByColumn = Self.updatedColumnsAfterDrop(
+            sourceURL: url,
+            targetFolder: targetFolder,
+            workspace: store.workspace,
+            currentFilesByColumn: filesByColumn,
+            moveFile: store.moveFile(from:to:)
+        )
     }
 
     private func removeFromColumn(_ url: URL) {
         for column in DocumentStore.kanbanColumns {
             filesByColumn[column]?.removeAll { $0 == url }
         }
+    }
+
+    @MainActor
+    static func updatedColumnsAfterDrop(
+        sourceURL: URL,
+        targetFolder: String,
+        workspace: URL?,
+        currentFilesByColumn: [String: [URL]],
+        moveFile: (URL, URL) -> URL?
+    ) -> [String: [URL]] {
+        guard let workspace else { return currentFilesByColumn }
+
+        let targetURL = workspace.appendingPathComponent(targetFolder)
+        guard let movedURL = moveFile(sourceURL, targetURL) else {
+            return currentFilesByColumn
+        }
+
+        var updatedFilesByColumn = currentFilesByColumn
+        for column in DocumentStore.kanbanColumns {
+            updatedFilesByColumn[column]?.removeAll {
+                $0 == sourceURL || $0 == movedURL
+            }
+        }
+        updatedFilesByColumn[targetFolder, default: []].append(movedURL)
+        updatedFilesByColumn[targetFolder]?.sort {
+            $0.lastPathComponent.localizedCaseInsensitiveCompare(
+                $1.lastPathComponent
+            ) == .orderedAscending
+        }
+        return updatedFilesByColumn
     }
 }
 

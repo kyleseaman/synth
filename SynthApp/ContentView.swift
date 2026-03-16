@@ -636,7 +636,7 @@ struct FileTreeView: View {
                 )
                 .dropDestination(for: URL.self) { urls, _ in
                     guard let sourceURL = urls.first else { return false }
-                    store.moveFile(from: sourceURL, to: workspace)
+                    _ = store.moveFile(from: sourceURL, to: workspace)
                     return true
                 } isTargeted: { targeted in
                     isRootDropTargeted = targeted
@@ -683,7 +683,7 @@ struct FileNodeView: View {
                         _ = provider.loadObject(ofClass: NSString.self) { path, _ in
                             guard let path = path as? String else { return }
                             DispatchQueue.main.async {
-                                store.moveFile(
+                                _ = store.moveFile(
                                     from: URL(fileURLWithPath: path),
                                     to: node.url
                                 )
@@ -713,7 +713,7 @@ struct FileNodeView: View {
             .draggable(node)
             .dropDestination(for: URL.self) { urls, _ in
                 guard let sourceURL = urls.first else { return false }
-                store.moveFile(from: sourceURL, to: node.url)
+                _ = store.moveFile(from: sourceURL, to: node.url)
                 return true
             } isTargeted: { targeted in
                 isDropTargeted = targeted
