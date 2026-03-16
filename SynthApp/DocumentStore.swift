@@ -31,6 +31,7 @@ enum ActiveModal: Equatable {
     case meetingNote
     case tagBrowser(String?)
     case peopleBrowser(String?)
+    case kanban
 }
 
 @MainActor
@@ -1184,6 +1185,55 @@ extension DocumentStore {
 
     func showPeopleBrowserModal(person: String? = nil) {
         activeModal = .peopleBrowser(person)
+    }
+
+    func showKanbanModal() {
+        activeModal = .kanban
+    }
+
+    // MARK: - Kanban Board
+
+    static let kanbanColumns = ["Ideas", "Drafts", "Ready for Review"]
+    static let kanbanArchive = "Archive"
+
+    func bootstrapKanbanFolders() {
+        guard let workspace else { return }
+        let allFolders = Self.kanbanColumns + [Self.kanbanArchive]
+        for folder in allFolders {
+            let url = workspace.appendingPathComponent(folder)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                do {
+                    try FileManager.default.createDirectory(
+                        at: url, withIntermediateDirectories: true
+                    )
+                } catch {
+                    print("Error creating Kanban folder at \(url.path): \(error.localizedDescription)")
+                }
+            }
+        }
+        loadFileTree()
+    }
+
+    func kanbanFiles(in folderName: String) -> [URL] {
+        guard let workspace else { return [] }
+        let folder = workspace.appendingPathComponent(folderName)
+        let contents: [URL]
+        do {
+            contents = try FileManager.default.contentsOfDirectory(
+                at: folder, includingPropertiesForKeys: nil
+            )
+        } catch {
+            print("Error reading Kanban folder \(folderName): \(error.localizedDescription)")
+            return []
+        }
+        let validExtensions: Set<String> = ["md", "txt"]
+        return contents
+            .filter { validExtensions.contains($0.pathExtension.lowercased()) }
+            .sorted {
+                $0.lastPathComponent.localizedCaseInsensitiveCompare(
+                    $1.lastPathComponent
+                ) == .orderedAscending
+            }
     }
 
     func showImageDetailModal(_ url: URL) {

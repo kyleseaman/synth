@@ -260,6 +260,16 @@ struct ContentView: View {
                             hoveredSidebarMode = isHovering ? .media : nil
                         }
 
+                        // MARK: - Kanban sidebar button
+                        Button {
+                            store.showKanbanModal()
+                        } label: {
+                            Label("Kanban", systemImage: "rectangle.3.group")
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+
                         FileTreeView(nodes: store.fileTree, store: store)
                             .id(store.fileTreeVersion)
                             .contextMenu {
@@ -477,6 +487,14 @@ struct ContentView: View {
                             ),
                             initialPerson: person
                         )
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
+
+                    if store.activeModal == .kanban {
+                        KanbanBoardView(isPresented: Binding(
+                            get: { store.activeModal == .kanban },
+                            set: { if !$0 { store.activeModal = nil } }
+                        ))
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }

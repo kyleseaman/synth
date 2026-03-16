@@ -165,6 +165,11 @@ struct SynthApp: App {
                     store.activateDailyNotes()
                 }
                 .keyboardShortcut("d")
+
+                Button("Kanban Board") {
+                    store.showKanbanModal()
+                }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
             }
 
             CommandMenu("Templates") {
