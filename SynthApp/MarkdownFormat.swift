@@ -27,6 +27,10 @@ struct MarkdownFormat: DocumentFormat {
     static let imagePattern = try! NSRegularExpression(
         pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
     )
+    /// Matches a single table row: optional whitespace, then `|`.
+    static let tableRowPattern = try! NSRegularExpression(
+        pattern: #"^\s*\|.*\|"#, options: .anchorsMatchLines
+    )
     // swiftlint:enable force_try
 
     var noteIndex: NoteIndex?
@@ -46,10 +50,37 @@ struct MarkdownFormat: DocumentFormat {
         ]
 
         let lines = text.components(separatedBy: "\n")
-        for (index, line) in lines.enumerated() {
+        var lineIndex = 0
+        while lineIndex < lines.count {
+            let line = lines[lineIndex]
+
+            // Detect table blocks: consecutive lines starting with |
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("|") {
+                var tableLines: [String] = [line]
+                var nextIdx = lineIndex + 1
+                while nextIdx < lines.count,
+                      lines[nextIdx].trimmingCharacters(
+                          in: .whitespaces
+                      ).hasPrefix("|") {
+                    tableLines.append(lines[nextIdx])
+                    nextIdx += 1
+                }
+                let tableBlock = renderTableBlock(
+                    tableLines, defaultAttrs: defaultAttrs
+                )
+                if nextIdx < lines.count {
+                    tableBlock.append(NSAttributedString(
+                        string: "\n", attributes: defaultAttrs
+                    ))
+                }
+                result.append(tableBlock)
+                lineIndex = nextIdx
+                continue
+            }
+
             var attrs = defaultAttrs
 
-            // Style headings — hide # prefix visually
+            // Style headings -- hide # prefix visually
             var headingPrefixLen = 0
             if line.hasPrefix("# ") {
                 attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
@@ -92,12 +123,113 @@ struct MarkdownFormat: DocumentFormat {
             }
             applyListFormatting(lineStr)
             applyInlineFormatting(lineStr, baseFont: attrs[.font] as? NSFont ?? bodyFont)
-            if index < lines.count - 1 {
+            if lineIndex < lines.count - 1 {
                 lineStr.append(NSAttributedString(string: "\n", attributes: defaultAttrs))
+            }
+            result.append(lineStr)
+            lineIndex += 1
+        }
+        return result
+    }
+
+    // MARK: - Table Block Rendering
+
+    private func renderTableBlock(
+        _ lines: [String],
+        defaultAttrs: [NSAttributedString.Key: Any]
+    ) -> NSMutableAttributedString {
+        let monoFont = Theme.terminalNSFont(ofSize: 14)
+        let monoBoldFont = NSFontManager.shared.convert(
+            monoFont, toHaveTrait: .boldFontMask
+        )
+        let monoParagraph = NSMutableParagraphStyle()
+        monoParagraph.lineHeightMultiple = 1.25
+        let tableAttrs: [NSAttributedString.Key: Any] = [
+            .font: monoFont,
+            .foregroundColor: NSColor.textColor,
+            .paragraphStyle: monoParagraph
+        ]
+
+        let result = NSMutableAttributedString()
+        let isFirstRowHeader = lines.count >= 2
+            && TableNavigator.isSeparatorRow(lines[1])
+
+        for (rowIndex, line) in lines.enumerated() {
+            let lineStr = NSMutableAttributedString(
+                string: line, attributes: tableAttrs
+            )
+            let lineLength = (line as NSString).length
+            let fullRange = NSRange(location: 0, length: lineLength)
+
+            if TableNavigator.isSeparatorRow(line) {
+                // Dim the entire separator row
+                lineStr.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.tertiaryLabelColor,
+                    range: fullRange
+                )
+            } else {
+                // Dim pipe characters
+                Self.dimPipeCharacters(
+                    in: lineStr, line: line, range: fullRange
+                )
+                // Bold the header row
+                if isFirstRowHeader && rowIndex == 0 {
+                    Self.boldCellContent(
+                        in: lineStr, line: line,
+                        font: monoBoldFont
+                    )
+                }
+            }
+
+            if rowIndex < lines.count - 1 {
+                lineStr.append(NSAttributedString(
+                    string: "\n", attributes: tableAttrs
+                ))
             }
             result.append(lineStr)
         }
         return result
+    }
+
+    private static func dimPipeCharacters(
+        in attrString: NSMutableAttributedString,
+        line: String,
+        range: NSRange
+    ) {
+        let chars = Array(line.utf16)
+        let pipeChar: UInt16 = 0x7C // |
+        for idx in 0..<chars.count where chars[idx] == pipeChar {
+            guard idx < range.length else { continue }
+            attrString.addAttribute(
+                .foregroundColor,
+                value: NSColor.tertiaryLabelColor,
+                range: NSRange(location: idx, length: 1)
+            )
+        }
+    }
+
+    private static func boldCellContent(
+        in attrString: NSMutableAttributedString,
+        line: String,
+        font: NSFont
+    ) {
+        let chars = Array(line.utf16)
+        let pipeChar: UInt16 = 0x7C // |
+        var pipePositions: [Int] = []
+        for (idx, char) in chars.enumerated() where char == pipeChar {
+            pipePositions.append(idx)
+        }
+        // Bold content between consecutive pipes
+        for pipeIdx in 0..<(pipePositions.count - 1) {
+            let start = pipePositions[pipeIdx] + 1
+            let end = pipePositions[pipeIdx + 1]
+            guard end > start else { continue }
+            attrString.addAttribute(
+                .font, value: font,
+                range: NSRange(location: start, length: end - start)
+            )
+        }
     }
 
     func toPlainText(_ attributed: NSAttributedString) -> String {

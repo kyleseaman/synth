@@ -97,6 +97,17 @@ class AutocompleteCoordinator {
         }
         observers.append(insertTemplateObs)
 
+        let insertTableObs = center.addObserver(
+            forName: .insertTableNow,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.textView?.insertTable()
+                self?.onTextChange?()
+            }
+        }
+        observers.append(insertTableObs)
+
         wikiLinkPopover.onSelect = { [weak self] title in
             self?.completeWikiLink(title: title)
         }

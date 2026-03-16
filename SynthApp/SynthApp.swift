@@ -71,6 +71,19 @@ struct SynthApp: App {
         )
     }
 
+    /// Sends a standard NSTextFinder find-panel action to the first responder.
+    /// Tag values follow `NSFindPanelAction`:
+    ///   1 = showFindPanel, 2 = next, 3 = previous, 12 = showFindPanel with replace.
+    private func sendFindPanelAction(tag actionTag: Int) {
+        let menuItem = NSMenuItem()
+        menuItem.tag = actionTag
+        NSApp.sendAction(
+            #selector(NSTextView.performFindPanelAction(_:)),
+            to: nil,
+            from: menuItem
+        )
+    }
+
     private func templateInsertButton(for template: SavedTemplate) -> some View {
         Button("Insert \(template.name)") {
             postTemplateInsertion(for: template)
@@ -170,6 +183,38 @@ struct SynthApp: App {
                     store.showKanbanModal()
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+            }
+
+            // MARK: Find and Replace
+            CommandGroup(after: .textEditing) {
+                Button("Find\u{2026}") {
+                    sendFindPanelAction(tag: 1)
+                }
+                .keyboardShortcut("f")
+
+                Button("Find and Replace\u{2026}") {
+                    sendFindPanelAction(tag: 12)
+                }
+                .keyboardShortcut("f", modifiers: [.command, .option])
+
+                Button("Find Next") {
+                    sendFindPanelAction(tag: 2)
+                }
+                .keyboardShortcut("g")
+
+                Button("Find Previous") {
+                    sendFindPanelAction(tag: 3)
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("Insert Table") {
+                    NotificationCenter.default.post(
+                        name: .insertTableNow, object: nil
+                    )
+                }
+                .keyboardShortcut("t", modifiers: [.command, .option])
             }
 
             CommandMenu("Templates") {

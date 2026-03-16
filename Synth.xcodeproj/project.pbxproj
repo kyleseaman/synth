@@ -9,6 +9,9 @@
 /* Begin PBXBuildFile section */
 		6A0000000000000000000001 /* EmailParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000003 /* EmailParser.swift */; };
 		6A0000000000000000000002 /* EmailParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A0000000000000000000004 /* EmailParserTests.swift */; };
+		7A0000000000000000000001 /* FindReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0000000000000000000002 /* FindReplaceTests.swift */; };
+		7B0000000000000000000001 /* TableNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B0000000000000000000002 /* TableNavigator.swift */; };
+		7B0000000000000000000003 /* TableSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B0000000000000000000004 /* TableSupportTests.swift */; };
 		SP0000000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = SP0000000000000000000002 /* Sparkle */; };
 		SP0000000000000000000004 /* SoftwareUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0000000000000000000005 /* SoftwareUpdater.swift */; };
 		C1A000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1A000000000000000000002 /* Assets.xcassets */; };
@@ -98,6 +101,9 @@
 /* Begin PBXFileReference section */
 		6A0000000000000000000003 /* EmailParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailParser.swift; sourceTree = "<group>"; };
 		6A0000000000000000000004 /* EmailParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailParserTests.swift; sourceTree = "<group>"; };
+		7A0000000000000000000002 /* FindReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindReplaceTests.swift; sourceTree = "<group>"; };
+		7B0000000000000000000002 /* TableNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableNavigator.swift; sourceTree = "<group>"; };
+		7B0000000000000000000004 /* TableSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSupportTests.swift; sourceTree = "<group>"; };
 		C1A000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A0000000000000000000010 /* Synth.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Synth.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000011 /* SynthApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SynthApp.swift; sourceTree = "<group>"; };
@@ -285,6 +291,7 @@
 					6A0000000000000000000011 /* QmdResolver.swift */,
 					6A0000000000000000000012 /* QmdClient.swift */,
 					6A0000000000000000000003 /* EmailParser.swift */,
+				7B0000000000000000000002 /* TableNavigator.swift */,
 					B1F000000000000000000300 /* Fonts */,
 					C1A000000000000000000002 /* Assets.xcassets */,
 
@@ -324,6 +331,8 @@
 				1A000000000000000000014A /* UnifiedIndexerTests.swift */,
 				1A000000000000000000014B /* ACPSessionStoreTests.swift */,
 				6A0000000000000000000004 /* EmailParserTests.swift */,
+				7A0000000000000000000002 /* FindReplaceTests.swift */,
+				7B0000000000000000000004 /* TableSupportTests.swift */,
 				1A0000000000000000000106 /* Info.plist */,
 			);
 			path = SynthAppTests;
@@ -488,6 +497,7 @@
 				6A0000000000000000000021 /* QmdResolver.swift in Sources */,
 				6A0000000000000000000022 /* QmdClient.swift in Sources */,
 				6A0000000000000000000001 /* EmailParser.swift in Sources */,
+				7B0000000000000000000001 /* TableNavigator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -507,6 +517,8 @@
 				1A000000000000000000021A /* UnifiedIndexerTests.swift in Sources */,
 				1A000000000000000000021B /* ACPSessionStoreTests.swift in Sources */,
 				6A0000000000000000000002 /* EmailParserTests.swift in Sources */,
+				7A0000000000000000000001 /* FindReplaceTests.swift in Sources */,
+				7B0000000000000000000003 /* TableSupportTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
