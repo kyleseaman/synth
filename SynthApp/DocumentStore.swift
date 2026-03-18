@@ -1140,17 +1140,17 @@ extension DocumentStore {
         renameTarget = nil
     }
 
-    func moveFile(from sourceURL: URL, to destinationFolder: URL) {
+    func moveFile(from sourceURL: URL, to destinationFolder: URL) -> URL? {
         let targetURL = destinationFolder.appendingPathComponent(sourceURL.lastPathComponent)
         guard sourceURL != targetURL,
-              sourceURL.deletingLastPathComponent() != destinationFolder else { return }
+              sourceURL.deletingLastPathComponent() != destinationFolder else { return nil }
         // Prevent moving a folder into itself or its own subtree
         if sourceURL.hasDirectoryPath || (try? sourceURL.resourceValues(
             forKeys: [.isDirectoryKey]
         ).isDirectory) == true {
             let sourcePath = sourceURL.standardizedFileURL.path
             let destPath = destinationFolder.standardizedFileURL.path
-            if destPath.hasPrefix(sourcePath) { return }
+            if destPath.hasPrefix(sourcePath) { return nil }
         }
         do {
             try FileManager.default.moveItem(at: sourceURL, to: targetURL)
@@ -1158,7 +1158,10 @@ extension DocumentStore {
                 openFiles[idx] = Document(url: targetURL, content: openFiles[idx].content)
             }
             loadFileTree()
-        } catch {}
+            return targetURL
+        } catch {
+            return nil
+        }
     }
 
     func promptNewFolder(in parent: URL) {

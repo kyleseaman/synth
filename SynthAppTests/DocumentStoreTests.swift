@@ -743,4 +743,71 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertEqual(files[0].lastPathComponent, "Alpha.txt")
         XCTAssertEqual(files[1].lastPathComponent, "Bravo.md")
     }
+
+    @MainActor
+    func testMoveFileReturnsDestinationURLAndUpdatesOpenDocumentPath() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let ideasDirectory = workspaceURL.appendingPathComponent("Ideas", isDirectory: true)
+        let draftsDirectory = workspaceURL.appendingPathComponent("Drafts", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: ideasDirectory, withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: draftsDirectory, withIntermediateDirectories: true
+        )
+
+        let sourceURL = ideasDirectory.appendingPathComponent("Moved Note.md")
+        try "# Move me".write(to: sourceURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.open(sourceURL)
+
+        let movedURL = store.moveFile(from: sourceURL, to: draftsDirectory)
+
+        let expectedURL = draftsDirectory.appendingPathComponent("Moved Note.md")
+        XCTAssertEqual(movedURL, expectedURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: expectedURL.path))
+        XCTAssertEqual(store.openFiles.first?.url, expectedURL)
+    }
+
+    @MainActor
+    func testKanbanDropUsesMovedURLInsteadOfOriginalSourceURL() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(
+            at: workspaceURL, withIntermediateDirectories: true
+        )
+
+        let sourceURL = workspaceURL
+            .appendingPathComponent("Ideas", isDirectory: true)
+            .appendingPathComponent("Renamed.md")
+        let movedURL = workspaceURL
+            .appendingPathComponent("Drafts", isDirectory: true)
+            .appendingPathComponent("Renamed.md")
+        let existingURL = workspaceURL
+            .appendingPathComponent("Drafts", isDirectory: true)
+            .appendingPathComponent("Alpha.md")
+
+        let updatedFilesByColumn = KanbanBoardView.updatedColumnsAfterDrop(
+            sourceURL: sourceURL,
+            targetFolder: "Drafts",
+            workspace: workspaceURL,
+            currentFilesByColumn: [
+                "Ideas": [sourceURL],
+                "Drafts": [existingURL],
+                "Ready for Review": []
+            ],
+            moveFile: { _, _ in movedURL }
+        )
+
+        XCTAssertEqual(updatedFilesByColumn["Ideas"], [])
+        XCTAssertEqual(Set(updatedFilesByColumn["Drafts"] ?? []), Set([existingURL, movedURL]))
+        XCTAssertFalse(updatedFilesByColumn["Drafts", default: []].contains(sourceURL))
+    }
 }
