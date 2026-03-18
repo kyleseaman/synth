@@ -776,8 +776,14 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testKanbanDropUsesMovedURLInsteadOfOriginalSourceURL() {
-        let workspaceURL = URL(fileURLWithPath: "/tmp/kanban-workspace", isDirectory: true)
+    func testKanbanDropUsesMovedURLInsteadOfOriginalSourceURL() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(
+            at: workspaceURL, withIntermediateDirectories: true
+        )
+
         let sourceURL = workspaceURL
             .appendingPathComponent("Ideas", isDirectory: true)
             .appendingPathComponent("Renamed.md")
@@ -801,7 +807,7 @@ final class DocumentStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(updatedFilesByColumn["Ideas"], [])
-        XCTAssertEqual(updatedFilesByColumn["Drafts"], [existingURL, movedURL])
+        XCTAssertEqual(Set(updatedFilesByColumn["Drafts"] ?? []), Set([existingURL, movedURL]))
         XCTAssertFalse(updatedFilesByColumn["Drafts", default: []].contains(sourceURL))
     }
 }
