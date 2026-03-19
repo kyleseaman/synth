@@ -27,24 +27,39 @@ struct FileTreeNode: Identifiable, Equatable, Transferable {
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url, includingPropertiesForKeys: keys
         ) else { return [] }
-        return contents
-            .filter {
-                let name = $0.lastPathComponent
-                if name.hasPrefix(".") { return false }
-                if name == "daily" || name == "media" { return false }
-                return true
-            }
+
+        // Single resourceValues lookup per item, reused for
+        // filtering, sorting, and mapping.
+        struct AnnotatedItem {
+            let url: URL
+            let isDirectory: Bool
+        }
+        let annotated: [AnnotatedItem] = contents.compactMap { item in
+            let name = item.lastPathComponent
+            if name.hasPrefix(".") { return nil }
+            if name == "daily" || name == "media" { return nil }
+            let isDir = (try? item.resourceValues(
+                forKeys: [.isDirectoryKey]
+            ).isDirectory) ?? false
+            return AnnotatedItem(url: item, isDirectory: isDir)
+        }
+        return annotated
             .sorted { first, second in
-                let firstDir = (try? first.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                let secondDir = (try? second.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                if firstDir != secondDir { return firstDir }
-                return first.lastPathComponent.localizedCaseInsensitiveCompare(
-                    second.lastPathComponent
-                ) == .orderedAscending
+                if first.isDirectory != second.isDirectory {
+                    return first.isDirectory
+                }
+                return first.url.lastPathComponent
+                    .localizedCaseInsensitiveCompare(
+                        second.url.lastPathComponent
+                    ) == .orderedAscending
             }
             .map { item in
-                let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                return FileTreeNode(url: item, isDirectory: isDir, children: isDir ? scan(item) : nil)
+                FileTreeNode(
+                    url: item.url,
+                    isDirectory: item.isDirectory,
+                    children: item.isDirectory
+                        ? scan(item.url) : nil
+                )
             }
     }
 

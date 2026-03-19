@@ -255,7 +255,7 @@ struct ContentView: View {
                         .padding(.horizontal, 6)
 
                         FileTreeView(nodes: store.fileTree, store: store)
-                            .id(store.fileTreeVersion)
+                            .id(store.workspace)
                             .contextMenu {
                                 if let workspace = store.workspace {
                                     Button {

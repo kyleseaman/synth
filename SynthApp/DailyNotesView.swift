@@ -6,14 +6,7 @@ import AppKit
 struct DailyNotesView: View {
     @Environment(DocumentStore.self) var store
     @State private var scrollTarget: String?
-
-    private var noteDates: Set<String> {
-        Set(
-            store.dailyNoteManager.entries
-                .filter { $0.exists }
-                .map { DailyNoteManager.dateIdentifier($0.date) }
-        )
-    }
+    @State private var cachedNoteDates: Set<String> = []
 
     var body: some View {
         @Bindable var store = store
@@ -26,13 +19,17 @@ struct DailyNotesView: View {
             // Calendar sidebar
             CalendarSidebarView(
                 onSelectDate: { date in scrollToDate(date) },
-                noteDates: noteDates
+                noteDates: cachedNoteDates
             )
         }
         .background(Color(.textBackgroundColor))
         .onAppear {
             loadAllEntries()
+            rebuildNoteDates()
             scrollToToday()
+        }
+        .onChange(of: store.dailyNoteManager.entries.map(\.exists)) {
+            rebuildNoteDates()
         }
         .onChange(of: store.dailyDateScrollTarget) { _, target in
             guard let target else { return }
@@ -77,6 +74,14 @@ struct DailyNotesView: View {
     private func loadAllEntries() {
         guard let workspace = store.workspace else { return }
         store.dailyNoteManager.load(workspace: workspace)
+    }
+
+    private func rebuildNoteDates() {
+        cachedNoteDates = Set(
+            store.dailyNoteManager.entries
+                .filter { $0.exists }
+                .map { DailyNoteManager.dateIdentifier($0.date) }
+        )
     }
 
     private func scrollToToday() {
@@ -225,29 +230,34 @@ struct DailyNoteEditor: NSViewRepresentable {
     ) {
         context.coordinator.store = store
         context.coordinator.autocomplete.store = store
+
+        // Skip expensive restore+compare while the user is
+        // actively editing or a formatting pass is in progress.
+        guard !context.coordinator.isEditing,
+              !context.coordinator.isFormatting
+        else { return }
+
         let restoredString = MarkdownFormat.restoreMarkup(
             in: textView.attributedString()
         )
-        if !context.coordinator.isEditing
-            && !context.coordinator.isFormatting
-            && restoredString != text {
-            context.coordinator.isFormatting = true
-            let format = MarkdownFormat(noteIndex: noteIndex)
-            textView.textStorage?.setAttributedString(
-                format.render(text)
+        guard restoredString != text else { return }
+
+        context.coordinator.isFormatting = true
+        let format = MarkdownFormat(noteIndex: noteIndex)
+        textView.textStorage?.setAttributedString(
+            format.render(text)
+        )
+        if let storage = textView.textStorage {
+            let baseFont = Theme.editorNSFont(ofSize: 16)
+            let baseDirectory = noteURL?
+                .deletingLastPathComponent()
+            MarkdownFormat.applyImageRendering(
+                in: storage,
+                baseFont: baseFont,
+                baseDirectoryURL: baseDirectory
             )
-            if let storage = textView.textStorage {
-                let baseFont = Theme.editorNSFont(ofSize: 16)
-                let baseDirectory = noteURL?
-                    .deletingLastPathComponent()
-                MarkdownFormat.applyImageRendering(
-                    in: storage,
-                    baseFont: baseFont,
-                    baseDirectoryURL: baseDirectory
-                )
-            }
-            context.coordinator.isFormatting = false
         }
+        context.coordinator.isFormatting = false
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }

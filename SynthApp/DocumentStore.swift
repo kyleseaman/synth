@@ -793,9 +793,9 @@ final class DocumentStore {
             if changed { treeChanged = true }
         }
 
-        if treeChanged {
-            fileTreeVersion &+= 1
-        }
+        // No need to manually bump fileTreeVersion here — the
+        // fileTree property's didSet already increments it when
+        // nodes are added/removed via the in-memory helpers.
     }
 
     private func scheduleFullRescan() {
