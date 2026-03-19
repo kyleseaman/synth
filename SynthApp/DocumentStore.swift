@@ -434,12 +434,6 @@ final class DocumentStore {
         return chatVisibleTabs.contains(openFiles[currentIndex].url)
     }
 
-    func switchTo(_ index: Int) {
-        guard index >= 0 && index < openFiles.count else { return }
-        currentIndex = index
-        detailMode = .editor
-    }
-
     func selectLinksTab() {
         detailMode = .links
     }

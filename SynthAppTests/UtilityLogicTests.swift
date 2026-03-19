@@ -1729,8 +1729,83 @@ extension DocumentModelTests {
         XCTAssertEqual(status?.hasEmbeddings, true)
     }
 
+    func testQmdClientParseStatusIgnoresCollectionsWithoutPath() {
+        let json = Data("""
+        {"collections": [{"name": "workspace"}], "documents": 42, "embeddings": true}
+        """.utf8)
+        let status = QmdClient.parseStatus(json)
+        XCTAssertNotNil(status)
+        XCTAssertEqual(status?.collections, [])
+        XCTAssertEqual(status?.documentCount, 42)
+        XCTAssertEqual(status?.hasEmbeddings, true)
+    }
+
     func testQmdClientParseStatusInvalidJSON() {
         let garbage = Data("nope".utf8)
         XCTAssertNil(QmdClient.parseStatus(garbage))
+    }
+
+    func testQmdClientWorkspaceIndexMatchingRequiresExactNormalizedPath() {
+        let workspaceURL = URL(fileURLWithPath: "/Users/test/workspace")
+        let matchingCollections = [
+            "/Users/test/workspace",
+            "/Users/test/other"
+        ]
+        let suffixOnlyCollections = [
+            "workspace",
+            "/tmp/workspace"
+        ]
+
+        XCTAssertTrue(
+            QmdClient.isWorkspaceIndexed(
+                workspace: workspaceURL,
+                collections: matchingCollections
+            )
+        )
+        XCTAssertFalse(
+            QmdClient.isWorkspaceIndexed(
+                workspace: workspaceURL,
+                collections: suffixOnlyCollections
+            )
+        )
+    }
+
+    func testFileLauncherSubmitActionPrefersOpenBeforeDeepSearch() {
+        XCTAssertEqual(
+            FileLauncher.submitAction(
+                trimmedQuery: "roadmap",
+                resultCount: 3,
+                selectedIndex: 0,
+                qmdResultsCount: 0,
+                isWorkspaceIndexed: true
+            ),
+            .openSelected
+        )
+    }
+
+    func testFileLauncherSubmitActionTriggersDeepSearchWithoutSelection() {
+        XCTAssertEqual(
+            FileLauncher.submitAction(
+                trimmedQuery: "roadmap",
+                resultCount: 3,
+                selectedIndex: -1,
+                qmdResultsCount: 0,
+                isWorkspaceIndexed: true
+            ),
+            .triggerQmdSearch
+        )
+    }
+
+    func testFileLauncherSubmitActionDoesNotOpenWithInvalidSelection() {
+        XCTAssertEqual(
+            FileLauncher.submitAction(
+                trimmedQuery: "roadmap",
+                resultCount: 3,
+                selectedIndex: 8,
+                qmdResultsCount: 0,
+                isWorkspaceIndexed: true
+            ),
+            .triggerQmdSearch
+        )
     }
 }

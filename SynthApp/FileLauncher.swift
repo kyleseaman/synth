@@ -77,6 +77,12 @@ extension String {
 }
 
 struct FileLauncher: View {
+    enum SubmitAction: Equatable {
+        case openSelected
+        case triggerQmdSearch
+        case noAction
+    }
+
     @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     @State private var query = ""
@@ -464,19 +470,40 @@ struct FileLauncher: View {
 
     private func handleSubmit() {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        // If there's a selected result, open it directly
-        if !results.isEmpty && selectedIndex < results.count && !trimmed.isEmpty {
-            // If QMD is available and we haven't searched yet, trigger QMD search
-            if store.qmdClient?.isWorkspaceIndexed == true && qmdResults.isEmpty {
-                triggerQmdSearch(trimmed)
-                return
-            }
+        switch Self.submitAction(
+            trimmedQuery: trimmed,
+            resultCount: results.count,
+            selectedIndex: selectedIndex,
+            qmdResultsCount: qmdResults.count,
+            isWorkspaceIndexed: store.qmdClient?.isWorkspaceIndexed == true
+        ) {
+        case .openSelected:
             openSelected()
+        case .triggerQmdSearch:
+            triggerQmdSearch(trimmed)
+        case .noAction:
             return
         }
-        if !results.isEmpty {
-            openSelected()
+    }
+
+    static func submitAction(
+        trimmedQuery: String,
+        resultCount: Int,
+        selectedIndex: Int,
+        qmdResultsCount: Int,
+        isWorkspaceIndexed: Bool
+    ) -> SubmitAction {
+        let hasSelection = selectedIndex >= 0 && selectedIndex < resultCount
+        if hasSelection {
+            return .openSelected
         }
+        let canSearchQmd = !trimmedQuery.isEmpty
+            && isWorkspaceIndexed
+            && qmdResultsCount == 0
+        if canSearchQmd {
+            return .triggerQmdSearch
+        }
+        return .noAction
     }
 
     private func triggerQmdSearch(_ searchQuery: String) {

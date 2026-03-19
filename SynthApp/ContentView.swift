@@ -134,22 +134,6 @@ struct ContentView: View {
         }
     }
 
-    private var tabBar: some CustomizableToolbarContent {
-        ToolbarItem(id: "tabBar", placement: .principal) {
-            HStack(spacing: 4) {
-                ForEach(store.openFiles.indices, id: \.self) { index in
-                    TabButton(
-                        title: store.openFiles[index].url.lastPathComponent,
-                        isSelected: index == store.currentIndex,
-                        isDirty: store.openFiles[index].isDirty,
-                        onSelect: { store.switchTo(index) },
-                        onClose: { store.closeTab(at: index) }
-                    )
-                }
-            }
-        }
-    }
-
     private var backlinksToolbarButton: some CustomizableToolbarContent {
         ToolbarItem(id: "toggleBacklinks", placement: .primaryAction) {
             Button {
@@ -404,7 +388,6 @@ struct ContentView: View {
                 }
             }
             .toolbar(id: "tabs") {
-                tabBar
                 backlinksToolbarButton
             }
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -754,47 +737,6 @@ struct FileNodeView: View {
                 }
                 .draggable(node)
         }
-    }
-}
-
-// MARK: - Tab Button
-
-struct TabButton: View {
-    let title: String
-    let isSelected: Bool
-    let isDirty: Bool
-    let onSelect: () -> Void
-    let onClose: (() -> Void)?
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(Theme.uiSwiftUIFont(size: 12))
-                    .lineLimit(1)
-
-                if let onClose {
-                    Button(action: onClose) {
-                        Image(systemName: isDirty ? "circle.fill" : "xmark")
-                            .font(Theme.uiSwiftUIFont(size: isDirty ? 6 : 9, weight: .bold))
-                            .foregroundStyle(isDirty ? .orange : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .opacity(isHovering || isSelected || isDirty ? 1 : 0)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background {
-                if isSelected {
-                    Capsule().fill(.ultraThinMaterial)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(isSelected ? .primary : .secondary)
-        .onHover { isHovering = $0 }
     }
 }
 
