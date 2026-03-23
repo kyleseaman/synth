@@ -198,6 +198,8 @@ final class DailyNoteManager {
     }
 
     func saveAll() {
+        saveTimer?.invalidate()
+        saveTimer = nil
         for index in entries.indices where entries[index].isDirty {
             try? entries[index].content.write(
                 to: entries[index].url,

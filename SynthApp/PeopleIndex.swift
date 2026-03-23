@@ -17,9 +17,8 @@ import Observation
 
     // Person regex: @ followed by a word, optionally followed by space + Capitalized words
     // Single-word: any case. Multi-word: subsequent words must start uppercase (Title Case).
-    // swiftlint:disable:next force_try
-    static let personPattern = try! NSRegularExpression(
-        pattern: "(?<![\\w@])@([A-Za-z][A-Za-z0-9_-]*(?:\\s[A-Z][a-zA-Z0-9_-]*)*)(?=[^a-zA-Z0-9_-]|$)"
+    static let personPattern = BacklinkIndex.makeRegex(
+        "(?<![\\w@])@([A-Za-z][A-Za-z0-9_-]*(?:\\s[A-Z][a-zA-Z0-9_-]*)*)(?=[^a-zA-Z0-9_-]|$)"
     )
 
     private static let dateTokens: Set<String> = ["today", "yesterday", "tomorrow"]
@@ -47,31 +46,6 @@ import Observation
     }
 
     // MARK: - Full Rebuild
-
-    /// Full rebuild from workspace file tree.
-    func rebuild(fileTree: [FileTreeNode]) {
-        var newPersonToFiles: [String: Set<URL>] = [:]
-        var newFileToPersons: [URL: Set<String>] = [:]
-
-        let files = Self.flattenMarkdownFiles(fileTree)
-        for file in files {
-            guard let content = try? String(contentsOf: file.url, encoding: .utf8) else { continue }
-            let people = scanFile(content: content)
-            newFileToPersons[file.url] = people
-            for person in people {
-                newPersonToFiles[person, default: []].insert(file.url)
-            }
-        }
-
-        personToFiles = newPersonToFiles
-        fileToPersons = newFileToPersons
-        // Merge discovered people into global set
-        let discovered = Set(newPersonToFiles.keys)
-        if !discovered.isEmpty {
-            globalPeople.formUnion(discovered)
-            saveGlobal()
-        }
-    }
 
     /// Rebuild from pre-read file contents (unified indexer path)
     func rebuild(from files: [UnifiedIndexer.FileContent]) {
@@ -220,19 +194,4 @@ import Observation
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 
-    private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
-        var result: [FileTreeNode] = []
-        for node in nodes {
-            if !node.isDirectory {
-                let ext = node.url.pathExtension.lowercased()
-                if ext == "md" || ext == "txt" {
-                    result.append(node)
-                }
-            }
-            if let children = node.children {
-                result.append(contentsOf: flattenMarkdownFiles(children))
-            }
-        }
-        return result
-    }
 }

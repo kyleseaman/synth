@@ -856,9 +856,13 @@ struct EditorViewSimple: View {
             publishSelectionContext()
         }
         .onChange(of: store.currentIndex) { _, _ in loadText() }
-        .onChange(of: store.openFiles[safe: store.currentIndex]?.content.string) { _, newValue in
+        .onChange(of: store.openFiles[safe: store.currentIndex]?.contentVersion) { _, newVersion in
             // Reload when file content changes externally (e.g., Kiro agent edit)
-            if let newValue, newValue != text {
+            guard newVersion != nil else { return }
+            guard store.currentIndex >= 0,
+                  store.currentIndex < store.openFiles.count else { return }
+            let newValue = store.openFiles[store.currentIndex].content.string
+            if newValue != text {
                 text = newValue
             }
         }

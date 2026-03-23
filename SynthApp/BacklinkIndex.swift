@@ -20,28 +20,6 @@ import Observation
 
     // MARK: - Full Rebuild
 
-    /// Full rebuild from workspace file tree. Run on background thread.
-    func rebuild(fileTree: [FileTreeNode]) {
-        var newIncoming: [String: Set<URL>] = [:]
-        var newOutgoing: [URL: Set<String>] = [:]
-        var newSnippets: [URL: [String: String]] = [:]
-
-        let files = Self.flattenMarkdownFiles(fileTree)
-        for file in files {
-            guard let content = try? String(contentsOf: file.url, encoding: .utf8) else { continue }
-            let (targets, snippets) = scanFile(content: content)
-            newOutgoing[file.url] = targets
-            newSnippets[file.url] = snippets
-            for target in targets {
-                newIncoming[target, default: []].insert(file.url)
-            }
-        }
-
-        incomingLinks = newIncoming
-        outgoingLinks = newOutgoing
-        contextSnippets = newSnippets
-    }
-
     /// Rebuild from pre-read file contents (unified indexer path)
     func rebuild(from files: [UnifiedIndexer.FileContent]) {
         var newIncoming: [String: Set<URL>] = [:]
@@ -182,23 +160,7 @@ import Observation
         return (targets, snippets)
     }
 
-    private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
-        var result: [FileTreeNode] = []
-        for node in nodes {
-            if !node.isDirectory {
-                let ext = node.url.pathExtension.lowercased()
-                if ext == "md" || ext == "txt" {
-                    result.append(node)
-                }
-            }
-            if let children = node.children {
-                result.append(contentsOf: flattenMarkdownFiles(children))
-            }
-        }
-        return result
-    }
-
-    private static func makeRegex(_ pattern: String) -> NSRegularExpression {
+    static func makeRegex(_ pattern: String) -> NSRegularExpression {
         do {
             return try NSRegularExpression(pattern: pattern)
         } catch {

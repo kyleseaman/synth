@@ -95,14 +95,15 @@ final class TagAndPeopleIndexTests: XCTestCase {
         try "@bob".write(to: textURL, atomically: true, encoding: .utf8)
         try "@carol".write(to: imageURL, atomically: true, encoding: .utf8)
 
-        let fileTree = [
-            FileTreeNode(url: markdownURL, isDirectory: false, children: nil),
-            FileTreeNode(url: textURL, isDirectory: false, children: nil),
-            FileTreeNode(url: imageURL, isDirectory: false, children: nil)
+        // Use UnifiedIndexer.FileContent to match the rebuild(from:) API
+        let fileContents = [
+            UnifiedIndexer.FileContent(url: markdownURL, content: "@alice"),
+            UnifiedIndexer.FileContent(url: textURL, content: "@bob")
+            // image.png excluded — only md/txt should be passed
         ]
 
         let index = PeopleIndex()
-        index.rebuild(fileTree: fileTree)
+        index.rebuild(from: fileContents)
 
         XCTAssertEqual(index.notes(for: "alice"), [markdownURL])
         XCTAssertEqual(index.notes(for: "bob"), [textURL])

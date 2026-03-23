@@ -11,9 +11,8 @@ import Observation
     @ObservationIgnored private var fileToTags: [URL: Set<String>] = [:]
 
     // Tag regex: must start with letter after #, min 2 chars after #, not preceded by # or word char
-    // swiftlint:disable:next force_try
-    static let tagPattern = try! NSRegularExpression(
-        pattern: "(?<![#\\w])#([a-zA-Z][a-zA-Z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
+    static let tagPattern = BacklinkIndex.makeRegex(
+        "(?<![#\\w])#([a-zA-Z][a-zA-Z0-9_-]{1,49})(?=[^a-zA-Z0-9_-]|$)"
     )
 
     // MARK: - All Tags
@@ -26,25 +25,6 @@ import Observation
     }
 
     // MARK: - Full Rebuild
-
-    /// Full rebuild from workspace file tree.
-    func rebuild(fileTree: [FileTreeNode]) {
-        var newTagToFiles: [String: Set<URL>] = [:]
-        var newFileToTags: [URL: Set<String>] = [:]
-
-        let files = Self.flattenMarkdownFiles(fileTree)
-        for file in files {
-            guard let content = try? String(contentsOf: file.url, encoding: .utf8) else { continue }
-            let tags = scanFile(content: content)
-            newFileToTags[file.url] = tags
-            for tag in tags {
-                newTagToFiles[tag, default: []].insert(file.url)
-            }
-        }
-
-        tagToFiles = newTagToFiles
-        fileToTags = newFileToTags
-    }
 
     /// Rebuild from pre-read file contents (unified indexer path)
     func rebuild(from files: [UnifiedIndexer.FileContent]) {
@@ -168,19 +148,4 @@ import Observation
         return tags
     }
 
-    private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
-        var result: [FileTreeNode] = []
-        for node in nodes {
-            if !node.isDirectory {
-                let ext = node.url.pathExtension.lowercased()
-                if ext == "md" || ext == "txt" {
-                    result.append(node)
-                }
-            }
-            if let children = node.children {
-                result.append(contentsOf: flattenMarkdownFiles(children))
-            }
-        }
-        return result
-    }
 }

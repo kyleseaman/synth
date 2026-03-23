@@ -207,7 +207,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("archtecture")
 
         XCTAssertEqual(results.first?.title, "Architecture Decisions")
@@ -237,7 +237,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("status recap")
 
         XCTAssertEqual(results.first?.title, "Team Catchup")
@@ -259,7 +259,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("neural retrieval")
 
         XCTAssertEqual(results.first?.title, "Search Ideas")
@@ -290,7 +290,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("plan tag:project")
 
         XCTAssertEqual(results.count, 1)
@@ -321,7 +321,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("person:alex")
 
         XCTAssertEqual(results.count, 1)
@@ -354,7 +354,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("status path:meetings")
 
         XCTAssertEqual(results.count, 1)
@@ -385,7 +385,7 @@ final class NoteIndexSearchTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         let results = noteIndex.search("\"resilient search pipeline\"")
 
         XCTAssertEqual(results.count, 1)
@@ -407,6 +407,22 @@ final class NoteIndexSearchTests: XCTestCase {
     private func write(_ name: String, content: String, at folderURL: URL) throws {
         let fileURL = folderURL.appendingPathComponent(name)
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
+    }
+
+    private func fileContents(at workspace: URL) -> [UnifiedIndexer.FileContent] {
+        let nodes = FileTreeNode.scan(workspace)
+        return flattenFiles(nodes).compactMap { node in
+            guard let content = try? String(contentsOf: node.url, encoding: .utf8) else { return nil }
+            return UnifiedIndexer.FileContent(url: node.url, content: content)
+        }
+    }
+
+    private func flattenFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {
+        nodes.flatMap { node in
+            if node.isDirectory { return flattenFiles(node.children ?? []) }
+            let ext = node.url.pathExtension.lowercased()
+            return (ext == "md" || ext == "txt") ? [node] : []
+        }
     }
 }
 
