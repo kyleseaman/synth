@@ -515,6 +515,29 @@ final class UtilityLogicTests: XCTestCase {
 }
 
 final class NoteIndexTests: XCTestCase {
+    /// Convert FileTreeNodes to FileContent, reading from disk when files exist.
+    private func fileContents(
+        from nodes: [FileTreeNode]
+    ) -> [UnifiedIndexer.FileContent] {
+        var result: [UnifiedIndexer.FileContent] = []
+        for node in nodes {
+            if node.isDirectory {
+                result.append(contentsOf: fileContents(from: node.children ?? []))
+            } else {
+                let ext = node.url.pathExtension.lowercased()
+                guard ext == "md" || ext == "txt" else { continue }
+                let content = (try? String(contentsOf: node.url, encoding: .utf8)) ?? ""
+                result.append(UnifiedIndexer.FileContent(url: node.url, content: content))
+            }
+        }
+        return result
+    }
+
+    /// Convert a scanned workspace to FileContent.
+    private func fileContents(at workspace: URL) -> [UnifiedIndexer.FileContent] {
+        fileContents(from: FileTreeNode.scan(workspace))
+    }
+
     func testRebuildSearchAndFindExactBehavior() {
         let workspaceURL = URL(fileURLWithPath: "/tmp/workspace-notes", isDirectory: true)
         let firstNote = FileTreeNode(
@@ -539,7 +562,7 @@ final class NoteIndexTests: XCTestCase {
         )
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: [firstNote, nestedFolder], workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(from: [firstNote, nestedFolder]), workspace: workspaceURL)
 
         XCTAssertTrue(noteIndex.isPopulated)
         XCTAssertEqual(noteIndex.notes.count, 2)
@@ -563,7 +586,7 @@ final class NoteIndexTests: XCTestCase {
         }
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: allNodes, workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(from: allNodes), workspace: workspaceURL)
 
         XCTAssertEqual(noteIndex.notes.count, 25)
         XCTAssertEqual(noteIndex.search("").count, 20)
@@ -581,7 +604,7 @@ final class NoteIndexTests: XCTestCase {
         try "alpha report".write(to: secondNoteURL, atomically: true, encoding: .utf8)
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: FileTreeNode.scan(workspaceURL), workspace: workspaceURL)
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
         guard let indexedFirstURL = noteIndex.findExact("First")?.url else {
             XCTFail("Missing indexed first note")
             return
@@ -1260,7 +1283,7 @@ extension NoteIndexTests {
         try "added content".write(to: fileURL, atomically: true, encoding: .utf8)
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: [FileTreeNode](), workspace: workspaceURL)
+        noteIndex.rebuild(from: [UnifiedIndexer.FileContent](), workspace: workspaceURL)
         noteIndex.addFile(fileURL, content: "added content", workspace: workspaceURL)
 
         XCTAssertNotNil(noteIndex.findExact("Added"))
@@ -1276,7 +1299,7 @@ extension NoteIndexTests {
         try "content".write(to: fileURL, atomically: true, encoding: .utf8)
 
         let noteIndex = NoteIndex()
-        noteIndex.rebuild(from: [FileTreeNode](), workspace: workspaceURL)
+        noteIndex.rebuild(from: [UnifiedIndexer.FileContent](), workspace: workspaceURL)
         noteIndex.addFile(fileURL, content: "content", workspace: workspaceURL)
         XCTAssertNotNil(noteIndex.findExact("Remove"))
 

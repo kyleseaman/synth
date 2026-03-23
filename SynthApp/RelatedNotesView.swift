@@ -2,6 +2,14 @@ import SwiftUI
 
 // MARK: - Related Notes Section
 
+struct RelatedNote: Identifiable, Equatable {
+    let url: URL
+    let title: String
+    let score: Int
+    let reason: String
+    var id: URL { url }
+}
+
 struct RelatedNotesSection: View {
     let noteTitle: String
     let noteURL: URL?
@@ -9,100 +17,18 @@ struct RelatedNotesSection: View {
     var tagIndex: TagIndex
     let onNavigate: (URL) -> Void
     @AppStorage("relatedNotesExpanded") private var isExpanded = false
-
-    // MARK: - Related Notes Computation
-
-    var relatedNotes: [(url: URL, title: String, score: Int, reason: String)] {
-        guard !noteTitle.isEmpty else { return [] }
-        let currentTitle = noteTitle.lowercased()
-
-        // Gather all candidate notes from both indexes
-        var candidates: [URL: Int] = [:]
-        var reasons: [URL: [String]] = [:]
-
-        // 1. Shared tags (weight: 2 per shared tag)
-        let currentNoteTags: Set<String> = noteURL.map { tagIndex.tags(for: $0) } ?? []
-        if !currentNoteTags.isEmpty {
-            for tag in currentNoteTags {
-                let filesWithTag = tagIndex.notes(for: tag)
-                for fileURL in filesWithTag {
-                    guard fileURL != noteURL else { continue }
-                    candidates[fileURL, default: 0] += 2
-                    if reasons[fileURL] == nil { reasons[fileURL] = [] }
-                    reasons[fileURL]?.append("#\(tag)")
-                }
-            }
-        }
-
-        // 2. Mutual backlinks (weight: 3)
-        // Notes that link to current AND current links to them
-        let currentOutgoing: Set<String> = noteURL.map {
-            backlinkIndex.outgoing(from: $0)
-        } ?? []
-        let currentIncoming = backlinkIndex.links(to: noteTitle)
-        let mutualLinks = currentIncoming.filter { url in
-            let theirTitle = url.deletingPathExtension().lastPathComponent.lowercased()
-            return currentOutgoing.contains(theirTitle)
-        }
-        for fileURL in mutualLinks {
-            guard fileURL != noteURL else { continue }
-            candidates[fileURL, default: 0] += 3
-            if reasons[fileURL] == nil { reasons[fileURL] = [] }
-            reasons[fileURL]?.append("mutual link")
-        }
-
-        // 3. Common link targets (weight: 1 per shared target)
-        for otherURL in allNoteURLs() {
-            let otherTitle = otherURL.deletingPathExtension().lastPathComponent.lowercased()
-            guard otherTitle != currentTitle else { continue }
-            let otherOutgoing = backlinkIndex.outgoing(from: otherURL)
-            let sharedTargets = currentOutgoing.intersection(otherOutgoing)
-            if !sharedTargets.isEmpty {
-                candidates[otherURL, default: 0] += sharedTargets.count
-                if reasons[otherURL] == nil { reasons[otherURL] = [] }
-                for target in sharedTargets.prefix(2) {
-                    reasons[otherURL]?.append("links to [[\(target)]]")
-                }
-            }
-        }
-
-        // 4. Shared incoming links (weight: 1 per shared source)
-        let incomingURLs = currentIncoming
-        for otherURL in allNoteURLs() {
-            let otherTitle = otherURL.deletingPathExtension().lastPathComponent.lowercased()
-            guard otherTitle != currentTitle else { continue }
-            let otherIncoming = backlinkIndex.links(to: otherTitle)
-            let sharedSources = incomingURLs.intersection(otherIncoming)
-            if !sharedSources.isEmpty {
-                candidates[otherURL, default: 0] += sharedSources.count
-            }
-        }
-
-        // Filter by minimum score and sort
-        return candidates
-            .filter { $0.value >= 2 }
-            .map { (url, score) in
-                let title = url.deletingPathExtension().lastPathComponent
-                let reasonList = reasons[url] ?? []
-                let reason = formatReason(reasonList)
-                return (url: url, title: title, score: score, reason: reason)
-            }
-            .sorted { $0.score > $1.score }
-            .prefix(8)
-            .map { $0 }
-    }
+    @State private var cachedNotes: [RelatedNote] = []
 
     // MARK: - Body
 
     var body: some View {
-        let notes = relatedNotes
-        if !notes.isEmpty {
+        if !cachedNotes.isEmpty {
             VStack(spacing: 0) {
                 Divider()
 
                 DisclosureGroup(isExpanded: $isExpanded) {
                     VStack(alignment: .leading, spacing: 8) {
-                        ForEach(notes, id: \.url) { note in
+                        ForEach(cachedNotes) { note in
                             RelatedNoteRow(
                                 title: note.title,
                                 reason: note.reason
@@ -115,7 +41,7 @@ struct RelatedNotesSection: View {
                     .padding(.top, 8)
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Related Notes (\(notes.count))")
+                        Text("Related Notes (\(cachedNotes.count))")
                             .font(Theme.uiSwiftUIFont(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -127,11 +53,86 @@ struct RelatedNotesSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
+
+        Color.clear.frame(height: 0)
+            .task(id: noteTitle) { recompute() }
+            .onChange(of: backlinkIndex.incomingLinks.count) { _, _ in recompute() }
+            .onChange(of: tagIndex.tagToFiles.count) { _, _ in recompute() }
     }
 
-    // MARK: - Helpers
+    // MARK: - Computation (runs outside view body)
 
-    private func allNoteURLs() -> Set<URL> {
+    private func recompute() {
+        guard !noteTitle.isEmpty else {
+            cachedNotes = []
+            return
+        }
+        let currentTitle = noteTitle.lowercased()
+        var candidates: [URL: Int] = [:]
+        var reasons: [URL: [String]] = [:]
+
+        // 1. Shared tags (weight: 2 per shared tag)
+        let currentNoteTags: Set<String> = noteURL.map { tagIndex.tags(for: $0) } ?? []
+        for tag in currentNoteTags {
+            for fileURL in tagIndex.notes(for: tag) where fileURL != noteURL {
+                candidates[fileURL, default: 0] += 2
+                reasons[fileURL, default: []].append("#\(tag)")
+            }
+        }
+
+        // 2. Mutual backlinks (weight: 3)
+        let currentOutgoing: Set<String> = noteURL.map {
+            backlinkIndex.outgoing(from: $0)
+        } ?? []
+        let currentIncoming = backlinkIndex.links(to: noteTitle)
+        for fileURL in currentIncoming where fileURL != noteURL {
+            let theirTitle = fileURL.deletingPathExtension().lastPathComponent.lowercased()
+            if currentOutgoing.contains(theirTitle) {
+                candidates[fileURL, default: 0] += 3
+                reasons[fileURL, default: []].append("mutual link")
+            }
+        }
+
+        // 3. Common link targets + 4. Shared incoming (single pass over all note URLs)
+        let allURLs = collectAllNoteURLs()
+        for otherURL in allURLs {
+            let otherTitle = otherURL.deletingPathExtension().lastPathComponent.lowercased()
+            guard otherTitle != currentTitle else { continue }
+
+            // Shared outgoing targets
+            let otherOutgoing = backlinkIndex.outgoing(from: otherURL)
+            let sharedTargets = currentOutgoing.intersection(otherOutgoing)
+            if !sharedTargets.isEmpty {
+                candidates[otherURL, default: 0] += sharedTargets.count
+                for target in sharedTargets.prefix(2) {
+                    reasons[otherURL, default: []].append("links to [[\(target)]]")
+                }
+            }
+
+            // Shared incoming sources
+            let otherIncoming = backlinkIndex.links(to: otherTitle)
+            let sharedSources = currentIncoming.intersection(otherIncoming)
+            if !sharedSources.isEmpty {
+                candidates[otherURL, default: 0] += sharedSources.count
+            }
+        }
+
+        cachedNotes = candidates
+            .filter { $0.value >= 2 }
+            .map { (url, score) in
+                RelatedNote(
+                    url: url,
+                    title: url.deletingPathExtension().lastPathComponent,
+                    score: score,
+                    reason: Self.formatReason(reasons[url] ?? [])
+                )
+            }
+            .sorted { $0.score > $1.score }
+            .prefix(8)
+            .map { $0 }
+    }
+
+    private func collectAllNoteURLs() -> Set<URL> {
         var urls: Set<URL> = []
         for urlSet in tagIndex.tagToFiles.values {
             urls.formUnion(urlSet)
@@ -142,7 +143,7 @@ struct RelatedNotesSection: View {
         return urls
     }
 
-    private func formatReason(_ reasons: [String]) -> String {
+    private static func formatReason(_ reasons: [String]) -> String {
         let unique = Array(Set(reasons))
         if unique.isEmpty { return "related content" }
 

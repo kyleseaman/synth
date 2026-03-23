@@ -223,18 +223,6 @@ final class DocumentStore {
         mcpServer.start(workspace: url)
         initializeQmd(workspace: url)
         loadFileTree()
-        // Clean orphaned media only on workspace open, not every scan
-        Task(priority: .utility) { [weak self] in
-            let removed = Self.cleanOrphanedMedia(
-                mediaFiles: MediaManager.screenshotURLs(in: url),
-                workspace: url
-            )
-            if !removed.isEmpty {
-                await MainActor.run {
-                    self?.mediaFiles.removeAll { removed.contains($0) }
-                }
-            }
-        }
     }
 
     func loadFileTree() {
@@ -297,14 +285,31 @@ final class DocumentStore {
     private func applyScanResult(_ scanResult: WorkspaceScanResult, workspace: URL) {
         fileTree = scanResult.tree
         mediaFiles = scanResult.media
-        // Use unified indexer - reads each file once for all indexes
+        // Use unified indexer - reads files in parallel off main thread
         let context = IndexContext(
             noteIndex: noteIndex,
             backlinkIndex: backlinkIndex,
             tagIndex: tagIndex,
             peopleIndex: peopleIndex
         )
-        UnifiedIndexer.rebuildAll(fileTree: scanResult.tree, workspace: workspace, context: context)
+        Task {
+            await UnifiedIndexer.rebuildAllAsync(
+                fileTree: scanResult.tree, workspace: workspace, context: context
+            )
+            // Clean orphaned media after indexes are populated
+            let currentMedia = scanResult.media
+            let index = self.noteIndex
+            Task(priority: .utility) {
+                let removed = Self.cleanOrphanedMedia(
+                    mediaFiles: currentMedia, workspace: workspace, noteIndex: index
+                )
+                if !removed.isEmpty {
+                    await MainActor.run { [weak self] in
+                        self?.mediaFiles.removeAll { removed.contains($0) }
+                    }
+                }
+            }
+        }
     }
 
     private func rebuildIndexesFromCurrentTree() {
@@ -315,43 +320,23 @@ final class DocumentStore {
             tagIndex: tagIndex,
             peopleIndex: peopleIndex
         )
-        UnifiedIndexer.rebuildAll(fileTree: fileTree, workspace: workspace, context: context)
+        Task {
+            await UnifiedIndexer.rebuildAllAsync(
+                fileTree: fileTree, workspace: workspace, context: context
+            )
+        }
     }
 
     @discardableResult
     private static func cleanOrphanedMedia(
-        mediaFiles: [URL], workspace: URL
+        mediaFiles: [URL], workspace: URL, noteIndex: NoteIndex
     ) -> Set<URL> {
         guard !mediaFiles.isEmpty else { return [] }
 
-        // Build set of media filenames we're checking
-        let mediaFilenames = Set(mediaFiles.map { $0.lastPathComponent })
-
-        // Single pass: collect all referenced media filenames from markdown files
-        var referencedFilenames: Set<String> = []
-        let enumerator = FileManager.default.enumerator(
-            at: workspace,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathExtension == "md" else { continue }
-            guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
-            // Check which media files are referenced in this content
-            for filename in mediaFilenames where content.contains(filename) {
-                referencedFilenames.insert(filename)
-            }
-            // Early exit if all media files are referenced
-            if referencedFilenames.count == mediaFilenames.count {
-                break
-            }
-        }
-
-        // Delete unreferenced media files
         var removed: Set<URL> = []
         for mediaURL in mediaFiles {
             let filename = mediaURL.lastPathComponent
-            if !referencedFilenames.contains(filename) {
+            if noteIndex.notesContaining(filename).isEmpty {
                 try? FileManager.default.trashItem(at: mediaURL, resultingItemURL: nil)
                 removed.insert(mediaURL)
             }
@@ -445,25 +430,7 @@ final class DocumentStore {
     func notesReferencing(
         mediaFilename: String
     ) -> [(title: String, url: URL)] {
-        guard let workspace else { return [] }
-        var results: [(title: String, url: URL)] = []
-        let enumerator = FileManager.default.enumerator(
-            at: workspace,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathExtension == "md",
-                  let content = try? String(
-                      contentsOf: fileURL, encoding: .utf8
-                  ),
-                  content.contains(mediaFilename)
-            else { continue }
-            let title = fileURL.deletingPathExtension()
-                .lastPathComponent
-            results.append((title: title, url: fileURL))
-        }
-        return results
+        noteIndex.notesContaining(mediaFilename)
     }
 
     var currentDocumentURL: URL? {
@@ -609,7 +576,6 @@ final class DocumentStore {
 
         // Background save for plain text files
         if !docsToSave.isEmpty {
-            saveQueue.cancelAllOperations()
             let operation = BlockOperation { [docsToSave] in
                 for doc in docsToSave {
                     try? doc.content.write(to: doc.url, atomically: true, encoding: .utf8)
@@ -753,7 +719,7 @@ final class DocumentStore {
         guard !relevant.isEmpty else { return }
 
         // Fallback to full rescan for large batches
-        if relevant.count > 20 {
+        if relevant.count > 10 {
             scheduleFullRescan()
             return
         }

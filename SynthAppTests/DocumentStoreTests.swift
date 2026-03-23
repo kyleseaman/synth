@@ -119,7 +119,7 @@ final class DocumentStoreTests: XCTestCase {
         store.open(secondURL)
 
         XCTAssertEqual(store.currentIndex, 1)
-        store.switchTo(0)
+        store.currentIndex = 0
         XCTAssertEqual(store.currentIndex, 0)
 
         store.closeTab(at: 0)
@@ -256,6 +256,19 @@ final class DocumentStoreTests: XCTestCase {
 
         let store = DocumentStore()
         store.workspace = workspaceURL
+
+        // Populate the note index so notesReferencing can query it
+        let context = IndexContext(
+            noteIndex: store.noteIndex,
+            backlinkIndex: store.backlinkIndex,
+            tagIndex: store.tagIndex,
+            peopleIndex: store.peopleIndex
+        )
+        UnifiedIndexer.rebuildAll(
+            fileTree: FileTreeNode.scan(workspaceURL),
+            workspace: workspaceURL,
+            context: context
+        )
 
         let notes = store.notesReferencing(mediaFilename: "screenshot.png")
         let returnedPaths = Set(notes.map { $0.url.standardizedFileURL.path })

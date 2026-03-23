@@ -11,28 +11,38 @@ struct IndexContext {
 /// Unified indexer that reads each file once and updates all indexes
 enum UnifiedIndexer {
     /// Result of scanning a single file
-    struct FileContent {
+    struct FileContent: Sendable {
         let url: URL
         let content: String
     }
 
-    /// Rebuild all indexes from file tree, reading each file only once
-    /// File reading is parallelized for better performance on large workspaces
+    /// Rebuild all indexes from file tree, reading each file only once.
+    /// File reading is parallelized; index building runs on the calling thread.
+    /// For async variant, use `rebuildAllAsync`.
     static func rebuildAll(
         fileTree: [FileTreeNode],
         workspace: URL,
         context: IndexContext
     ) {
-        let files = flattenMarkdownFiles(fileTree)
+        let fileContents = readFiles(from: fileTree)
+        applyToIndexes(fileContents, workspace: workspace, context: context)
+    }
 
-        // Parallel file reading using DispatchQueue for concurrent I/O
-        let fileContents = readFilesInParallel(files)
-
-        // Feed to each index with pre-read content
-        context.noteIndex.rebuild(from: fileContents, workspace: workspace)
-        context.backlinkIndex.rebuild(from: fileContents)
-        context.tagIndex.rebuild(from: fileContents)
-        context.peopleIndex.rebuild(from: fileContents)
+    /// Async rebuild: reads files off the main thread,
+    /// then applies results on MainActor.
+    @MainActor
+    static func rebuildAllAsync(
+        fileTree: [FileTreeNode],
+        workspace: URL,
+        context: IndexContext
+    ) async {
+        let fileContents = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let contents = readFiles(from: fileTree)
+                continuation.resume(returning: contents)
+            }
+        }
+        applyToIndexes(fileContents, workspace: workspace, context: context)
     }
 
     // MARK: - Incremental Operations
@@ -63,8 +73,10 @@ enum UnifiedIndexer {
         context.peopleIndex.updateFile(url, content: content)
     }
 
-    /// Read files in parallel using a concurrent dispatch queue
-    private static func readFilesInParallel(_ files: [FileTreeNode]) -> [FileContent] {
+    // MARK: - Private
+
+    private static func readFiles(from fileTree: [FileTreeNode]) -> [FileContent] {
+        let files = flattenMarkdownFiles(fileTree)
         guard !files.isEmpty else { return [] }
 
         let collector = FileContentCollector(capacity: files.count)
@@ -79,6 +91,17 @@ enum UnifiedIndexer {
         }
 
         return collector.allFiles()
+    }
+
+    private static func applyToIndexes(
+        _ fileContents: [FileContent],
+        workspace: URL,
+        context: IndexContext
+    ) {
+        context.noteIndex.rebuild(from: fileContents, workspace: workspace)
+        context.backlinkIndex.rebuild(from: fileContents)
+        context.tagIndex.rebuild(from: fileContents)
+        context.peopleIndex.rebuild(from: fileContents)
     }
 
     private static func flattenMarkdownFiles(_ nodes: [FileTreeNode]) -> [FileTreeNode] {

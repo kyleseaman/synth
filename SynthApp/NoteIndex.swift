@@ -35,6 +35,7 @@ struct NoteSearchResult: Identifiable {
         let result: NoteSearchResult
         let normalizedTitle: String
         let normalizedContent: String
+        let rawContentLowercased: String
         let titleTokens: [String]
         let contentTokenCounts: [String: Int]
         let previewLines: [String]
@@ -115,13 +116,6 @@ struct NoteSearchResult: Identifiable {
     @ObservationIgnored private var documentFrequency: [String: Int] = [:]
     /// Whether the index has been populated at least once.
     @ObservationIgnored private(set) var isPopulated = false
-
-    func rebuild(from fileTree: [FileTreeNode], workspace: URL?) {
-        allNotes = Self.flatten(fileTree, workspace: workspace)
-        rebuildDocumentFrequency()
-        notes = allNotes.map(\.result)
-        isPopulated = true
-    }
 
     /// Rebuild from pre-read file contents (unified indexer path)
     func rebuild(from files: [UnifiedIndexer.FileContent], workspace: URL?) {
@@ -206,6 +200,15 @@ struct NoteSearchResult: Identifiable {
             }
         }
         notes = allNotes.map(\.result)
+    }
+
+    /// Find notes whose raw content contains the given substring (case-insensitive).
+    func notesContaining(_ substring: String) -> [(title: String, url: URL)] {
+        let needle = substring.lowercased()
+        return allNotes.compactMap { indexed in
+            guard indexed.rawContentLowercased.contains(needle) else { return nil }
+            return (title: indexed.result.title, url: indexed.result.url)
+        }
     }
 
     func search(_ query: String) -> [NoteSearchResult] {
@@ -445,35 +448,6 @@ struct NoteSearchResult: Identifiable {
         }
     }
 
-    private static func flatten(_ nodes: [FileTreeNode], workspace: URL?) -> [IndexedNote] {
-        var result: [IndexedNote] = []
-        for node in nodes {
-            if !node.isDirectory {
-                let fileExt = node.url.pathExtension.lowercased()
-                if searchableExtensions.contains(fileExt) {
-                    let title = node.url.deletingPathExtension().lastPathComponent
-                    let relativePath = relativeDirectory(for: node.url, workspace: workspace)
-                    let content = (try? String(contentsOf: node.url, encoding: .utf8)) ?? ""
-                    let values = try? node.url.resourceValues(forKeys: [.contentModificationDateKey])
-                    let modifiedAt = values?.contentModificationDate ?? Date.distantPast
-                    result.append(
-                        makeIndexedNote(
-                            url: node.url,
-                            title: title,
-                            relativePath: relativePath,
-                            content: content,
-                            modifiedAt: modifiedAt
-                        )
-                    )
-                }
-            }
-            if let children = node.children {
-                result.append(contentsOf: flatten(children, workspace: workspace))
-            }
-        }
-        return result
-    }
-
     private static func makeIndexedNote(
         url: URL,
         title: String,
@@ -505,6 +479,7 @@ struct NoteSearchResult: Identifiable {
             result: result,
             normalizedTitle: normalizeText(title),
             normalizedContent: normalizeText(content),
+            rawContentLowercased: content.lowercased(),
             titleTokens: titleTokens,
             contentTokenCounts: contentTokenCounts,
             previewLines: previewLines,

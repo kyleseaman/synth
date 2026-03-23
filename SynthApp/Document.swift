@@ -2,9 +2,13 @@ import Cocoa
 
 struct Document {
     let url: URL
-    var content: NSAttributedString
+    var content: NSAttributedString {
+        didSet { contentVersion &+= 1 }
+    }
     var isDirty: Bool = false
     var savedSelectedRange: NSRange?
+    /// Monotonic counter incremented on every content mutation.
+    var contentVersion: UInt64 = 0
 
     static func load(from url: URL) -> Document? {
         // Guard against very large files
