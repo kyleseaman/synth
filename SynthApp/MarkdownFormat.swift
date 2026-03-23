@@ -35,14 +35,38 @@ struct MarkdownFormat: DocumentFormat {
         UserDefaults.standard.bool(forKey: "hideSyntax")
     }
 
+    // MARK: - Cached Paragraph Styles
+
+    nonisolated(unsafe) private static let bodyParagraphStyle: NSParagraphStyle = {
+        let para = NSMutableParagraphStyle()
+        para.lineHeightMultiple = 1.25
+        return para
+    }()
+
+    private static func headingParagraphStyle(for font: NSFont) -> NSParagraphStyle {
+        let para = NSMutableParagraphStyle()
+        para.lineHeightMultiple = 1.25
+        para.minimumLineHeight = ceil(font.ascender - font.descender + font.leading)
+        return para
+    }
+
+    // Cache heading paragraph styles keyed by font size
+    nonisolated(unsafe) private static let h1ParagraphStyle = headingParagraphStyle(
+        for: Theme.editorNSFont(ofSize: 28, weight: .bold)
+    )
+    nonisolated(unsafe) private static let h2ParagraphStyle = headingParagraphStyle(
+        for: Theme.editorNSFont(ofSize: 22, weight: .bold)
+    )
+    nonisolated(unsafe) private static let h3ParagraphStyle = headingParagraphStyle(
+        for: Theme.editorNSFont(ofSize: 18, weight: .semibold)
+    )
+
     func render(_ text: String) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let bodyFont = Theme.editorNSFont(ofSize: 16)
-        let bodyParagraph = NSMutableParagraphStyle()
-        bodyParagraph.lineHeightMultiple = 1.25
         let defaultAttrs: [NSAttributedString.Key: Any] = [
             .font: bodyFont, .foregroundColor: NSColor.textColor,
-            .paragraphStyle: bodyParagraph
+            .paragraphStyle: Self.bodyParagraphStyle
         ]
 
         let lines = text.components(separatedBy: "\n")
@@ -53,25 +77,16 @@ struct MarkdownFormat: DocumentFormat {
             var headingPrefixLen = 0
             if line.hasPrefix("# ") {
                 attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)
+                attrs[.paragraphStyle] = Self.h1ParagraphStyle
                 headingPrefixLen = 2
             } else if line.hasPrefix("## ") {
                 attrs[.font] = Theme.editorNSFont(ofSize: 22, weight: .bold)
+                attrs[.paragraphStyle] = Self.h2ParagraphStyle
                 headingPrefixLen = 3
             } else if line.hasPrefix("### ") {
                 attrs[.font] = Theme.editorNSFont(ofSize: 18, weight: .semibold)
+                attrs[.paragraphStyle] = Self.h3ParagraphStyle
                 headingPrefixLen = 4
-            }
-
-            // Enforce minimum line height so hidden prefix doesn't
-            // collapse the line fragment (e.g. "# " with no content)
-            if headingPrefixLen > 0, let headingFont = attrs[.font] as? NSFont {
-                let para = NSMutableParagraphStyle()
-                para.lineHeightMultiple = 1.25
-                para.minimumLineHeight = ceil(
-                    headingFont.ascender - headingFont.descender
-                        + headingFont.leading
-                )
-                attrs[.paragraphStyle] = para
             }
 
             let lineStr = NSMutableAttributedString(string: line, attributes: attrs)

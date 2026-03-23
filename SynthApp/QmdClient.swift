@@ -70,10 +70,10 @@ struct QmdStatus {
             await MainActor.run { isWorkspaceIndexed = false }
             return
         }
-        let workspacePath = workspace.path
-        let indexed = status.collections.contains { collection in
-            workspacePath.hasSuffix(collection) || collection == workspacePath
-        }
+        let indexed = Self.isWorkspaceIndexed(
+            workspace: workspace,
+            collections: status.collections
+        )
         await MainActor.run { isWorkspaceIndexed = indexed }
     }
 
@@ -186,6 +186,16 @@ struct QmdStatus {
         }
     }
 
+    static func isWorkspaceIndexed(
+        workspace: URL,
+        collections: [String]
+    ) -> Bool {
+        let workspacePath = workspace.standardizedFileURL.path
+        return collections.contains { collection in
+            URL(fileURLWithPath: collection).standardizedFileURL.path == workspacePath
+        }
+    }
+
     static func parseStatus(_ data: Data) -> QmdStatus? {
         guard let json = try? JSONSerialization.jsonObject(with: data)
                 as? [String: Any] else {
@@ -194,7 +204,7 @@ struct QmdStatus {
         let collections: [String]
         if let colls = json["collections"] as? [[String: Any]] {
             collections = colls.compactMap {
-                $0["path"] as? String ?? $0["name"] as? String
+                $0["path"] as? String
             }
         } else {
             collections = []

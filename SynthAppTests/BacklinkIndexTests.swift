@@ -42,14 +42,15 @@ final class BacklinkIndexTests: XCTestCase {
         try "[[beta]]".write(to: textURL, atomically: true, encoding: .utf8)
         try "[[ignored]]".write(to: imageURL, atomically: true, encoding: .utf8)
 
-        let fileTree = [
-            FileTreeNode(url: markdownURL, isDirectory: false, children: nil),
-            FileTreeNode(url: textURL, isDirectory: false, children: nil),
-            FileTreeNode(url: imageURL, isDirectory: false, children: nil)
+        // Use UnifiedIndexer.FileContent to match the rebuild(from:) API
+        let fileContents = [
+            UnifiedIndexer.FileContent(url: markdownURL, content: "[[alpha]]"),
+            UnifiedIndexer.FileContent(url: textURL, content: "[[beta]]")
+            // image.png excluded — only md/txt should be passed
         ]
 
         let index = BacklinkIndex()
-        index.rebuild(fileTree: fileTree)
+        index.rebuild(from: fileContents)
 
         XCTAssertEqual(index.links(to: "alpha"), [markdownURL])
         XCTAssertEqual(index.links(to: "beta"), [textURL])

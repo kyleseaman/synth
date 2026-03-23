@@ -98,8 +98,6 @@ struct SynthApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("New Draft") { store.newDraft() }
                     .keyboardShortcut("n")
-                Button("New Tab") { store.newDraft() }
-                    .keyboardShortcut("t")
             }
             CommandGroup(after: .newItem) {
                 Button("New Meeting Note") {
@@ -133,12 +131,6 @@ struct SynthApp: App {
                     store.toggleChatForCurrentTab()
                 }
                 .keyboardShortcut("`", modifiers: .control)
-            }
-            CommandGroup(after: .toolbar) {
-                ForEach(1...9, id: \.self) { tabNum in
-                    Button("Tab \(tabNum)") { store.switchTo(tabNum - 1) }
-                        .keyboardShortcut(KeyEquivalent(Character("\(tabNum)")), modifiers: .command)
-                }
             }
             CommandGroup(after: .textFormatting) {
                 Button("Go to File") {
