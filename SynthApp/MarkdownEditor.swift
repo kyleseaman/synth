@@ -35,6 +35,8 @@ class FormattingTextView: NSTextView {
     private var resizeDragStartX: CGFloat = 0
     private var resizeDragStartWidth: CGFloat = 0
     private var resizeDragAspectRatio: CGFloat = 1
+    /// Throttle mouseMoved overlay checks to ~60 fps.
+    private var lastOverlayCheckTime: CFTimeInterval = 0
     /// Set during live resize to suppress textDidChange reformatting.
     var isResizing = false
     /// Set by the Coordinator during formatting passes to prevent
@@ -67,6 +69,11 @@ class FormattingTextView: NSTextView {
 
     override func mouseMoved(with event: NSEvent) {
         guard !isFormattingStorage else { return }
+        // Throttle overlay checks to ~60 fps to avoid expensive
+        // layout queries on every mouse move event.
+        let now = CACurrentMediaTime()
+        guard now - lastOverlayCheckTime >= 0.016 else { return }
+        lastOverlayCheckTime = now
         super.mouseMoved(with: event)
         updateImageOverlay(for: event)
         let point = convert(event.locationInWindow, from: nil)
@@ -1333,8 +1340,9 @@ struct MarkdownEditor: NSViewRepresentable {
             parent.text = MarkdownFormat.restoreMarkup(
                 in: textView.attributedString()
             )
-            // Formatting is handled incrementally by the NSTextStorageDelegate
-            updateLinePositions()
+            // Formatting is handled incrementally by the NSTextStorageDelegate.
+            // Line positions are updated by the layout delegate
+            // (layoutManager:didCompleteLayoutFor:atEnd:).
             scheduleSave()
         }
 
@@ -1393,7 +1401,10 @@ extension MarkdownEditor.Coordinator {
             codeBlockRanges = Self.findCodeBlockRanges(
                 in: storage.string
             )
-            lastContentHash = hash
+            // Hash the restored (clean) text so incremental
+            // formatting in textStorage:didProcessEditing can
+            // compare against the same representation.
+            lastContentHash = cleanText.fnv1a
             textView.setSelectedRange(cursor)
             isFormatting = false
             textView.isFormattingStorage = false
@@ -1437,10 +1448,24 @@ extension MarkdownEditor.Coordinator {
                     formatTarget, in: storage,
                     cursorLocation: textView?.selectedRange().location
                 )
-                codeBlockRanges = Self.findCodeBlockRanges(
-                    in: storage.string
+                // Only rescan code block ranges when the edit
+                // could have affected a fence (contains backticks
+                // or newlines).
+                let editedText = nsString.substring(
+                    with: editedRange
                 )
-                lastContentHash = storage.string.fnv1a
+                if editedText.contains("`")
+                    || editedText.contains("\n")
+                    || delta != 0 {
+                    codeBlockRanges = Self.findCodeBlockRanges(
+                        in: storage.string
+                    )
+                }
+                lastContentHash = MarkdownFormat.restoreMarkup(
+                    in: NSAttributedString(
+                        attributedString: storage
+                    )
+                ).fnv1a
             }
         }
 
@@ -1471,13 +1496,8 @@ extension MarkdownEditor.Coordinator {
             // Reset attributes to defaults for the range
             storage.setAttributes(defaultAttrs, range: range)
 
-            // Remove any stale links in the range
-            storage.removeAttribute(.link, range: range)
-            storage.removeAttribute(.underlineStyle, range: range)
-            storage.removeAttribute(.underlineColor, range: range)
-            storage.removeAttribute(.backgroundColor, range: range)
-            storage.removeAttribute(.toolTip, range: range)
-            storage.removeAttribute(.cursor, range: range)
+            // setAttributes above already cleared all prior attributes,
+            // so no need for individual removeAttribute calls.
 
             // Process each paragraph in the range for headings
             nsString.enumerateSubstrings(
@@ -1980,15 +2000,34 @@ extension MarkdownEditor.Coordinator {
 
             let range = textView.selectedRange()
             if range.length > 0 {
-                let text = (textView.string as NSString).substring(with: range)
-                let beforeSelection = (textView.string as NSString)
-                    .substring(to: range.location)
-                let startLine = beforeSelection.components(separatedBy: "\n").count
-                let selectedLines = text.components(separatedBy: "\n").count
-                let endLine = startLine + selectedLines - 1
+                let nsText = textView.string as NSString
+                let selectedText = nsText.substring(with: range)
+                // Count newlines in-place instead of allocating
+                // arrays via components(separatedBy:).
+                var startLine = 1
+                let bytes = nsText.utf8String
+                if let ptr = bytes {
+                    for offset in 0..<range.location
+                    where ptr[offset] == 0x0A {
+                        startLine += 1
+                    }
+                } else {
+                    let prefix = nsText.substring(
+                        to: range.location
+                    )
+                    for char in prefix.utf8 where char == 0x0A {
+                        startLine += 1
+                    }
+                }
+                var selectedNewlines = 0
+                for char in selectedText.utf8 where char == 0x0A {
+                    selectedNewlines += 1
+                }
+                let endLine = startLine + selectedNewlines
                 DispatchQueue.main.async {
-                    self.parent.selectedText = text
-                    self.parent.selectedLineRange = "lines \(startLine)-\(endLine)"
+                    self.parent.selectedText = selectedText
+                    self.parent.selectedLineRange =
+                        "lines \(startLine)-\(endLine)"
                 }
             } else {
                 DispatchQueue.main.async {
