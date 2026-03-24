@@ -1383,6 +1383,78 @@ extension UtilityLogicTests {
         )
         XCTAssertEqual(result, "fallback text")
     }
+
+    func testFocusedSnippetUsesScopedContentTermForMatchContext() {
+        let content = String(repeating: "prefix ", count: 170)
+            + "Deployment checklist lives here."
+        let result = FileLauncher.focusedSnippet(
+            from: content,
+            query: "content:deployment tag:ops",
+            fallback: ""
+        )
+        XCTAssertTrue(result.lowercased().contains("deployment"))
+    }
+
+    func testDedicatedSearchPresentationMergeAnnotatesResultSources() {
+        let localOnlyURL = URL(fileURLWithPath: "/tmp/local.md")
+        let sharedURL = URL(fileURLWithPath: "/tmp/shared.md")
+        let qmdOnlyURL = URL(fileURLWithPath: "/tmp/qmd.md")
+
+        let localResults = [
+            NoteSearchResult(
+                id: localOnlyURL,
+                title: "Local",
+                relativePath: "notes",
+                url: localOnlyURL,
+                preview: "local preview",
+                score: 200
+            ),
+            NoteSearchResult(
+                id: sharedURL,
+                title: "Shared",
+                relativePath: "notes",
+                url: sharedURL,
+                preview: "local shared preview",
+                score: 220
+            )
+        ]
+        let qmdResults = [
+            NoteSearchResult(
+                id: sharedURL,
+                title: "Shared",
+                relativePath: "notes",
+                url: sharedURL,
+                preview: "qmd shared preview",
+                score: 420
+            ),
+            NoteSearchResult(
+                id: qmdOnlyURL,
+                title: "QMD",
+                relativePath: "notes",
+                url: qmdOnlyURL,
+                preview: "qmd preview",
+                score: 410
+            )
+        ]
+
+        let merged = DedicatedSearchPresentation.mergeNoteResults(
+            localResults: localResults,
+            qmdResults: qmdResults
+        )
+        let sourceByURL = Dictionary(
+            uniqueKeysWithValues: merged.map { mergedResult in
+                (mergedResult.noteResult.url, mergedResult.source)
+            }
+        )
+
+        XCTAssertEqual(sourceByURL[localOnlyURL], .local)
+        XCTAssertEqual(sourceByURL[qmdOnlyURL], .qmd)
+        XCTAssertEqual(sourceByURL[sharedURL], .blended)
+        XCTAssertEqual(
+            merged.first(where: { $0.noteResult.url == sharedURL })?.noteResult.preview,
+            "qmd shared preview"
+        )
+    }
 }
 
 // MARK: - String.fnv1a Tests

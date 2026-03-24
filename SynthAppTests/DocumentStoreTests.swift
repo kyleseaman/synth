@@ -221,6 +221,44 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testDedicatedSearchStateStepSelectionMovesPredictably() {
+        let identifiers = ["note:alpha", "file:beta", "tag:gamma"]
+
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "note:alpha",
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "file:beta"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "tag:gamma",
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "tag:gamma"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "file:beta",
+                availableIdentifiers: identifiers,
+                direction: .previous
+            ),
+            "note:alpha"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: nil,
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "note:alpha"
+        )
+    }
+
+    @MainActor
     func testNewDraftCreatesIncrementingUntitledFiles() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,

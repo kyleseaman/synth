@@ -45,6 +45,86 @@ struct SearchFacetToken: Identifiable, Equatable {
     }
 }
 
+enum DedicatedSearchSelectionDirection {
+    case previous
+    case next
+}
+
+enum DedicatedSearchResultSource: String {
+    case local
+    case qmd
+    case blended
+
+    var shortLabel: String {
+        switch self {
+        case .local:
+            return "Local"
+        case .qmd:
+            return "QMD"
+        case .blended:
+            return "QMD + Local"
+        }
+    }
+
+    var detailLabel: String {
+        switch self {
+        case .local:
+            return "Matched by local index"
+        case .qmd:
+            return "Matched by QMD deep search"
+        case .blended:
+            return "Matched by both QMD and local index"
+        }
+    }
+}
+
+struct DedicatedSearchMergedNoteResult {
+    let noteResult: NoteSearchResult
+    let source: DedicatedSearchResultSource
+}
+
+enum DedicatedSearchPresentation {
+    static func mergeNoteResults(
+        localResults: [NoteSearchResult],
+        qmdResults: [NoteSearchResult]
+    ) -> [DedicatedSearchMergedNoteResult] {
+        guard !qmdResults.isEmpty else {
+            return localResults.map { noteResult in
+                DedicatedSearchMergedNoteResult(noteResult: noteResult, source: .local)
+            }
+        }
+
+        var mergedByURL: [URL: DedicatedSearchMergedNoteResult] = [:]
+        for localResult in localResults {
+            mergedByURL[localResult.url] = DedicatedSearchMergedNoteResult(
+                noteResult: localResult,
+                source: .local
+            )
+        }
+
+        for qmdResult in qmdResults {
+            if let existingResult = mergedByURL[qmdResult.url] {
+                let preferredResult = qmdResult.score >= existingResult.noteResult.score
+                    ? qmdResult
+                    : existingResult.noteResult
+                mergedByURL[qmdResult.url] = DedicatedSearchMergedNoteResult(
+                    noteResult: preferredResult,
+                    source: .blended
+                )
+            } else {
+                mergedByURL[qmdResult.url] = DedicatedSearchMergedNoteResult(
+                    noteResult: qmdResult,
+                    source: .qmd
+                )
+            }
+        }
+
+        return mergedByURL.values.sorted { firstResult, secondResult in
+            firstResult.noteResult.score > secondResult.noteResult.score
+        }
+    }
+}
+
 @Observable
 final class DedicatedSearchState {
     var textQuery = ""
@@ -119,6 +199,25 @@ final class DedicatedSearchState {
         return availableIdentifiers.first
     }
 
+    static func stepSelection(
+        currentIdentifier: String?,
+        availableIdentifiers: [String],
+        direction: DedicatedSearchSelectionDirection
+    ) -> String? {
+        guard !availableIdentifiers.isEmpty else { return nil }
+        guard let currentIdentifier,
+              let currentIndex = availableIdentifiers.firstIndex(of: currentIdentifier) else {
+            return availableIdentifiers.first
+        }
+
+        switch direction {
+        case .previous:
+            return availableIdentifiers[max(0, currentIndex - 1)]
+        case .next:
+            return availableIdentifiers[min(availableIdentifiers.count - 1, currentIndex + 1)]
+        }
+    }
+
     private func appendTokens(
         from rawValue: String,
         kind: SearchFacetKind,
@@ -157,14 +256,14 @@ final class DedicatedSearchState {
 }
 
 enum DedicatedSearchResult: Identifiable {
-    case note(NoteSearchResult)
+    case note(result: NoteSearchResult, source: DedicatedSearchResultSource)
     case file(node: FileTreeNode, score: Int)
     case person(name: String, count: Int, score: Int)
     case tag(name: String, count: Int, score: Int)
 
     var identifier: String {
         switch self {
-        case .note(let noteResult):
+        case .note(let noteResult, _):
             return "note:\(noteResult.url.absoluteString)"
         case .file(let node, _):
             return "file:\(node.url.absoluteString)"
@@ -181,7 +280,7 @@ enum DedicatedSearchResult: Identifiable {
 
     var sortScore: Int {
         switch self {
-        case .note(let noteResult):
+        case .note(let noteResult, _):
             return noteResult.score
         case .file(_, let score):
             return score
@@ -215,28 +314,55 @@ struct DedicatedSearchView: View {
         return store.noteIndex.search(activeQuery)
     }
 
-    private var mergedNoteResults: [NoteSearchResult] {
-        guard !qmdResults.isEmpty else { return localNoteResults }
-
-        var uniqueByURL: Set<URL> = []
-        var mergedResults: [NoteSearchResult] = []
-        for noteResult in qmdResults + localNoteResults
-            where uniqueByURL.insert(noteResult.url).inserted {
-            mergedResults.append(noteResult)
-        }
-        return mergedResults.sorted { firstResult, secondResult in
-            firstResult.score > secondResult.score
-        }
+    private var mergedNoteResults: [DedicatedSearchMergedNoteResult] {
+        DedicatedSearchPresentation.mergeNoteResults(
+            localResults: localNoteResults,
+            qmdResults: qmdResults
+        )
     }
 
     private var noteResultItems: [DedicatedSearchResult] {
-        mergedNoteResults.map(DedicatedSearchResult.note)
+        mergedNoteResults.map { mergedResult in
+            .note(result: mergedResult.noteResult, source: mergedResult.source)
+        }
+    }
+
+    private var noteSourceByURL: [URL: DedicatedSearchResultSource] {
+        Dictionary(uniqueKeysWithValues: mergedNoteResults.map { mergedResult in
+            (mergedResult.noteResult.url, mergedResult.source)
+        })
+    }
+
+    private var noteSourceCounts: [DedicatedSearchResultSource: Int] {
+        mergedNoteResults.reduce(into: [:]) { counts, mergedResult in
+            counts[mergedResult.source, default: 0] += 1
+        }
+    }
+
+    private var noteSectionLabel: String {
+        var components: [String] = ["Notes (\(noteResultItems.count))"]
+        if let localCount = noteSourceCounts[.local], localCount > 0 {
+            components.append("Local \(localCount)")
+        }
+        if let qmdCount = noteSourceCounts[.qmd], qmdCount > 0 {
+            components.append("QMD \(qmdCount)")
+        }
+        if let blendedCount = noteSourceCounts[.blended], blendedCount > 0 {
+            components.append("Blended \(blendedCount)")
+        }
+        return components.joined(separator: " · ")
+    }
+
+    private var resultSummaryLabel: String {
+        let totalCount = allResultItems.count
+        return "Results \(totalCount) · Notes \(noteResultItems.count) · Files \(fileResultItems.count) "
+            + "· People \(personResultItems.count) · Tags \(tagResultItems.count)"
     }
 
     private var fileResultItems: [DedicatedSearchResult] {
         guard !freeTextQuery.isEmpty else { return [] }
 
-        let noteURLs = Set(mergedNoteResults.map(\.url))
+        let noteURLs = Set(mergedNoteResults.map(\.noteResult.url))
         let recentFiles = Set(store.recentFiles)
         let scoredResults: [DedicatedSearchResult] = cachedFiles
             .filter { fileNode in
@@ -330,6 +456,13 @@ struct DedicatedSearchView: View {
         .onDisappear {
             qmdSearchTask?.cancel()
         }
+        .background {
+            KeyboardHandler(
+                onUp: { moveSelection(.previous) },
+                onDown: { moveSelection(.next) },
+                onEscape: {}
+            )
+        }
     }
 
     private var header: some View {
@@ -344,6 +477,9 @@ struct DedicatedSearchView: View {
                 .textFieldStyle(.plain)
                 .font(Theme.uiSwiftUIFont(size: 17))
                 .focused($isQueryFocused)
+                .onSubmit {
+                    handleSubmit()
+                }
 
                 if isQmdSearching {
                     ProgressView()
@@ -400,6 +536,12 @@ struct DedicatedSearchView: View {
                 }
             }
 
+            if !allResultItems.isEmpty {
+                Text(resultSummaryLabel)
+                    .font(Theme.uiSwiftUIFont(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+
             HStack(spacing: 8) {
                 if store.qmdClient?.isWorkspaceIndexed == true {
                     Button("Deep Search") {
@@ -413,6 +555,12 @@ struct DedicatedSearchView: View {
                         .foregroundStyle(.tertiary)
                 } else {
                     Text("QMD unavailable. Showing local index results.")
+                        .font(Theme.uiSwiftUIFont(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+
+                if !qmdResults.isEmpty {
+                    Text("Blending \(qmdResults.count) QMD result(s) with local results.")
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -455,7 +603,7 @@ struct DedicatedSearchView: View {
             } else {
                 List(selection: selectionBinding) {
                     if !noteResultItems.isEmpty {
-                        Section("Notes") {
+                        Section(noteSectionLabel) {
                             ForEach(noteResultItems) { resultItem in
                                 resultRow(resultItem)
                                     .tag(resultItem.id)
@@ -467,7 +615,7 @@ struct DedicatedSearchView: View {
                     }
 
                     if !fileResultItems.isEmpty {
-                        Section("Files") {
+                        Section("Files (\(fileResultItems.count))") {
                             ForEach(fileResultItems) { resultItem in
                                 resultRow(resultItem)
                                     .tag(resultItem.id)
@@ -479,7 +627,7 @@ struct DedicatedSearchView: View {
                     }
 
                     if !personResultItems.isEmpty {
-                        Section("People") {
+                        Section("People (\(personResultItems.count))") {
                             ForEach(personResultItems) { resultItem in
                                 resultRow(resultItem)
                                     .tag(resultItem.id)
@@ -491,7 +639,7 @@ struct DedicatedSearchView: View {
                     }
 
                     if !tagResultItems.isEmpty {
-                        Section("Tags") {
+                        Section("Tags (\(tagResultItems.count))") {
                             ForEach(tagResultItems) { resultItem in
                                 resultRow(resultItem)
                                     .tag(resultItem.id)
@@ -530,12 +678,13 @@ struct DedicatedSearchView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 switch result {
-                case .note(let noteResult):
+                case .note(let noteResult, let source):
                     Image(systemName: "doc.text.magnifyingglass")
                         .foregroundStyle(.secondary)
                     Text(noteResult.title)
                         .lineLimit(1)
                     Spacer()
+                    sourceBadge(source)
                     Text(noteResult.relativePath)
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
@@ -571,8 +720,8 @@ struct DedicatedSearchView: View {
                 }
             }
 
-            if case .note(let noteResult) = result {
-                Text(noteResult.preview)
+            if case .note(let noteResult, _) = result {
+                Text(rowPreviewText(for: noteResult))
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -586,7 +735,7 @@ struct DedicatedSearchView: View {
     @ViewBuilder
     private func selectedResultDetail(_ result: DedicatedSearchResult) -> some View {
         switch result {
-        case .note(let noteResult):
+        case .note(let noteResult, _):
             noteDetailPanel(noteResult)
         case .file(let node, _):
             fileDetailPanel(node)
@@ -606,6 +755,9 @@ struct DedicatedSearchView: View {
                     Text(noteResult.relativePath)
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
+                    if let source = noteSourceByURL[noteResult.url] {
+                        sourceBadge(source)
+                    }
                 }
                 Spacer()
                 Button("Open") {
@@ -716,9 +868,7 @@ struct DedicatedSearchView: View {
     }
 
     private func previewText(for noteResult: NoteSearchResult) -> String {
-        guard let fullText = previewCache[noteResult.url], !fullText.isEmpty else {
-            return noteResult.preview
-        }
+        let fullText = previewCache[noteResult.url] ?? noteResult.preview
         let previewText = FileLauncher.focusedSnippet(
             from: fullText,
             query: activeQuery,
@@ -730,10 +880,23 @@ struct DedicatedSearchView: View {
         return previewText
     }
 
+    private func rowPreviewText(for noteResult: NoteSearchResult) -> String {
+        let rowSource = previewCache[noteResult.url] ?? noteResult.preview
+        let snippetText = FileLauncher.focusedSnippet(
+            from: rowSource,
+            query: activeQuery,
+            fallback: noteResult.preview
+        )
+        if snippetText.isEmpty {
+            return noteResult.preview
+        }
+        return snippetText
+    }
+
     private func preloadSelectedPreview() {
         guard let selectedResult else { return }
         switch selectedResult {
-        case .note(let noteResult):
+        case .note(let noteResult, _):
             loadPreview(for: noteResult.url)
         case .file(let node, _):
             loadPreview(for: node.url)
@@ -761,7 +924,7 @@ struct DedicatedSearchView: View {
 
     private func openResultKeepingSearch(_ result: DedicatedSearchResult) {
         switch result {
-        case .note(let noteResult):
+        case .note(let noteResult, _):
             store.openFromSearch(noteResult.url)
         case .file(let node, _):
             store.openFromSearch(node.url)
@@ -770,6 +933,40 @@ struct DedicatedSearchView: View {
         case .tag(let name, _, _):
             store.showTagBrowserModal(tag: name)
         }
+    }
+
+    private func moveSelection(_ direction: DedicatedSearchSelectionDirection) {
+        let currentIdentifier = store.dedicatedSearch.selectedResultIdentifier
+        let nextIdentifier = DedicatedSearchState.stepSelection(
+            currentIdentifier: currentIdentifier,
+            availableIdentifiers: resultIdentifiers,
+            direction: direction
+        )
+        guard nextIdentifier != currentIdentifier else { return }
+        store.dedicatedSearch.selectedResultIdentifier = nextIdentifier
+        preloadSelectedPreview()
+    }
+
+    private func handleSubmit() {
+        guard let selectedResult else {
+            if store.qmdClient?.isWorkspaceIndexed == true,
+               !activeQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                triggerQmdSearch(activeQuery)
+            }
+            return
+        }
+        openResultKeepingSearch(selectedResult)
+    }
+
+    @ViewBuilder
+    private func sourceBadge(_ source: DedicatedSearchResultSource) -> some View {
+        Text(source.shortLabel)
+            .font(Theme.uiSwiftUIFont(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .help(source.detailLabel)
     }
 
     private func triggerQmdSearch(_ queryText: String) {
