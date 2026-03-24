@@ -32,6 +32,7 @@ extension NoteIndex {
     private struct QuerySegment {
         let text: String
         let isQuoted: Bool
+        let allowsScopedParsing: Bool
     }
 
     private enum QueryScope {
@@ -77,6 +78,15 @@ extension NoteIndex {
                 tokenText.removeFirst()
             }
             guard !tokenText.isEmpty else { continue }
+
+            if segment.isQuoted && !segment.allowsScopedParsing {
+                if isNegated {
+                    negativePhrases.append(tokenText)
+                } else {
+                    positivePhrases.append(tokenText)
+                }
+                continue
+            }
 
             if consumeScopedClause(
                 tokenText,
@@ -231,13 +241,22 @@ extension NoteIndex {
         var currentToken = ""
         var index = query.startIndex
 
-        func flushCurrentToken(isQuoted: Bool = false) {
+        func flushCurrentToken(
+            isQuoted: Bool = false,
+            allowsScopedParsing: Bool = false
+        ) {
             let trimmed = currentToken.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else {
                 currentToken = ""
                 return
             }
-            segments.append(QuerySegment(text: trimmed, isQuoted: isQuoted))
+            segments.append(
+                QuerySegment(
+                    text: trimmed,
+                    isQuoted: isQuoted,
+                    allowsScopedParsing: allowsScopedParsing
+                )
+            )
             currentToken = ""
         }
 
@@ -255,7 +274,7 @@ extension NoteIndex {
                     let valueStart = query.index(after: index)
                     let quotedSegment = readQuotedSegment(query, from: valueStart)
                     currentToken.append(quotedSegment.text)
-                    flushCurrentToken(isQuoted: true)
+                    flushCurrentToken(isQuoted: true, allowsScopedParsing: true)
                     index = quotedSegment.nextIndex
                     continue
                 }
@@ -265,7 +284,13 @@ extension NoteIndex {
                     let quotedSegment = readQuotedSegment(query, from: valueStart)
                     let trimmed = quotedSegment.text.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty {
-                        segments.append(QuerySegment(text: "-\(trimmed)", isQuoted: true))
+                        segments.append(
+                            QuerySegment(
+                                text: "-\(trimmed)",
+                                isQuoted: true,
+                                allowsScopedParsing: false
+                            )
+                        )
                     }
                     currentToken = ""
                     index = quotedSegment.nextIndex
@@ -277,7 +302,13 @@ extension NoteIndex {
                 let quotedSegment = readQuotedSegment(query, from: valueStart)
                 let trimmed = quotedSegment.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    segments.append(QuerySegment(text: trimmed, isQuoted: true))
+                    segments.append(
+                        QuerySegment(
+                            text: trimmed,
+                            isQuoted: true,
+                            allowsScopedParsing: false
+                        )
+                    )
                 }
                 index = quotedSegment.nextIndex
                 continue
