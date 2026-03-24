@@ -361,6 +361,130 @@ final class NoteIndexSearchTests: XCTestCase {
         XCTAssertEqual(results.first?.title, "Weekly")
     }
 
+    func testSearchSupportsTitleScopedFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Weekly Status.md",
+            content: """
+            # Team
+
+            Progress update for design and engineering.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Status Digest.md",
+            content: """
+            # Digest
+
+            Progress update for the org.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("title:weekly")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Weekly Status")
+    }
+
+    func testSearchSupportsContentScopedFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Release Board.md",
+            content: """
+            # Release Board
+
+            Deployment checklist and launch owner notes.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Release Checklist.md",
+            content: """
+            # Release Checklist
+
+            Planning notes for the quarter.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("content:deployment")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Release Board")
+    }
+
+    func testSearchSupportsNegatedTermSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Planning.md",
+            content: """
+            # Planning
+
+            #project Weekly status update and follow ups.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Archive.md",
+            content: """
+            # Archive
+
+            #project Archived status update from last quarter.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status tag:project -archived")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Planning")
+    }
+
+    func testSearchUsesDeterministicOrderingWithMixedFiltersAndTerms() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Beta.md",
+            content: """
+            # Beta
+
+            #project status update for this week.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Alpha.md",
+            content: """
+            # Alpha
+
+            #project status update for this week.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status tag:project")
+
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results.map(\.title), ["Alpha", "Beta"])
+    }
+
     func testSearchSupportsQuotedPhraseMatching() throws {
         let workspaceURL = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: workspaceURL) }

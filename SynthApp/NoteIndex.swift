@@ -28,6 +28,290 @@ struct NoteSearchResult: Identifiable {
     }
 }
 
+extension NoteIndex {
+    private struct QuerySegment {
+        let text: String
+        let isQuoted: Bool
+    }
+
+    private enum QueryScope {
+        case path
+        case tag
+        case person
+        case title
+        case content
+    }
+
+    private struct QueryFilters {
+        var requiredTags: Set<String> = []
+        var excludedTags: Set<String> = []
+        var requiredPeople: Set<String> = []
+        var excludedPeople: Set<String> = []
+        var requiredPaths: [String] = []
+        var excludedPaths: [String] = []
+        var requiredTitleTerms: [String] = []
+        var excludedTitleTerms: [String] = []
+        var requiredContentTerms: [String] = []
+        var excludedContentTerms: [String] = []
+    }
+
+    static func parseLocalSearchQuery(_ query: String) -> LocalSearchQuery {
+        parseQuery(query)
+    }
+
+    private static func parseQuery(_ query: String) -> LocalSearchQuery {
+        let segments = splitQuerySegments(query)
+        var positiveTerms: [String] = []
+        var negativeTerms: [String] = []
+        var positivePhrases: [String] = []
+        var negativePhrases: [String] = []
+        var filters = QueryFilters()
+
+        for segment in segments {
+            let rawText = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !rawText.isEmpty else { continue }
+
+            var tokenText = rawText
+            let isNegated = tokenText.hasPrefix("-") && tokenText.count > 1
+            if isNegated {
+                tokenText.removeFirst()
+            }
+            guard !tokenText.isEmpty else { continue }
+
+            if consumeScopedClause(
+                tokenText,
+                isNegated: isNegated,
+                filters: &filters
+            ) {
+                continue
+            }
+
+            if tokenText.hasPrefix("#"), let tagFilter = normalizeTag(tokenText) {
+                if isNegated {
+                    filters.excludedTags.insert(tagFilter)
+                } else {
+                    filters.requiredTags.insert(tagFilter)
+                }
+                continue
+            }
+            if tokenText.hasPrefix("@"), let personFilter = normalizePerson(tokenText) {
+                if isNegated {
+                    filters.excludedPeople.insert(personFilter)
+                } else {
+                    filters.requiredPeople.insert(personFilter)
+                }
+                continue
+            }
+
+            if segment.isQuoted {
+                if isNegated {
+                    negativePhrases.append(tokenText)
+                } else {
+                    positivePhrases.append(tokenText)
+                }
+                continue
+            }
+
+            if isNegated {
+                negativeTerms.append(tokenText)
+            } else {
+                positiveTerms.append(tokenText)
+            }
+        }
+
+        let normalizedPhrases = positivePhrases.map(normalizeText).filter { !$0.isEmpty }
+        let excludedPhrases = negativePhrases.map(normalizeText).filter { !$0.isEmpty }
+        let phraseTokens = positivePhrases.flatMap(tokens(from:))
+        let termTokens = positiveTerms.flatMap(tokens(from:)) + phraseTokens
+        let excludedTokens = Set(negativeTerms.flatMap(tokens(from:)))
+        let displayTerms = positiveTerms + positivePhrases
+        let displayQuery = displayTerms.joined(separator: " ").trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let normalizedQuery = normalizeText(displayQuery)
+
+        return LocalSearchQuery(
+            displayQuery: displayQuery,
+            normalizedQuery: normalizedQuery,
+            queryTokens: termTokens,
+            excludedQueryTokens: excludedTokens,
+            normalizedPhrases: normalizedPhrases,
+            excludedPhrases: excludedPhrases,
+            requiredTags: filters.requiredTags,
+            excludedTags: filters.excludedTags,
+            requiredPeople: filters.requiredPeople,
+            excludedPeople: filters.excludedPeople,
+            requiredPaths: filters.requiredPaths,
+            excludedPaths: filters.excludedPaths,
+            requiredTitleTerms: filters.requiredTitleTerms,
+            excludedTitleTerms: filters.excludedTitleTerms,
+            requiredContentTerms: filters.requiredContentTerms,
+            excludedContentTerms: filters.excludedContentTerms
+        )
+    }
+
+    private static func consumeScopedClause(
+        _ text: String,
+        isNegated: Bool,
+        filters: inout QueryFilters
+    ) -> Bool {
+        guard let scopedClause = parseScopedClause(text) else { return false }
+
+        switch scopedClause.scope {
+        case .path:
+            if isNegated {
+                filters.excludedPaths.append(scopedClause.value.lowercased())
+            } else {
+                filters.requiredPaths.append(scopedClause.value.lowercased())
+            }
+            return true
+        case .tag:
+            guard let normalizedTag = normalizeTag(scopedClause.value) else { return false }
+            if isNegated {
+                filters.excludedTags.insert(normalizedTag)
+            } else {
+                filters.requiredTags.insert(normalizedTag)
+            }
+            return true
+        case .person:
+            guard let normalizedPerson = normalizePerson(scopedClause.value) else { return false }
+            if isNegated {
+                filters.excludedPeople.insert(normalizedPerson)
+            } else {
+                filters.requiredPeople.insert(normalizedPerson)
+            }
+            return true
+        case .title:
+            let normalizedValue = normalizeText(scopedClause.value)
+            guard !normalizedValue.isEmpty else { return false }
+            if isNegated {
+                filters.excludedTitleTerms.append(normalizedValue)
+            } else {
+                filters.requiredTitleTerms.append(normalizedValue)
+            }
+            return true
+        case .content:
+            let normalizedValue = normalizeText(scopedClause.value)
+            guard !normalizedValue.isEmpty else { return false }
+            if isNegated {
+                filters.excludedContentTerms.append(normalizedValue)
+            } else {
+                filters.requiredContentTerms.append(normalizedValue)
+            }
+            return true
+        }
+    }
+
+    private static func parseScopedClause(_ text: String) -> (scope: QueryScope, value: String)? {
+        let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+
+        let rawKey = parts[0].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let rawValue = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawValue.isEmpty else { return nil }
+
+        switch rawKey {
+        case "path", "in":
+            return (.path, rawValue)
+        case "tag":
+            return (.tag, rawValue)
+        case "person", "people", "mention":
+            return (.person, rawValue)
+        case "title":
+            return (.title, rawValue)
+        case "content", "body", "text":
+            return (.content, rawValue)
+        default:
+            return nil
+        }
+    }
+
+    private static func splitQuerySegments(_ query: String) -> [QuerySegment] {
+        var segments: [QuerySegment] = []
+        var currentToken = ""
+        var index = query.startIndex
+
+        func flushCurrentToken(isQuoted: Bool = false) {
+            let trimmed = currentToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                currentToken = ""
+                return
+            }
+            segments.append(QuerySegment(text: trimmed, isQuoted: isQuoted))
+            currentToken = ""
+        }
+
+        while index < query.endIndex {
+            let character = query[index]
+
+            if character.isWhitespace {
+                flushCurrentToken()
+                index = query.index(after: index)
+                continue
+            }
+
+            if character == "\"" {
+                if currentToken.hasSuffix(":") {
+                    let valueStart = query.index(after: index)
+                    let quotedSegment = readQuotedSegment(query, from: valueStart)
+                    currentToken.append(quotedSegment.text)
+                    flushCurrentToken(isQuoted: true)
+                    index = quotedSegment.nextIndex
+                    continue
+                }
+
+                if currentToken == "-" {
+                    let valueStart = query.index(after: index)
+                    let quotedSegment = readQuotedSegment(query, from: valueStart)
+                    let trimmed = quotedSegment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        segments.append(QuerySegment(text: "-\(trimmed)", isQuoted: true))
+                    }
+                    currentToken = ""
+                    index = quotedSegment.nextIndex
+                    continue
+                }
+
+                flushCurrentToken()
+                let valueStart = query.index(after: index)
+                let quotedSegment = readQuotedSegment(query, from: valueStart)
+                let trimmed = quotedSegment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    segments.append(QuerySegment(text: trimmed, isQuoted: true))
+                }
+                index = quotedSegment.nextIndex
+                continue
+            }
+
+            currentToken.append(character)
+            index = query.index(after: index)
+        }
+
+        flushCurrentToken()
+        return segments
+    }
+
+    private static func readQuotedSegment(
+        _ query: String,
+        from startIndex: String.Index
+    ) -> (text: String, nextIndex: String.Index) {
+        var currentIndex = startIndex
+        var value = ""
+
+        while currentIndex < query.endIndex {
+            let character = query[currentIndex]
+            if character == "\"" {
+                let nextIndex = query.index(after: currentIndex)
+                return (value, nextIndex)
+            }
+            value.append(character)
+            currentIndex = query.index(after: currentIndex)
+        }
+
+        return (value, currentIndex)
+    }
+}
+
 // MARK: - Note Index
 
 @Observable final class NoteIndex {
@@ -44,14 +328,23 @@ struct NoteSearchResult: Identifiable {
         let modifiedAt: Date
     }
 
-    private struct ParsedQuery {
+    struct LocalSearchQuery {
         let displayQuery: String
         let normalizedQuery: String
         let queryTokens: [String]
+        let excludedQueryTokens: Set<String>
         let normalizedPhrases: [String]
+        let excludedPhrases: [String]
         let requiredTags: Set<String>
+        let excludedTags: Set<String>
         let requiredPeople: Set<String>
+        let excludedPeople: Set<String>
         let requiredPaths: [String]
+        let excludedPaths: [String]
+        let requiredTitleTerms: [String]
+        let excludedTitleTerms: [String]
+        let requiredContentTerms: [String]
+        let excludedContentTerms: [String]
 
         var hasSearchTerms: Bool {
             !queryTokens.isEmpty || !normalizedPhrases.isEmpty
@@ -217,7 +510,7 @@ struct NoteSearchResult: Identifiable {
             return Array(allNotes.prefix(20).map(\.result))
         }
 
-        let parsedQuery = Self.parseQuery(trimmedQuery)
+        let parsedQuery = Self.parseLocalSearchQuery(trimmedQuery)
         let expandedTokens = Set(Self.expandQueryTokens(parsedQuery.queryTokens))
 
         let ranked: [(NoteSearchResult, Int)] = allNotes
@@ -296,7 +589,7 @@ struct NoteSearchResult: Identifiable {
 
     private func score(
         _ indexed: IndexedNote,
-        parsedQuery: ParsedQuery,
+        parsedQuery: LocalSearchQuery,
         queryTokens: Set<String>
     ) -> Int {
         let query = parsedQuery.displayQuery
@@ -377,15 +670,25 @@ struct NoteSearchResult: Identifiable {
         return total
     }
 
-    private func matchesFilters(_ indexed: IndexedNote, query: ParsedQuery) -> Bool {
+    private func matchesFilters(_ indexed: IndexedNote, query: LocalSearchQuery) -> Bool {
         if !query.requiredTags.isEmpty {
             for filterTag in query.requiredTags where !containsTag(filterTag, in: indexed.tags) {
+                return false
+            }
+        }
+        if !query.excludedTags.isEmpty {
+            for excludedTag in query.excludedTags where containsTag(excludedTag, in: indexed.tags) {
                 return false
             }
         }
 
         if !query.requiredPeople.isEmpty {
             for filterPerson in query.requiredPeople where !containsPerson(filterPerson, in: indexed.mentions) {
+                return false
+            }
+        }
+        if !query.excludedPeople.isEmpty {
+            for excludedPerson in query.excludedPeople where containsPerson(excludedPerson, in: indexed.mentions) {
                 return false
             }
         }
@@ -396,6 +699,26 @@ struct NoteSearchResult: Identifiable {
                 return false
             }
         }
+        if !query.excludedPaths.isEmpty {
+            let path = indexed.result.relativePath.lowercased()
+            for excludedPath in query.excludedPaths where path.contains(excludedPath) {
+                return false
+            }
+        }
+
+        for requiredTitle in query.requiredTitleTerms where !indexed.normalizedTitle.contains(requiredTitle) {
+            return false
+        }
+        for excludedTitle in query.excludedTitleTerms where indexed.normalizedTitle.contains(excludedTitle) {
+            return false
+        }
+
+        for requiredContent in query.requiredContentTerms where !indexed.normalizedContent.contains(requiredContent) {
+            return false
+        }
+        for excludedContent in query.excludedContentTerms where indexed.normalizedContent.contains(excludedContent) {
+            return false
+        }
 
         if !query.normalizedPhrases.isEmpty {
             for phrase in query.normalizedPhrases {
@@ -404,6 +727,20 @@ struct NoteSearchResult: Identifiable {
                 if !inTitle && !inContent {
                     return false
                 }
+            }
+        }
+
+        for excludedPhrase in query.excludedPhrases {
+            let inTitle = indexed.normalizedTitle.contains(excludedPhrase)
+            let inContent = indexed.normalizedContent.contains(excludedPhrase)
+            if inTitle || inContent {
+                return false
+            }
+        }
+
+        for excludedToken in query.excludedQueryTokens {
+            if indexed.titleTokens.contains(excludedToken) || indexed.contentTokenCounts[excludedToken] != nil {
+                return false
             }
         }
 
@@ -566,115 +903,6 @@ struct NoteSearchResult: Identifiable {
             return String(directoryPath.dropFirst(workspacePrefix.count))
         }
         return directoryURL.lastPathComponent
-    }
-
-    private static func parseQuery(_ query: String) -> ParsedQuery {
-        let (fragments, phrases) = splitFragments(query)
-        var rawTerms: [String] = []
-        var requiredTags: Set<String> = []
-        var requiredPeople: Set<String> = []
-        var requiredPaths: [String] = []
-
-        for fragment in fragments {
-            if let pathFilter = parseFilter(fragment, key: "path")
-                ?? parseFilter(fragment, key: "in") {
-                requiredPaths.append(pathFilter.lowercased())
-                continue
-            }
-
-            if let tagFilter = parseFilter(fragment, key: "tag") {
-                requiredTags.insert(tagFilter)
-                continue
-            }
-            if let personFilter = parseFilter(fragment, key: "person")
-                ?? parseFilter(fragment, key: "people")
-                ?? parseFilter(fragment, key: "mention") {
-                requiredPeople.insert(personFilter)
-                continue
-            }
-
-            if fragment.hasPrefix("#"), let tagFilter = normalizeTag(fragment) {
-                requiredTags.insert(tagFilter)
-                continue
-            }
-            if fragment.hasPrefix("@"), let personFilter = normalizePerson(fragment) {
-                requiredPeople.insert(personFilter)
-                continue
-            }
-
-            rawTerms.append(fragment)
-        }
-
-        let normalizedPhrases = phrases.map(normalizeText).filter { !$0.isEmpty }
-        let phraseTokens = phrases.flatMap(tokens(from:))
-        let termTokens = rawTerms.flatMap(tokens(from:)) + phraseTokens
-        let displayQuery = (rawTerms + phrases).joined(separator: " ").trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        let normalizedQuery = normalizeText(displayQuery)
-
-        return ParsedQuery(
-            displayQuery: displayQuery,
-            normalizedQuery: normalizedQuery,
-            queryTokens: termTokens,
-            normalizedPhrases: normalizedPhrases,
-            requiredTags: requiredTags,
-            requiredPeople: requiredPeople,
-            requiredPaths: requiredPaths
-        )
-    }
-
-    private static func splitFragments(_ query: String) -> ([String], [String]) {
-        var fragments: [String] = []
-        var phrases: [String] = []
-        var current = ""
-        var inQuote = false
-
-        for character in query {
-            if character == "\"" {
-                if inQuote {
-                    let phrase = current.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !phrase.isEmpty {
-                        phrases.append(phrase)
-                    }
-                    current = ""
-                } else if !current.isEmpty {
-                    fragments.append(contentsOf: splitWords(current))
-                    current = ""
-                }
-                inQuote.toggle()
-                continue
-            }
-            current.append(character)
-        }
-
-        if !current.isEmpty {
-            fragments.append(contentsOf: splitWords(current))
-        }
-
-        return (fragments, phrases)
-    }
-
-    private static func splitWords(_ text: String) -> [String] {
-        text
-            .split { $0.isWhitespace }
-            .map(String.init)
-            .filter { !$0.isEmpty }
-    }
-
-    private static func parseFilter(_ fragment: String, key: String) -> String? {
-        let parts = fragment.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2,
-              parts[0].lowercased() == key.lowercased() else { return nil }
-        let value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return nil }
-        if key == "path" || key == "in" {
-            return value.lowercased()
-        }
-        if key == "tag" {
-            return normalizeTag(value)
-        }
-        return normalizePerson(value)
     }
 
     private static func normalizeTag(_ rawTag: String) -> String? {
