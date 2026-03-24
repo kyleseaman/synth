@@ -133,6 +133,11 @@ struct SynthApp: App {
                 .keyboardShortcut("`", modifiers: .control)
             }
             CommandGroup(after: .textFormatting) {
+                Button("Search Workspace") {
+                    store.selectSearchTab()
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+
                 Button("Go to File") {
                     store.showFileLauncherModal()
                 }

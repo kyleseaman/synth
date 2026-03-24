@@ -15,6 +15,7 @@ private enum DiskDeleteScope {
 
 enum DetailViewMode: Equatable {
     case editor
+    case search
     case dailyNotes
     case links
     case media
@@ -60,6 +61,7 @@ final class DocumentStore {
     var needsKiroSetup = false
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
+    var dedicatedSearch = DedicatedSearchState()
 
     // MARK: - Centralized UI State
     var columnVisibility: NavigationSplitViewVisibility = .all
@@ -212,6 +214,7 @@ final class DocumentStore {
             currentIndex = -1
             detailMode = .editor
             mediaFiles = MediaManager.screenshotURLs(in: url)
+            dedicatedSearch.clear()
             pendingDeleteTarget = nil
             pendingDeleteName = ""
             pendingDeleteIsDirectory = false
@@ -381,9 +384,24 @@ final class DocumentStore {
         detailMode = .dailyNotes
     }
 
+    func selectSearchTab() {
+        guard workspace != nil else { return }
+        detailMode = .search
+    }
+
     func open(_ url: URL) {
+        openDocument(url, switchToEditorMode: true)
+    }
+
+    func openFromSearch(_ url: URL) {
+        openDocument(url, switchToEditorMode: false)
+    }
+
+    private func openDocument(_ url: URL, switchToEditorMode: Bool) {
         saveAll()
-        detailMode = .editor
+        if switchToEditorMode {
+            detailMode = .editor
+        }
         if let idx = openFiles.firstIndex(where: { $0.url == url }) {
             currentIndex = idx
             addToRecent(url)

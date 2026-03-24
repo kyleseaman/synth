@@ -150,6 +150,77 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectSearchTabRequiresWorkspaceAndActivatesSearchMode() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let store = DocumentStore()
+        store.detailMode = .editor
+
+        store.selectSearchTab()
+        XCTAssertEqual(store.detailMode, .editor)
+
+        store.workspace = workspaceURL
+        store.selectSearchTab()
+        XCTAssertEqual(store.detailMode, .search)
+    }
+
+    @MainActor
+    func testOpenFromSearchKeepsSearchModeAndOpensDocument() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let noteURL = workspaceURL.appendingPathComponent("search-note.md")
+        try "# Search Note\n".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.selectSearchTab()
+
+        store.openFromSearch(noteURL)
+
+        XCTAssertEqual(store.detailMode, .search)
+        XCTAssertEqual(store.openFiles.count, 1)
+        XCTAssertEqual(store.openFiles.first?.url, noteURL)
+    }
+
+    @MainActor
+    func testDedicatedSearchStateComposesQueryWithFacetFilters() {
+        let state = DedicatedSearchState()
+        state.textQuery = "release checklist"
+        state.titleFilterText = "weekly sync"
+        state.contentFilterText = "deployment"
+        state.pathFilterText = "meeting notes"
+        state.tagFilterText = "project, q1 plan"
+        state.personFilterText = "alex"
+
+        XCTAssertEqual(
+            state.composedQuery,
+            "release checklist title:\"weekly sync\" content:deployment " +
+                "path:\"meeting notes\" tag:project tag:\"q1 plan\" person:alex"
+        )
+    }
+
+    @MainActor
+    func testDedicatedSearchStateRemoveFacetUpdatesBackingFilter() {
+        let state = DedicatedSearchState()
+        state.tagFilterText = "project, q1-plan, ops"
+
+        let removableFacet = SearchFacetToken(kind: .tag, value: "q1-plan")
+        state.removeFacet(removableFacet)
+
+        XCTAssertEqual(state.tagFilterText, "project, ops")
+    }
+
+    @MainActor
     func testNewDraftCreatesIncrementingUntitledFiles() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,
