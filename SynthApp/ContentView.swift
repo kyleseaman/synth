@@ -194,6 +194,31 @@ struct ContentView: View {
                             hoveredSidebarMode = isHovering ? .dailyNotes : nil
                         }
 
+                        // MARK: - Search sidebar button
+                        Button {
+                            store.selectSearchTab()
+                        } label: {
+                            Label("Search", systemImage: "magnifyingglass")
+                                .fontWeight(
+                                    store.detailMode == .search ? .semibold : .regular
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 6)
+                        .background(
+                            Color.accentColor.opacity(
+                                SidebarSectionHoverRules.backgroundOpacity(
+                                    isSelected: store.detailMode == .search,
+                                    isHovering: hoveredSidebarMode == .search
+                                )
+                            ),
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                        .onHover { isHovering in
+                            hoveredSidebarMode = isHovering ? .search : nil
+                        }
+
                         // MARK: - Links sidebar button
                         Button {
                             store.selectLinksTab()
@@ -291,6 +316,8 @@ struct ContentView: View {
 
                 if store.detailMode == .dailyNotes {
                     DailyNotesView()
+                } else if store.detailMode == .search {
+                    DedicatedSearchView()
                 } else if store.detailMode == .links {
                     LinksView()
                 } else if store.detailMode == .media {

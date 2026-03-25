@@ -149,6 +149,19 @@ struct FileLauncher: View {
         return note
     }
 
+    private var qmdResultURLs: Set<URL> {
+        Set(qmdResults.compactMap { launcherResult in
+            switch launcherResult {
+            case .note(let noteResult):
+                return noteResult.url
+            case .file(let node, _):
+                return node.url
+            case .person:
+                return nil
+            }
+        })
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             searchHeader
@@ -239,6 +252,15 @@ struct FileLauncher: View {
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
+
+            if !qmdResults.isEmpty {
+                Text("Blending \(qmdResults.count) QMD result(s) with local results.")
+                    .font(Theme.uiSwiftUIFont(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
         }
     }
 
@@ -268,6 +290,9 @@ struct FileLauncher: View {
                         .foregroundStyle(.secondary)
                     Text(note.title)
                     Spacer()
+                    if qmdResultURLs.contains(note.url) {
+                        sourceBadge("QMD")
+                    }
                     Text(note.relativePath)
                         .foregroundStyle(.tertiary)
                         .font(.caption)
@@ -276,6 +301,9 @@ struct FileLauncher: View {
                         .foregroundStyle(.secondary)
                     Text(node.name)
                     Spacer()
+                    if qmdResultURLs.contains(node.url) {
+                        sourceBadge("QMD")
+                    }
                     Text(node.url.deletingLastPathComponent().lastPathComponent)
                         .foregroundStyle(.tertiary)
                         .font(.caption)
@@ -292,7 +320,7 @@ struct FileLauncher: View {
                 }
             }
             if case .note(let note) = result {
-                Text(note.preview)
+                Text(rowPreviewText(for: note))
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -382,9 +410,7 @@ struct FileLauncher: View {
     }
 
     private func previewText(for note: NoteSearchResult) -> String {
-        guard let fullText = previewCache[note.url], !fullText.isEmpty else {
-            return note.preview
-        }
+        let fullText = previewCache[note.url] ?? note.preview
 
         let content = Self.focusedSnippet(
             from: fullText,
@@ -392,6 +418,26 @@ struct FileLauncher: View {
             fallback: note.preview
         )
         return content.isEmpty ? note.preview : content
+    }
+
+    private func rowPreviewText(for note: NoteSearchResult) -> String {
+        let rowContent = previewCache[note.url] ?? note.preview
+        let snippetText = Self.focusedSnippet(
+            from: rowContent,
+            query: query,
+            fallback: note.preview
+        )
+        return snippetText.isEmpty ? note.preview : snippetText
+    }
+
+    @ViewBuilder
+    private func sourceBadge(_ label: String) -> some View {
+        Text(label)
+            .font(Theme.uiSwiftUIFont(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
     }
 
     nonisolated static func cleanPreviewText(_ text: String) -> String {
@@ -414,16 +460,7 @@ struct FileLauncher: View {
         query: String,
         fallback: String
     ) -> String {
-        let terms = query
-            .lowercased()
-            .split { $0.isWhitespace }
-            .map(String.init)
-            .filter {
-                !$0.contains(":")
-                    && !$0.hasPrefix("#")
-                    && !$0.hasPrefix("@")
-                    && $0.count >= 3
-            }
+        let terms = snippetTerms(from: query)
 
         if terms.isEmpty {
             return String(content.prefix(650))
@@ -451,6 +488,51 @@ struct FileLauncher: View {
         let startIndex = content.index(content.startIndex, offsetBy: startOffset)
         let endIndex = content.index(content.startIndex, offsetBy: endOffset)
         return String(content[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func snippetTerms(from query: String) -> [String] {
+        let parsedQuery = NoteIndex.parseLocalSearchQuery(query)
+        var orderedTerms: [String] = []
+        var seenTerms: Set<String> = []
+
+        func appendTerm(_ rawTerm: String) {
+            let normalizedTerm = rawTerm
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard normalizedTerm.count >= 3 else { return }
+            guard seenTerms.insert(normalizedTerm).inserted else { return }
+            orderedTerms.append(normalizedTerm)
+        }
+
+        func appendTokens(from rawValue: String) {
+            for token in rawValue.lowercased().split(whereSeparator: { character in
+                !character.isLetter && !character.isNumber
+            }) {
+                appendTerm(String(token))
+            }
+        }
+
+        for phrase in parsedQuery.normalizedPhrases {
+            appendTerm(phrase)
+            appendTokens(from: phrase)
+        }
+        for requiredContent in parsedQuery.requiredContentTerms {
+            appendTerm(requiredContent)
+            appendTokens(from: requiredContent)
+        }
+        for requiredTitle in parsedQuery.requiredTitleTerms {
+            appendTerm(requiredTitle)
+            appendTokens(from: requiredTitle)
+        }
+        for queryToken in parsedQuery.queryTokens {
+            appendTerm(queryToken)
+        }
+
+        if orderedTerms.isEmpty {
+            appendTokens(from: parsedQuery.displayQuery)
+        }
+
+        return orderedTerms
     }
 
     func openSelected() {

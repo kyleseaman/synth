@@ -150,6 +150,115 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSelectSearchTabRequiresWorkspaceAndActivatesSearchMode() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let store = DocumentStore()
+        store.detailMode = .editor
+
+        store.selectSearchTab()
+        XCTAssertEqual(store.detailMode, .editor)
+
+        store.workspace = workspaceURL
+        store.selectSearchTab()
+        XCTAssertEqual(store.detailMode, .search)
+    }
+
+    @MainActor
+    func testOpenFromSearchKeepsSearchModeAndOpensDocument() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let noteURL = workspaceURL.appendingPathComponent("search-note.md")
+        try "# Search Note\n".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.selectSearchTab()
+
+        store.openFromSearch(noteURL)
+
+        XCTAssertEqual(store.detailMode, .search)
+        XCTAssertEqual(store.openFiles.count, 1)
+        XCTAssertEqual(store.openFiles.first?.url, noteURL)
+    }
+
+    @MainActor
+    func testDedicatedSearchStateComposesQueryWithFacetFilters() {
+        let state = DedicatedSearchState()
+        state.textQuery = "release checklist"
+        state.titleFilterText = "weekly sync"
+        state.contentFilterText = "deployment"
+        state.pathFilterText = "meeting notes"
+        state.tagFilterText = "project, q1 plan"
+        state.personFilterText = "alex"
+
+        XCTAssertEqual(
+            state.composedQuery,
+            "release checklist title:\"weekly sync\" content:deployment " +
+                "path:\"meeting notes\" tag:project tag:\"q1 plan\" person:alex"
+        )
+    }
+
+    @MainActor
+    func testDedicatedSearchStateRemoveFacetUpdatesBackingFilter() {
+        let state = DedicatedSearchState()
+        state.tagFilterText = "project, q1-plan, ops"
+
+        let removableFacet = SearchFacetToken(kind: .tag, value: "q1-plan")
+        state.removeFacet(removableFacet)
+
+        XCTAssertEqual(state.tagFilterText, "project, ops")
+    }
+
+    @MainActor
+    func testDedicatedSearchStateStepSelectionMovesPredictably() {
+        let identifiers = ["note:alpha", "file:beta", "tag:gamma"]
+
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "note:alpha",
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "file:beta"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "tag:gamma",
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "tag:gamma"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: "file:beta",
+                availableIdentifiers: identifiers,
+                direction: .previous
+            ),
+            "note:alpha"
+        )
+        XCTAssertEqual(
+            DedicatedSearchState.stepSelection(
+                currentIdentifier: nil,
+                availableIdentifiers: identifiers,
+                direction: .next
+            ),
+            "note:alpha"
+        )
+    }
+
+    @MainActor
     func testNewDraftCreatesIncrementingUntitledFiles() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,

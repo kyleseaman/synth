@@ -361,6 +361,257 @@ final class NoteIndexSearchTests: XCTestCase {
         XCTAssertEqual(results.first?.title, "Weekly")
     }
 
+    func testSearchSupportsTitleScopedFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Weekly Status.md",
+            content: """
+            # Team
+
+            Progress update for design and engineering.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Status Digest.md",
+            content: """
+            # Digest
+
+            Progress update for the org.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("title:weekly")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Weekly Status")
+    }
+
+    func testSearchSupportsContentScopedFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Release Board.md",
+            content: """
+            # Release Board
+
+            Deployment checklist and launch owner notes.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Release Checklist.md",
+            content: """
+            # Release Checklist
+
+            Planning notes for the quarter.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("content:deployment")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Release Board")
+    }
+
+    func testSearchSupportsNegatedTermSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Planning.md",
+            content: """
+            # Planning
+
+            #project Weekly status update and follow ups.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Archive.md",
+            content: """
+            # Archive
+
+            #project Archived status update from last quarter.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status tag:project -archived")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Planning")
+    }
+
+    func testSearchTreatsQuotedTitleOperatorLiteralAsPhrase() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Literal Phrase.md",
+            content: """
+            # Literal Phrase
+
+            Preserve the literal token title:weekly in search behavior.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Weekly Plan.md",
+            content: """
+            # Weekly Plan
+
+            Planning notes without operator literals.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("\"title:weekly\"")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Literal Phrase")
+    }
+
+    func testSearchTreatsQuotedTagOperatorLiteralAsPhrase() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Literal Tag.md",
+            content: """
+            # Literal Tag
+
+            Keep the literal phrase tag:project searchable.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Tagged Note.md",
+            content: """
+            # Tagged Note
+
+            #project milestone updates.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("\"tag:project\"")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Literal Tag")
+    }
+
+    func testSearchSupportsNegatedTagFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Project Status.md",
+            content: """
+            # Project Status
+
+            #project status update.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Ops Status.md",
+            content: """
+            # Ops Status
+
+            #ops status update.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status -tag:ops")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Project Status")
+    }
+
+    func testSearchSupportsNegatedPathFilterSyntax() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let archiveFolder = workspaceURL.appendingPathComponent("archive", isDirectory: true)
+        try FileManager.default.createDirectory(at: archiveFolder, withIntermediateDirectories: true)
+
+        try write(
+            "Current.md",
+            content: """
+            # Current
+
+            #project status update for active work.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Archived.md",
+            content: """
+            # Archived
+
+            #project status update for archived work.
+            """,
+            at: archiveFolder
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status tag:project -path:archive")
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.title, "Current")
+    }
+
+    func testSearchUsesDeterministicOrderingWithMixedFiltersAndTerms() throws {
+        let workspaceURL = try makeWorkspace()
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        try write(
+            "Beta.md",
+            content: """
+            # Beta
+
+            #project status update for this week.
+            """,
+            in: workspaceURL
+        )
+        try write(
+            "Alpha.md",
+            content: """
+            # Alpha
+
+            #project status update for this week.
+            """,
+            in: workspaceURL
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        let results = noteIndex.search("status tag:project")
+
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results.map(\.title), ["Alpha", "Beta"])
+    }
+
     func testSearchSupportsQuotedPhraseMatching() throws {
         let workspaceURL = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: workspaceURL) }
