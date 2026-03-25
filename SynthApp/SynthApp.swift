@@ -167,6 +167,15 @@ struct SynthApp: App {
                     store.showKanbanModal()
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+
+                Button("Insert Table") {
+                    NotificationCenter.default.post(
+                        name: .insertTableNow, object: nil
+                    )
+                }
+                .keyboardShortcut(
+                    "t", modifiers: [.command, .option]
+                )
             }
 
             CommandMenu("Templates") {

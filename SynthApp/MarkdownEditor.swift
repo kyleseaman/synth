@@ -675,24 +675,80 @@ extension FormattingTextView {
     }
 
     override func insertTab(_ sender: Any?) {
-        guard let storage = textStorage else { super.insertTab(sender); return }
-        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
-        let line = (storage.string as NSString).substring(with: lineRange)
+        guard let storage = textStorage else {
+            super.insertTab(sender); return
+        }
+        let lineRange = (storage.string as NSString).lineRange(
+            for: selectedRange()
+        )
+        let line = (storage.string as NSString).substring(
+            with: lineRange
+        ).trimmingCharacters(in: .newlines)
+
+        // Table cell navigation: move to next cell
+        if TableNavigator.isTableRow(line) {
+            if let cellRange = TableNavigator.nextCellRange(
+                in: storage.string,
+                from: selectedRange().location
+            ) {
+                setSelectedRange(cellRange)
+            } else {
+                // At end of table -- insert new row
+                let colCount = TableNavigator.columnCount(in: line)
+                let newRow = TableNavigator.newRowString(
+                    columnCount: colCount
+                )
+                let endOfLine = NSMaxRange(lineRange)
+                let insertAt = min(endOfLine, storage.length)
+                storage.insert(
+                    NSAttributedString(string: newRow),
+                    at: insertAt
+                )
+                if let firstCell = TableNavigator.nextCellRange(
+                    in: storage.string, from: insertAt
+                ) {
+                    setSelectedRange(firstCell)
+                }
+            }
+            return
+        }
 
         if line.contains("•") {
-            storage.insert(NSAttributedString(string: "\t"), at: lineRange.location)
+            storage.insert(
+                NSAttributedString(string: "\t"),
+                at: lineRange.location
+            )
             return
         }
         super.insertTab(sender)
     }
 
     override func insertBacktab(_ sender: Any?) {
-        guard let storage = textStorage else { super.insertBacktab(sender); return }
-        let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
-        let line = (storage.string as NSString).substring(with: lineRange)
+        guard let storage = textStorage else {
+            super.insertBacktab(sender); return
+        }
+        let lineRange = (storage.string as NSString).lineRange(
+            for: selectedRange()
+        )
+        let line = (storage.string as NSString).substring(
+            with: lineRange
+        ).trimmingCharacters(in: .newlines)
+
+        // Table cell navigation: move to previous cell
+        if TableNavigator.isTableRow(line) {
+            if let cellRange = TableNavigator.previousCellRange(
+                in: storage.string,
+                from: selectedRange().location
+            ) {
+                setSelectedRange(cellRange)
+            }
+            return
+        }
 
         if line.hasPrefix("\t") && line.contains("•") {
-            storage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
+            storage.deleteCharacters(
+                in: NSRange(location: lineRange.location, length: 1)
+            )
             return
         }
         super.insertBacktab(sender)
@@ -1511,10 +1567,16 @@ extension MarkdownEditor.Coordinator {
                 )
             }
 
+            // Apply table block formatting before inline markdown
+            let tableRanges = formatTableBlock(
+                range, in: storage
+            )
+
             // Apply inline formatting within the range
             formatInlineMarkdown(
                 range, in: storage, baseFont: bodyFont,
-                cursorParagraph: cursorParagraph
+                cursorParagraph: cursorParagraph,
+                tableRanges: tableRanges
             )
         }
 
@@ -1582,8 +1644,18 @@ extension MarkdownEditor.Coordinator {
         // swiftlint:disable:next function_body_length
         private func formatInlineMarkdown(
             _ range: NSRange, in storage: NSTextStorage,
-            baseFont: NSFont, cursorParagraph: NSRange? = nil
+            baseFont: NSFont, cursorParagraph: NSRange? = nil,
+            tableRanges: [NSRange] = []
         ) {
+            // Skip formatting if the entire range is inside a table
+            if !tableRanges.isEmpty {
+                let isFullyInTable = tableRanges.contains { tableRange in
+                    NSIntersectionRange(tableRange, range).length
+                        == range.length
+                }
+                if isFullyInTable { return }
+            }
+
             let text = storage.string
             let shouldHide = UserDefaults.standard.bool(
                 forKey: "hideSyntax"
@@ -1861,6 +1933,108 @@ extension MarkdownEditor.Coordinator {
                     length: 1
                 ))
             }
+        }
+
+        // MARK: - Table Block Formatting
+
+        /// Detects table blocks in the given range and applies
+        /// monospace font, bold header, and dimmed separators/pipes.
+        /// Returns the ranges of table blocks found.
+        @discardableResult
+        private func formatTableBlock(
+            _ range: NSRange, in storage: NSTextStorage
+        ) -> [NSRange] {
+            let nsString = storage.string as NSString
+            var tableRanges: [NSRange] = []
+            let monoFont = Theme.terminalNSFont(ofSize: 14)
+            let boldMonoFont = Theme.terminalNSFont(
+                ofSize: 14, weight: .bold
+            )
+            let dimColor = NSColor.tertiaryLabelColor
+
+            // Collect paragraph ranges within the format range
+            var paragraphs: [(range: NSRange, text: String)] = []
+            nsString.enumerateSubstrings(
+                in: range,
+                options: [.byParagraphs, .substringNotRequired]
+            ) { _, paraRange, _, _ in
+                let paraText = nsString.substring(with: paraRange)
+                    .trimmingCharacters(in: .newlines)
+                paragraphs.append((range: paraRange, text: paraText))
+            }
+
+            var paraIdx = 0
+            while paraIdx < paragraphs.count {
+                let headerPara = paragraphs[paraIdx]
+                let headerText = headerPara.text
+                // Check for table block start: header + separator
+                guard TableNavigator.isTableRow(headerText),
+                      paraIdx + 1 < paragraphs.count,
+                      TableNavigator.isSeparatorRow(
+                          paragraphs[paraIdx + 1].text
+                      ) else {
+                    paraIdx += 1
+                    continue
+                }
+
+                // Found a table block
+                let separatorPara = paragraphs[paraIdx + 1]
+                var blockEnd = paraIdx + 2
+
+                // Collect data rows
+                while blockEnd < paragraphs.count,
+                      TableNavigator.isTableRow(
+                          paragraphs[blockEnd].text
+                      ) {
+                    blockEnd += 1
+                }
+
+                // Calculate full block range
+                let blockStart = headerPara.range.location
+                let lastPara = paragraphs[blockEnd - 1]
+                let blockLength = NSMaxRange(lastPara.range)
+                    - blockStart
+                let blockRange = NSRange(
+                    location: blockStart, length: blockLength
+                )
+                tableRanges.append(blockRange)
+
+                // Apply monospace to entire block
+                storage.addAttribute(
+                    .font, value: monoFont, range: blockRange
+                )
+
+                // Bold the header row
+                storage.addAttribute(
+                    .font, value: boldMonoFont,
+                    range: headerPara.range
+                )
+
+                // Dim separator row
+                storage.addAttribute(
+                    .foregroundColor, value: dimColor,
+                    range: separatorPara.range
+                )
+
+                // Dim pipe characters in non-separator rows
+                for rowIdx in paraIdx..<blockEnd {
+                    if rowIdx == paraIdx + 1 { continue }
+                    let rowRange = paragraphs[rowIdx].range
+                    for pipeMatch in MarkdownFormat.pipePattern
+                        .matches(
+                            in: storage.string, range: rowRange
+                        ) {
+                        storage.addAttribute(
+                            .foregroundColor, value: dimColor,
+                            range: pipeMatch.range
+                        )
+                    }
+                }
+
+                paraIdx = blockEnd
+            }
+
+            return tableRanges
         }
 
         // MARK: - Code Block Detection

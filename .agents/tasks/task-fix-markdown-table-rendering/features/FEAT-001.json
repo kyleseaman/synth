@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create TableNavigator.swift with pure table logic (detection, cell navigation, template generation) and add table rendering to MarkdownFormat.swift and MarkdownEditor.swift. This implements the complete markdown table support that was described in PR #32 but never actually coded.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Create SynthApp/TableNavigator.swift -- a pure logic utility (no AppKit dependencies for the core logic) that provides: (a) a tableRowPattern regex matching lines like '| col1 | col2 | col3 |', (b) a separatorRowPattern regex matching lines like '|---|---|---|' or '| --- | --- | --- |', (c) an isTableRow(_ line: String) -> Bool function, (d) an isSeparatorRow(_ line: String) -> Bool function, (e) a columnCount(in line: String) -> Int function that counts pipe-delimited columns, (f) a nextCellRange(in text: String, from cursorLocation: Int) -> NSRange? function for Tab navigation, (g) a previousCellRange(in text: String, from cursorLocation: Int) -> NSRange? function for Shift+Tab navigation, (h) a newRowString(columnCount: Int) -> String function that generates a new blank row '| | | |\\n', (i) a tableTemplate(columns: Int, rows: Int) -> String function that generates a full markdown table template with header, separator, and data rows. Follow the pattern of other utility types in the project (PeopleIndex.personPattern is a good reference for static regex patterns).",
+    "Step 2: Add table rendering to MarkdownFormat.swift -- (a) Add a static tableRowPattern regex (compiled with try! like other patterns) that matches lines starting and ending with | and containing pipe-separated content: pattern #\"^\\|(.+\\|)+\\s*$\"#. (b) Add a static separatorRowPattern regex matching separator rows: pattern #\"^\\|[\\s:-]+\\|[\\s|:-]*$\"#. (c) In the render(_ text: String) method, before the line-by-line loop, detect table blocks (consecutive lines that match tableRowPattern). For each table block: apply monospace font (Theme.terminalNSFont(ofSize: 14)) to all table lines, apply bold to the first row (header), dim the separator row (second row) and all pipe characters using NSColor.tertiaryLabelColor. The existing line-by-line approach needs enhancement: group consecutive table lines and render them as a block. (d) Also add table rendering to the incremental formatInlineMarkdown() method in MarkdownEditor.swift's Coordinator to handle the live editing path.",
+    "Step 3: Add table rendering in MarkdownEditor.swift's Coordinator -- (a) In formatRange(), after calling formatParagraphHeading() and formatInlineMarkdown(), add a call to a new formatTableBlock() method. (b) formatTableBlock() should detect if the current paragraph range is inside a table block (multiple consecutive lines matching the table row pattern). If so: apply monospace font to the entire block, bold the header row, dim separator rows and pipe characters. (c) Also update formatInlineMarkdown() to skip table content (don't apply wiki link, bold, italic formatting to table rows -- they should use monospace only).",
+    "Step 4: Add table insertion via Cmd+Option+T -- (a) In ContentView.swift, add a new notification name: static let insertTableNow = Notification.Name(\"insertTableNow\"). (b) In SynthApp.swift, add a new Button in the commands section: Button(\"Insert Table\") { NotificationCenter.default.post(name: .insertTableNow, object: nil) }.keyboardShortcut(\"t\", modifiers: [.command, .option]). (c) In AutocompleteCoordinator.swift, add an observer for .insertTableNow that inserts a table template (3 columns, 2 rows) at the current cursor position using the insertTemplateContent helper.",
+    "Step 5: Add Tab/Shift+Tab cell navigation in FormattingTextView -- (a) In MarkdownEditor.swift, override insertTab(_:) to check if the cursor is inside a table row. If so, find the next cell and select it (or add a new row if at the last cell of the last row). Otherwise fall through to the existing bullet indentation logic. (b) Override insertBacktab(_:) similarly for Shift+Tab to navigate to the previous cell. Use the TableNavigator functions for cell range calculation.",
+    "Step 6: Add TableSupportTests.swift -- Create SynthAppTests/TableSupportTests.swift with tests covering: (a) isTableRow detects valid table rows, (b) isTableRow rejects non-table lines, (c) isSeparatorRow detects separator rows, (d) isSeparatorRow rejects non-separator lines, (e) columnCount returns correct count, (f) tableTemplate generates correct markdown, (g) newRowString generates correct blank row. Follow the XCTest pattern in SynthAppTests/UtilityLogicTests.swift (import XCTest, @testable import Synth).",
+    "Step 7: Register all new files in Synth.xcodeproj/project.pbxproj -- Register TableNavigator.swift and TableSupportTests.swift in all 4 required sections: (a) PBXBuildFile section -- add build file entries with unique IDs, (b) PBXFileReference section -- add file reference entries, (c) PBXGroup section -- add to SynthApp children list (for source) and SynthAppTests children list (for test), (d) PBXSourcesBuildPhase -- add to the Synth target sources (for source) and SynthTests target sources (for test). Use hex IDs that don't collide with existing ones (e.g., TB prefix like TB0000000000000000000001).",
+    "Step 8: Update agent/agent-changelog.md -- Add a new section documenting the markdown table rendering feature, listing all files added and modified."
+  ],
+  "acceptance_criteria": [
+    "TableNavigator.swift exists with isTableRow, isSeparatorRow, columnCount, tableTemplate, nextCellRange, previousCellRange functions",
+    "MarkdownFormat.swift has tableRowPattern and separatorRowPattern static regex properties",
+    "Table rows in markdown get rendered with monospace font (Theme.terminalNSFont)",
+    "Header row (first row of table) gets bold styling",
+    "Separator rows and pipe characters get dimmed styling (NSColor.tertiaryLabelColor)",
+    "Both render() (initial) and formatRange()/formatInlineMarkdown() (incremental) paths handle table rendering",
+    "Cmd+Option+T inserts a table template via .insertTableNow notification",
+    "Tab/Shift+Tab in table rows navigates between cells",
+    "TableSupportTests.swift has tests for table detection, separator detection, column counting, and template generation",
+    "All new files registered in project.pbxproj in all 4 sections",
+    "agent-changelog.md updated with the new feature"
+  ],
+  "verification": [
+    "Verify TableNavigator.swift and TableSupportTests.swift exist in the correct directories",
+    "Verify MarkdownFormat.swift contains tableRowPattern and separatorRowPattern",
+    "Verify MarkdownEditor.swift contains table formatting logic and Tab/Shift+Tab navigation",
+    "Verify ContentView.swift has .insertTableNow notification name",
+    "Verify SynthApp.swift has Insert Table button with Cmd+Option+T shortcut",
+    "Verify AutocompleteCoordinator.swift has .insertTableNow observer",
+    "Grep project.pbxproj for TableNavigator and TableSupportTests to verify registration in all 4 sections",
+    "Verify agent/agent-changelog.md has been updated"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
