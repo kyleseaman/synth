@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Create TableNavigator.swift with pure table logic (detection, cell navigation, template generation) and add table rendering to MarkdownFormat.swift and MarkdownEditor.swift. This implements the complete markdown table support that was described in PR #32 but never actually coded.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Step 1: Create SynthApp/TableNavigator.swift -- a pure logic utility (no AppKit dependencies for the core logic) that provides: (a) a tableRowPattern regex matching lines like '| col1 | col2 | col3 |', (b) a separatorRowPattern regex matching lines like '|---|---|---|' or '| --- | --- | --- |', (c) an isTableRow(_ line: String) -> Bool function, (d) an isSeparatorRow(_ line: String) -> Bool function, (e) a columnCount(in line: String) -> Int function that counts pipe-delimited columns, (f) a nextCellRange(in text: String, from cursorLocation: Int) -> NSRange? function for Tab navigation, (g) a previousCellRange(in text: String, from cursorLocation: Int) -> NSRange? function for Shift+Tab navigation, (h) a newRowString(columnCount: Int) -> String function that generates a new blank row '| | | |\\n', (i) a tableTemplate(columns: Int, rows: Int) -> String function that generates a full markdown table template with header, separator, and data rows. Follow the pattern of other utility types in the project (PeopleIndex.personPattern is a good reference for static regex patterns).",
     "Step 2: Add table rendering to MarkdownFormat.swift -- (a) Add a static tableRowPattern regex (compiled with try! like other patterns) that matches lines starting and ending with | and containing pipe-separated content: pattern #\"^\\|(.+\\|)+\\s*$\"#. (b) Add a static separatorRowPattern regex matching separator rows: pattern #\"^\\|[\\s:-]+\\|[\\s|:-]*$\"#. (c) In the render(_ text: String) method, before the line-by-line loop, detect table blocks (consecutive lines that match tableRowPattern). For each table block: apply monospace font (Theme.terminalNSFont(ofSize: 14)) to all table lines, apply bold to the first row (header), dim the separator row (second row) and all pipe characters using NSColor.tertiaryLabelColor. The existing line-by-line approach needs enhancement: group consecutive table lines and render them as a block. (d) Also add table rendering to the incremental formatInlineMarkdown() method in MarkdownEditor.swift's Coordinator to handle the live editing path.",
@@ -37,5 +37,5 @@
     "Verify agent/agent-changelog.md has been updated"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Cannot build or test in sandbox (no Xcode/macOS SDK). All code validated by manual review for syntax correctness, naming conventions (descriptive 3+ char names), line length (under 120), and pattern consistency with existing codebase. All new files registered in project.pbxproj in all 4 required sections. Table rendering implemented in both full render() path and incremental formatRange()/formatInlineMarkdown() path. The bullet character used in insertTab/insertBacktab was kept as literal to match original code style."
 }
