@@ -1455,6 +1455,40 @@ extension UtilityLogicTests {
             "qmd shared preview"
         )
     }
+
+    func testDedicatedSearchResetBehaviorClearsSearchStateAndQmdResults() {
+        let state = DedicatedSearchState()
+        state.textQuery = "release notes"
+        state.titleFilterText = "weekly"
+        state.contentFilterText = "deployment"
+        state.pathFilterText = "meetings"
+        state.tagFilterText = "project"
+        state.personFilterText = "alex"
+        state.selectedResultIdentifier = "note:/tmp/alpha.md"
+
+        let resultURL = URL(fileURLWithPath: "/tmp/alpha.md")
+        var qmdResults = [
+            NoteSearchResult(
+                id: resultURL,
+                title: "Alpha",
+                relativePath: "notes",
+                url: resultURL,
+                preview: "snippet",
+                score: 400
+            )
+        ]
+
+        DedicatedSearchResetBehavior.reset(state: state, qmdResults: &qmdResults)
+
+        XCTAssertEqual(state.textQuery, "")
+        XCTAssertEqual(state.titleFilterText, "")
+        XCTAssertEqual(state.contentFilterText, "")
+        XCTAssertEqual(state.pathFilterText, "")
+        XCTAssertEqual(state.tagFilterText, "")
+        XCTAssertEqual(state.personFilterText, "")
+        XCTAssertNil(state.selectedResultIdentifier)
+        XCTAssertTrue(qmdResults.isEmpty)
+    }
 }
 
 // MARK: - String.fnv1a Tests

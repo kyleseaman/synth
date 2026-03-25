@@ -125,6 +125,13 @@ enum DedicatedSearchPresentation {
     }
 }
 
+enum DedicatedSearchResetBehavior {
+    static func reset(state: DedicatedSearchState, qmdResults: inout [NoteSearchResult]) {
+        state.clear()
+        qmdResults.removeAll(keepingCapacity: false)
+    }
+}
+
 @Observable
 final class DedicatedSearchState {
     var textQuery = ""
@@ -460,7 +467,7 @@ struct DedicatedSearchView: View {
             KeyboardHandler(
                 onUp: { moveSelection(.previous) },
                 onDown: { moveSelection(.next) },
-                onEscape: {}
+                onEscape: { resetSearch() }
             )
         }
     }
@@ -508,8 +515,7 @@ struct DedicatedSearchView: View {
                 facetField("Person", text: binding(for: \.personFilterText), placeholder: "alex")
                 Spacer()
                 Button("Reset") {
-                    store.dedicatedSearch.clear()
-                    qmdResults = []
+                    resetSearch()
                 }
                 .buttonStyle(.bordered)
             }
@@ -945,6 +951,13 @@ struct DedicatedSearchView: View {
         guard nextIdentifier != currentIdentifier else { return }
         store.dedicatedSearch.selectedResultIdentifier = nextIdentifier
         preloadSelectedPreview()
+    }
+
+    private func resetSearch() {
+        DedicatedSearchResetBehavior.reset(
+            state: store.dedicatedSearch,
+            qmdResults: &qmdResults
+        )
     }
 
     private func handleSubmit() {
