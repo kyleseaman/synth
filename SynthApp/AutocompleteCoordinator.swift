@@ -97,6 +97,16 @@ class AutocompleteCoordinator {
         }
         observers.append(insertTemplateObs)
 
+        let insertTableObs = center.addObserver(
+            forName: .insertTableNow,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleTableInsertion()
+            }
+        }
+        observers.append(insertTableObs)
+
         wikiLinkPopover.onSelect = { [weak self] title in
             self?.completeWikiLink(title: title)
         }
@@ -204,6 +214,16 @@ class AutocompleteCoordinator {
             ?? ExpandedTemplate(content: template.content, cursorOffset: nil)
 
         insertTemplateContent(expanded.content, cursorOffset: expanded.cursorOffset)
+    }
+
+    private func handleTableInsertion() {
+        guard let textView = textView,
+              textView.window?.firstResponder === textView
+        else { return }
+        let tableContent = TableNavigator.tableTemplate(
+            columns: 3, rows: 2
+        )
+        insertTemplateContent(tableContent)
     }
 
     // MARK: - Completion

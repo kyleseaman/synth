@@ -27,6 +27,16 @@ struct MarkdownFormat: DocumentFormat {
     static let imagePattern = try! NSRegularExpression(
         pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
     )
+    static let tableRowPattern = try! NSRegularExpression(
+        pattern: #"^\|(.+\|)+\s*$"#, options: .anchorsMatchLines
+    )
+    static let separatorRowPattern = try! NSRegularExpression(
+        pattern: #"^\|[\s:-]+(\|[\s:-]*)+$"#,
+        options: .anchorsMatchLines
+    )
+    static let pipePattern = try! NSRegularExpression(
+        pattern: #"\|"#
+    )
     // swiftlint:enable force_try
 
     var noteIndex: NoteIndex?
@@ -70,10 +80,91 @@ struct MarkdownFormat: DocumentFormat {
         ]
 
         let lines = text.components(separatedBy: "\n")
+
+        // Detect table blocks: sequences of 3+ lines where first
+        // is a table row, second is a separator, rest are table rows.
+        var tableLineFlags = [Bool](repeating: false, count: lines.count)
+        var headerLineFlags = [Bool](repeating: false, count: lines.count)
+        var separatorLineFlags = [Bool](
+            repeating: false, count: lines.count
+        )
+        var lineIdx = 0
+        while lineIdx < lines.count {
+            let trimmedLine = lines[lineIdx].trimmingCharacters(
+                in: .whitespaces
+            )
+            if TableNavigator.isTableRow(trimmedLine),
+               lineIdx + 1 < lines.count,
+               TableNavigator.isSeparatorRow(
+                   lines[lineIdx + 1].trimmingCharacters(
+                       in: .whitespaces
+                   )
+               ) {
+                // Found a table block start
+                headerLineFlags[lineIdx] = true
+                tableLineFlags[lineIdx] = true
+                tableLineFlags[lineIdx + 1] = true
+                separatorLineFlags[lineIdx + 1] = true
+                var dataIdx = lineIdx + 2
+                while dataIdx < lines.count,
+                      TableNavigator.isTableRow(
+                          lines[dataIdx].trimmingCharacters(
+                              in: .whitespaces
+                          )
+                      ) {
+                    tableLineFlags[dataIdx] = true
+                    dataIdx += 1
+                }
+                lineIdx = dataIdx
+            } else {
+                lineIdx += 1
+            }
+        }
+
         for (index, line) in lines.enumerated() {
             var attrs = defaultAttrs
 
-            // Style headings — hide # prefix visually
+            // Table row formatting
+            if tableLineFlags[index] {
+                let monoFont = Theme.terminalNSFont(ofSize: 14)
+                if headerLineFlags[index] {
+                    attrs[.font] = Theme.terminalNSFont(
+                        ofSize: 14, weight: .bold
+                    )
+                } else {
+                    attrs[.font] = monoFont
+                }
+                if separatorLineFlags[index] {
+                    attrs[.foregroundColor] = NSColor.tertiaryLabelColor
+                }
+                let lineStr = NSMutableAttributedString(
+                    string: line, attributes: attrs
+                )
+                // Dim all pipe characters
+                if !separatorLineFlags[index] {
+                    let fullRange = NSRange(
+                        location: 0, length: lineStr.string.utf16.count
+                    )
+                    for pipeMatch in Self.pipePattern.matches(
+                        in: lineStr.string, range: fullRange
+                    ) {
+                        lineStr.addAttribute(
+                            .foregroundColor,
+                            value: NSColor.tertiaryLabelColor,
+                            range: pipeMatch.range
+                        )
+                    }
+                }
+                if index < lines.count - 1 {
+                    lineStr.append(NSAttributedString(
+                        string: "\n", attributes: defaultAttrs
+                    ))
+                }
+                result.append(lineStr)
+                continue
+            }
+
+            // Style headings -- hide # prefix visually
             var headingPrefixLen = 0
             if line.hasPrefix("# ") {
                 attrs[.font] = Theme.editorNSFont(ofSize: 28, weight: .bold)

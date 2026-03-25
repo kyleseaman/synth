@@ -1,5 +1,21 @@
 # Agent Changelog
 
+## Markdown Table Rendering Support
+
+**Feature:** Live markdown table rendering with monospace font styling, bold headers, dimmed separators/pipes, Tab/Shift+Tab cell navigation, and Cmd+Option+T table insertion.
+
+### Files Added
+- `SynthApp/TableNavigator.swift` - Pure utility enum providing table row/separator detection, column counting, cell navigation (next/previous), row generation, and table template creation. Uses precompiled regex patterns.
+- `SynthAppTests/TableSupportTests.swift` - Tests covering table row detection, separator detection, column counting, template generation, new row generation, cell navigation (next/previous), and rendering pattern verification.
+
+### Files Modified
+- `SynthApp/MarkdownFormat.swift` - Added `tableRowPattern`, `separatorRowPattern`, and `pipePattern` static regex properties. Updated `render()` to detect table blocks (header + separator + data rows) and apply monospace font, bold headers, dimmed separators, and dimmed pipe characters.
+- `SynthApp/MarkdownEditor.swift` - Added `formatTableBlock()` method to the Coordinator for incremental table formatting. Updated `formatRange()` to call `formatTableBlock()` before inline formatting. Updated `formatInlineMarkdown()` to skip table ranges. Updated `insertTab()` and `insertBacktab()` to support table cell navigation with Tab/Shift+Tab, including new row insertion at table end.
+- `SynthApp/ContentView.swift` - Added `.insertTableNow` notification name to `Notification.Name` extension.
+- `SynthApp/SynthApp.swift` - Added "Insert Table" button with Cmd+Option+T keyboard shortcut in the commands section.
+- `SynthApp/AutocompleteCoordinator.swift` - Added observer for `.insertTableNow` notification and `handleTableInsertion()` method that inserts a 3-column, 2-row table template.
+- `Synth.xcodeproj/project.pbxproj` - Registered `TableNavigator.swift` and `TableSupportTests.swift` in all 4 required sections (PBXBuildFile, PBXFileReference, PBXGroup, PBXSourcesBuildPhase).
+
 ## Email Drag-and-Drop Note Creation
 
 **Feature:** Users can drag `.eml` files onto the editor detail area to automatically create markdown notes from email content.
