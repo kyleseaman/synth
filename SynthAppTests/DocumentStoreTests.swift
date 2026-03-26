@@ -807,10 +807,10 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testShowKanbanModalSetsActiveModal() {
+    func testShowKanbanModalSetsDetailMode() {
         let store = DocumentStore()
         store.showKanbanModal()
-        XCTAssertEqual(store.activeModal, .kanban)
+        XCTAssertEqual(store.detailMode, .kanban)
     }
 
     @MainActor

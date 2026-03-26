@@ -4,64 +4,30 @@ import SwiftUI
 
 struct KanbanBoardView: View {
     @Environment(DocumentStore.self) var store
-    @Binding var isPresented: Bool
     @State private var filesByColumn: [String: [URL]] = [:]
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Image(systemName: "rectangle.3.group")
-                    .foregroundStyle(.secondary)
-                Text("Kanban Board")
-                    .font(Theme.uiSwiftUIFont(size: 16, weight: .semibold))
-                Spacer()
-                Button {
-                    isPresented = false
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(DocumentStore.kanbanColumns, id: \.self) { column in
+                KanbanColumn(
+                    title: column,
+                    files: Binding(
+                        get: { filesByColumn[column] ?? [] },
+                        set: { filesByColumn[column] = $0 }
+                    ),
+                    folderName: column,
+                    store: store,
+                    onOpen: openNote,
+                    onArchive: archiveNote,
+                    onDrop: handleDrop
+                )
             }
-            .padding(12)
-
-            Divider()
-
-            // Columns
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(DocumentStore.kanbanColumns, id: \.self) { column in
-                    KanbanColumn(
-                        title: column,
-                        files: Binding(
-                            get: { filesByColumn[column] ?? [] },
-                            set: { filesByColumn[column] = $0 }
-                        ),
-                        folderName: column,
-                        store: store,
-                        onOpen: openNote,
-                        onArchive: archiveNote,
-                        onDrop: handleDrop
-                    )
-                }
-            }
-            .padding(12)
         }
-        .frame(width: 780)
-        .frame(minHeight: 400)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(radius: 8)
+        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear {
             store.bootstrapKanbanFolders()
             reloadAll()
-        }
-        .background {
-            KeyboardHandler(
-                onUp: {},
-                onDown: {},
-                onEscape: { isPresented = false }
-            )
         }
     }
 
@@ -73,7 +39,7 @@ struct KanbanBoardView: View {
 
     private func openNote(_ url: URL) {
         store.open(url)
-        isPresented = false
+        store.detailMode = .editor
     }
 
     private func archiveNote(_ url: URL) {
@@ -179,21 +145,25 @@ private struct KanbanColumn: View {
                 }
                 .padding(4)
             }
+            .scrollIndicators(.never)
             .frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity)
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.primary.opacity(isDropTargeted ? 0.06 : 0.03))
+                .fill(isDropTargeted
+                    ? Color.accentColor.opacity(0.12)
+                    : Color.primary.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(
-                    Color.accentColor,
-                    lineWidth: isDropTargeted ? 2 : 0
+                    Color.accentColor.opacity(isDropTargeted ? 0.6 : 0),
+                    lineWidth: 2
                 )
         )
+        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         .dropDestination(for: URL.self) { urls, _ in
             guard let sourceURL = urls.first else { return false }
             onDrop(sourceURL, folderName)

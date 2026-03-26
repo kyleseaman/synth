@@ -115,6 +115,7 @@ struct ACPPermissionRequest: Identifiable {
     let title: String
     let options: [PermissionOption]
     var diffContent: DiffContent?
+    var toolInput: [String: String]?
 }
 
 // MARK: - ACP Session Modes

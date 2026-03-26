@@ -273,6 +273,7 @@ struct FileLauncher: View {
                     }
                 }
             }
+            .scrollIndicators(.never)
             .onChange(of: selectedIndex) {
                 withAnimation { proxy.scrollTo(selectedIndex, anchor: .center) }
             }

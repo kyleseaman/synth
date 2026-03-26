@@ -52,6 +52,20 @@ class FormattingTextView: NSTextView {
         return handle
     }()
 
+    override func copy(_ sender: Any?) {
+        guard let range = selectedRanges.first as? NSRange,
+              range.length > 0 else { return }
+        let fullMarkup = MarkdownFormat.restoreMarkup(in: attributedString())
+        let nsMarkup = fullMarkup as NSString
+        let clampedRange = NSRange(
+            location: min(range.location, nsMarkup.length),
+            length: min(range.length, nsMarkup.length - min(range.location, nsMarkup.length))
+        )
+        let plain = nsMarkup.substring(with: clampedRange)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(plain, forType: .string)
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let existing = imageTrackingArea {
@@ -999,9 +1013,12 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.textContainer?.widthTracksTextView = true
 
         let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = false
         scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.scrollerKnobStyle = .light
         scrollView.drawsBackground = false
+        scrollView.automaticallyAdjustsContentInsets = false
         scrollView.documentView = textView
         scrollView.contentView.postsBoundsChangedNotifications = true
 
@@ -1490,7 +1507,8 @@ extension MarkdownEditor.Coordinator {
             // Determine the paragraph containing the cursor so we
             // can skip hiding syntax on the actively-edited line.
             let cursorParagraph: NSRange? = cursorLocation.map {
-                nsString.paragraphRange(for: NSRange(location: $0, length: 0))
+                let clamped = min($0, max(nsString.length - 1, 0))
+                return nsString.paragraphRange(for: NSRange(location: clamped, length: 0))
             }
 
             // Reset attributes to defaults for the range

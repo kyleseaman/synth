@@ -13,7 +13,7 @@ struct DocumentChatTray: View {
 
     @State private var input = ""
     @State private var trayHeight: CGFloat = 300
-    @State private var selectedAgent: String?
+    @State private var selectedAgent: String? = preferredAgentIdentifier
     @FocusState private var isInputFocused: Bool
 
     private let minHeight: CGFloat = 180
@@ -34,10 +34,10 @@ struct DocumentChatTray: View {
             NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) != nil
         }
     ) -> String {
-        if symbolExists("person.crop.circle") {
-            return "person.crop.circle"
+        if symbolExists("robot.circle") {
+            return "robot.circle"
         }
-        return "person"
+        return "cpu"
     }
 
     static func displayedPermissionDiffText(_ text: String) -> String {
@@ -185,6 +185,21 @@ struct DocumentChatTray: View {
                         }
                     }
                 }
+                if !store.customAgents.isEmpty {
+                    Divider()
+                    ForEach(store.customAgents, id: \.name) { agentInfo in
+                        Button {
+                            selectedAgent = agentInfo.name
+                        } label: {
+                            HStack {
+                                Text(agentInfo.name)
+                                if selectedAgent == agentInfo.name {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: Self.agentSymbolName())
@@ -232,7 +247,7 @@ struct DocumentChatTray: View {
            let mode = chatState.availableModes.first(where: { $0.id == modeId }) {
             return mode.name
         }
-        return "Agent"
+        return selectedAgent ?? "Agent"
     }
 
     // MARK: - Drag Handle
@@ -310,7 +325,6 @@ struct DocumentChatTray: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .padding(.bottom, 8)
             }
             .scrollIndicators(.hidden)
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -378,6 +392,22 @@ struct DocumentChatTray: View {
                     .padding(7)
                     .background(Color.primary.opacity(0.04))
                     .cornerRadius(6)
+                } else if let input = permission.toolInput, !input.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(input.sorted(by: { $0.key < $1.key }), id: \.key) { key, val in
+                            HStack(alignment: .top, spacing: 4) {
+                                Text("\(key):")
+                                    .font(Theme.uiSwiftUIFont(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                Text(val)
+                                    .font(Theme.terminalSwiftUIFont(size: 11))
+                                    .lineLimit(3)
+                            }
+                        }
+                    }
+                    .padding(7)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(6)
                 }
                 HStack(spacing: 8) {
                     Spacer()
@@ -441,28 +471,57 @@ struct DocumentChatTray: View {
 
     @ViewBuilder
     private func permissionDiffView(_ diff: DiffContent) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Add:")
-                    .font(Theme.uiSwiftUIFont(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text(Self.displayedPermissionDiffText(diff.newText))
-                    .font(Theme.terminalSwiftUIFont(size: 11))
-                    .foregroundStyle(.green)
-            }
-            if !diff.oldText.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Remove:")
-                        .font(Theme.uiSwiftUIFont(size: 10, weight: .medium))
+        VStack(alignment: .leading, spacing: 0) {
+            if !diff.path.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 9))
                         .foregroundStyle(.secondary)
-                    Text(Self.displayedPermissionDiffText(diff.oldText))
-                        .font(Theme.terminalSwiftUIFont(size: 11))
-                        .foregroundStyle(.red)
-                        .strikethrough()
+                    Text(diff.path.components(separatedBy: "/").suffix(2).joined(separator: "/"))
+                        .font(Theme.terminalSwiftUIFont(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+            }
+            let oldLines = diff.oldText.isEmpty ? [] : diff.oldText.components(separatedBy: "\n")
+            let newLines = diff.newText.isEmpty ? [] : diff.newText.components(separatedBy: "\n")
+            let maxPreview = 20
+            let oldLimit = min(oldLines.count, max(maxPreview / 2, maxPreview - newLines.count))
+            let oldPreview = Array(oldLines.prefix(oldLimit))
+            let newPreview = Array(newLines.prefix(maxPreview - oldPreview.count))
+            ForEach(Array(oldPreview.enumerated()), id: \.offset) { _, line in
+                diffRow(text: line, isRemoval: true)
+            }
+            ForEach(Array(newPreview.enumerated()), id: \.offset) { _, line in
+                diffRow(text: line, isRemoval: false)
+            }
+            let total = oldLines.count + newLines.count
+            if total > maxPreview {
+                Text("⋯ \(total - maxPreview) more lines")
+                    .font(Theme.terminalSwiftUIFont(size: 10))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func diffRow(text: String, isRemoval: Bool) -> some View {
+        HStack(spacing: 0) {
+            Text(isRemoval ? "−" : "+")
+                .frame(width: 18, alignment: .center)
+            Text(text.isEmpty ? " " : text)
+                .lineLimit(1)
+        }
+        .font(Theme.terminalSwiftUIFont(size: 11))
+        .foregroundStyle(isRemoval ? Color.red : Color.green)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 1)
+        .padding(.trailing, 6)
+        .background(isRemoval ? Color.red.opacity(0.08) : Color.green.opacity(0.08))
     }
 
     // MARK: - Status Banner
@@ -594,7 +653,8 @@ struct DocumentChatTray: View {
                 store.openFiles[fileIndex].content = NSAttributedString(string: content)
                 store.openFiles[fileIndex].isDirty = true
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(5))
                     if chatState.undoSnapshot?.timestamp == snapshot.timestamp {
                         chatState.undoSnapshot = nil
                     }
@@ -646,7 +706,7 @@ struct DocumentChatTray: View {
     }
 
     private func refocusInputIfNeeded() {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.isInputFocused = true
         }
     }
@@ -668,7 +728,8 @@ struct DocumentChatTray: View {
             )
             return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.5))
             if self.chatState.acpClient?.isConnected == true,
                self.chatState.acpClient?.sessionId != nil {
                 self.chatState.acpClient?.sendPrompt(self.buildContentBlocks(prompt: prompt))

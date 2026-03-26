@@ -289,30 +289,24 @@ struct Theme {
         for weight: NSFont.Weight
     ) -> [String] {
         let regularCandidates = [
-            "SF Pro Text Regular",
-            "SFProText-Regular",
-            "SF Pro Text",
+            "PublicSans-Regular",
+            "PublicSansRoman-Regular",
+            "PublicSans",
             ".SFNSText"
         ]
-        let mediumCandidates = [
-            "SF Pro Text Medium",
-            "SFProText-Medium"
-        ]
         let semiboldCandidates = [
-            "SF Pro Text Semibold",
-            "SFProText-Semibold"
+            "PublicSans-Semibold",
+            "PublicSansRoman-Semibold"
         ]
         let boldCandidates = [
-            "SF Pro Text Bold",
-            "SFProText-Bold"
+            "PublicSans-Bold",
+            "PublicSansRoman-Bold"
         ]
         let candidates: [String]
         if weight.rawValue >= NSFont.Weight.bold.rawValue {
-            candidates = boldCandidates + semiboldCandidates + mediumCandidates + regularCandidates
+            candidates = boldCandidates + semiboldCandidates + regularCandidates
         } else if weight.rawValue >= NSFont.Weight.semibold.rawValue {
-            candidates = semiboldCandidates + mediumCandidates + regularCandidates
-        } else if weight.rawValue >= NSFont.Weight.medium.rawValue {
-            candidates = mediumCandidates + regularCandidates
+            candidates = semiboldCandidates + regularCandidates
         } else {
             candidates = regularCandidates
         }
