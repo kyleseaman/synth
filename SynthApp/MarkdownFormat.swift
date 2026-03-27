@@ -30,6 +30,7 @@ struct MarkdownFormat: DocumentFormat {
     static let tableSeparatorPattern = try! NSRegularExpression(
         pattern: "^\\|[-:| ]+\\|$"
     )
+    static let pipePattern = try! NSRegularExpression(pattern: "\\|")
     // swiftlint:enable force_try
 
     var noteIndex: NoteIndex?
@@ -126,8 +127,7 @@ struct MarkdownFormat: DocumentFormat {
                     ofSize: 14, weight: .regular
                 )
                 lineStr.addAttribute(.font, value: monoFont, range: lineRange)
-                let pipeRegex = try? NSRegularExpression(pattern: "\\|")
-                pipeRegex?.enumerateMatches(
+                Self.pipePattern.enumerateMatches(
                     in: lineStr.string, range: lineRange
                 ) { match, _, _ in
                     if let matchRange = match?.range {
