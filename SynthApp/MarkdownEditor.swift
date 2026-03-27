@@ -705,7 +705,7 @@ extension FormattingTextView {
         let lineRange = (storage.string as NSString).lineRange(for: selectedRange())
         let line = (storage.string as NSString).substring(with: lineRange)
 
-        if line.hasPrefix("\t") && line.contains("•") {
+        if line.hasPrefix("\t") {
             storage.deleteCharacters(in: NSRange(location: lineRange.location, length: 1))
             return
         }
