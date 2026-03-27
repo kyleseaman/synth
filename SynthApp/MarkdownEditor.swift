@@ -423,9 +423,16 @@ class FormattingTextView: NSTextView {
         var indent = ""
         for char in line { if char == "\t" { indent += "\t" } else { break } }
 
-        // If current line is just a bullet (empty item), remove it instead
+        // If current line is just a bullet (empty item), unindent or remove
         if line == "\(indent)•" {
-            storage.replaceCharacters(in: lineRange, with: "")
+            if !indent.isEmpty {
+                let unindented = String(indent.dropLast()) + "• "
+                storage.replaceCharacters(in: lineRange, with: unindented + "\n")
+                let newCursorPos = lineRange.location + unindented.utf16.count
+                setSelectedRange(NSRange(location: newCursorPos, length: 0))
+            } else {
+                storage.replaceCharacters(in: lineRange, with: "")
+            }
             return
         }
 
