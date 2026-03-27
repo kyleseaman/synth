@@ -25,8 +25,12 @@ struct MarkdownFormat: DocumentFormat {
     static let codePattern = try! NSRegularExpression(pattern: "`([^`]+)`")
     static let listPattern = try! NSRegularExpression(pattern: #"^(\s*)([-*])\s+"#)
     static let imagePattern = try! NSRegularExpression(
-        pattern: "!\\[[^\\]]*\\]\\(([^)\\s]+)(?:\\s+=([0-9]+)x)?\\)"
+        pattern: "!\\[[^\\]]*\\]\\((.+?)(?:\\s+=([0-9]+)x)?\\)"
     )
+    static let tableSeparatorPattern = try! NSRegularExpression(
+        pattern: "^\\|[-:| ]+\\|$"
+    )
+    static let pipePattern = try! NSRegularExpression(pattern: "\\|")
     // swiftlint:enable force_try
 
     var noteIndex: NoteIndex?
@@ -103,6 +107,36 @@ struct MarkdownFormat: DocumentFormat {
                         value: NSColor.tertiaryLabelColor,
                         range: prefixRange
                     )
+                }
+            }
+            // Table separator rows: hide entirely
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            let lineRange = NSRange(location: 0, length: lineStr.length)
+            let isSeparator = trimmedLine.hasPrefix("|")
+                && Self.tableSeparatorPattern.firstMatch(
+                    in: trimmedLine, range: NSRange(location: 0, length: trimmedLine.utf16.count)
+                ) != nil
+            if isSeparator {
+                lineStr.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 0.01),
+                    .foregroundColor: NSColor.clear
+                ], range: lineRange)
+            } else if trimmedLine.hasPrefix("|") && trimmedLine.hasSuffix("|") {
+                // Table data rows: monospace font, dim pipes
+                let monoFont = NSFont.monospacedSystemFont(
+                    ofSize: 14, weight: .regular
+                )
+                lineStr.addAttribute(.font, value: monoFont, range: lineRange)
+                Self.pipePattern.enumerateMatches(
+                    in: lineStr.string, range: lineRange
+                ) { match, _, _ in
+                    if let matchRange = match?.range {
+                        lineStr.addAttribute(
+                            .foregroundColor,
+                            value: NSColor.tertiaryLabelColor,
+                            range: matchRange
+                        )
+                    }
                 }
             }
             applyListFormatting(lineStr)

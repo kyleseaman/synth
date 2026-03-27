@@ -2,449 +2,333 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
-
-extension Notification.Name {
-    // MARK: - Wiki Link Notifications
-    static let wikiLinkTrigger = Notification.Name("wikiLinkTrigger")
-    static let wikiLinkDismiss = Notification.Name("wikiLinkDismiss")
-    static let wikiLinkQueryUpdate = Notification.Name("wikiLinkQueryUpdate")
-    static let wikiLinkSelect = Notification.Name("wikiLinkSelect")
-    static let wikiLinkNavigate = Notification.Name("wikiLinkNavigate")
-    static let showDailyDate = Notification.Name("showDailyDate")
-    static let insertTemplate = Notification.Name("insertTemplate")
-    static let formatParagraphNow = Notification.Name("formatParagraphNow")
-    static let reloadEditor = Notification.Name("reloadEditor")
-}
-
-struct EditorSelectionContext {
-    let selectedText: String
-    let selectedLineRange: String
-}
-
-enum ShortcutHintRules {
-    static let revealDelaySeconds: TimeInterval = 1.0
-
-    static func shouldRevealHint(hoverStartDate: Date, currentDate: Date) -> Bool {
-        currentDate.timeIntervalSince(hoverStartDate) >= revealDelaySeconds
-    }
-}
-
-enum SidebarSectionHoverRules {
-    static func backgroundOpacity(isSelected: Bool, isHovering: Bool) -> Double {
-        if isSelected { return 0.15 }
-        return isHovering ? 0.08 : 0.0
-    }
-}
-
-private struct DelayedShortcutHintModifier: ViewModifier {
-    let shortcutText: String
-    @State private var isPointerHovering = false
-    @State private var hoverStartDate: Date?
-    @State private var shouldShowHint = false
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(alignment: .bottom) {
-                if shouldShowHint {
-                    Text(shortcutText)
-                        .font(Theme.terminalSwiftUIFont(size: 11, weight: .semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.thinMaterial, in: Capsule())
-                        .offset(y: 24)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                        .allowsHitTesting(false)
-                }
-            }
-            .onHover { hovering in
-                isPointerHovering = hovering
-                if hovering {
-                    let hoverDate = Date()
-                    hoverStartDate = hoverDate
-                    shouldShowHint = false
-                    DispatchQueue.main.asyncAfter(
-                        deadline: .now() + ShortcutHintRules.revealDelaySeconds
-                    ) {
-                        guard isPointerHovering,
-                              hoverStartDate == hoverDate,
-                              ShortcutHintRules.shouldRevealHint(
-                                  hoverStartDate: hoverDate,
-                                  currentDate: Date()
-                              ) else { return }
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            shouldShowHint = true
-                        }
-                    }
-                } else {
-                    hoverStartDate = nil
-                    withAnimation(.easeOut(duration: 0.08)) {
-                        shouldShowHint = false
-                    }
-                }
-            }
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func keyboardShortcutHint(_ shortcutText: String?) -> some View {
-        if let shortcutText {
-            modifier(DelayedShortcutHintModifier(shortcutText: shortcutText))
-        } else {
-            self
-        }
-    }
-}
-
 struct ContentView: View {
+    private enum Layout {
+        static let headerLeadingCollapsed: CGFloat = 200
+        static let headerLeadingExpanded: CGFloat = 16
+        static let headerTopCollapsed: CGFloat = 32
+        static let headerTopExpanded: CGFloat = 10
+    }
+
     @Environment(DocumentStore.self) var store
     @Environment(\.openWindow) private var openWindow
     @State private var dismissedSetup = false
     @State private var selectionByDocument: [URL: EditorSelectionContext] = [:]
-    @State private var hoveredSidebarMode: DetailViewMode?
     @State private var isEmailDropTargeted = false
 
-    private var settingsToolbarButton: some CustomizableToolbarContent {
-        ToolbarItem(id: "toolbarSettingsLink", placement: .automatic) {
-            Button {
-                openWindow(id: "synth-settings-window")
-            } label: {
-                Label("Settings", systemImage: "gearshape")
-                    .labelStyle(.iconOnly)
-                    .frame(width: 16, height: 16)
-            }
-            .help("Settings")
-            .keyboardShortcutHint("⌘,")
-        }
-    }
+    // MARK: - Sidebar Content
 
-    private var openWorkspaceButton: some CustomizableToolbarContent {
-        ToolbarItem(id: "openWorkspace", placement: .automatic) {
-            Button {
-                store.pickWorkspace()
-            } label: {
-                Image(systemName: "folder")
-            }
-            .keyboardShortcutHint("⌘O")
-        }
-    }
+    @ViewBuilder
+    private var sidebarContent: some View {
+        @Bindable var store = store
+        VStack(spacing: 0) {
+            Spacer().frame(height: 36)
 
-    private var backlinksToolbarButton: some CustomizableToolbarContent {
-        ToolbarItem(id: "toggleBacklinks", placement: .primaryAction) {
-            Button {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    store.toggleBacklinks()
+            if store.workspace == nil {
+                VStack(spacing: 12) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(Theme.uiSwiftUIFont(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No workspace open")
+                        .foregroundStyle(.secondary)
+                    Button("Open Workspace...") { store.pickWorkspace() }
+                        .keyboardShortcut("o")
+                        .keyboardShortcutHint("⌘O")
                 }
-            } label: {
-                Image(systemName: "link")
-                    .foregroundStyle(
-                        store.showBacklinks && store.detailMode == .editor ? .primary : .secondary
-                    )
+                .frame(maxHeight: .infinity)
+            } else {
+                VStack(spacing: 4) {
+                    SidebarModeButton(
+                        label: "Daily Notes", icon: "square.and.pencil",
+                        mode: .dailyNotes, isSelected: store.detailMode == .dailyNotes
+                    ) { store.activateDailyNotes() }
+
+                    SidebarModeButton(
+                        label: "Search", icon: "magnifyingglass",
+                        mode: .search, isSelected: store.detailMode == .search
+                    ) { store.selectSearchTab() }
+
+                    SidebarModeButton(
+                        label: "Links", icon: "link",
+                        mode: .links, isSelected: store.detailMode == .links
+                    ) { store.selectLinksTab() }
+
+                    SidebarModeButton(
+                        label: "Media", icon: "photo.on.rectangle",
+                        mode: .media, isSelected: store.detailMode == .media
+                    ) { store.selectMediaTab() }
+
+                    SidebarModeButton(
+                        label: "Kanban", icon: "rectangle.3.group",
+                        mode: .kanban, isSelected: store.detailMode == .kanban
+                    ) { store.showKanbanModal() }
+                }
+                .font(Theme.sidebarSwiftUIFont(size: 14))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 16)
+
+                Text(store.workspace?.lastPathComponent.uppercased() ?? "WORKSPACE")
+                    .font(Theme.sidebarSwiftUIFont(size: 11, weight: .medium))
+                    .foregroundStyle(.quaternary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
+
+                List {
+                    FileTreeView(nodes: store.fileTree, store: store, isRoot: true)
+                        .id(store.workspace)
+                        .contextMenu {
+                            if let workspace = store.workspace {
+                                Button {
+                                    store.promptNewFolder(in: workspace)
+                                } label: {
+                                    Label("New Folder...", systemImage: "folder.badge.plus")
+                                }
+                            }
+                        }
+                }
+                .font(Theme.sidebarSwiftUIFont(size: 13))
+                .listStyle(.sidebar)
+                .listRowSeparator(.hidden)
+                .scrollContentBackground(.hidden)
+                .scrollIndicators(.never)
+                .contentMargins(.bottom, 0, for: .scrollContent)
+                .contentTransition(.identity)
+                .transaction { $0.animation = nil }
             }
-            .disabled(store.detailMode != .editor || store.openFiles.isEmpty)
-            .keyboardShortcutHint("⌘⇧B")
+        }
+    }
+
+    // MARK: - Detail Content
+
+    @ViewBuilder
+    private var detailContent: some View {
+        @Bindable var store = store
+        VStack(spacing: 0) {
+            if store.needsKiroSetup && store.workspace != nil && !dismissedSetup {
+                KiroSetupBanner {
+                    store.bootstrapKiroConfig()
+                } onDismiss: {
+                    dismissedSetup = true
+                }
+            }
+
+            if store.detailMode == .dailyNotes {
+                DailyNotesView()
+            } else if store.detailMode == .search {
+                DedicatedSearchView()
+            } else if store.detailMode == .links {
+                LinksView()
+            } else if store.detailMode == .media {
+                MediaGridView()
+            } else if store.detailMode == .kanban {
+                KanbanBoardView()
+            } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
+                let currentDoc = store.openFiles[store.currentIndex]
+                let chatState = store.chatState(for: currentDoc.url)
+                let selectionContext = selectionByDocument[currentDoc.url]
+                let chatVisible = store.isChatVisibleForCurrentTab
+                let chatView = DocumentChatTray(
+                    chatState: chatState,
+                    documentURL: currentDoc.url,
+                    documentContent: currentDoc.content.string,
+                    selectedText: selectionContext?.selectedText,
+                    selectedLineRange: selectionContext?.selectedLineRange,
+                    selectedImageURL: nil
+                )
+
+                let editorBlock = VStack(spacing: 0) {
+                    Text(currentDoc.url.deletingPathExtension().lastPathComponent)
+                        .font(Theme.sidebarSwiftUIFont(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(
+                            .leading,
+                            store.columnVisibility == .detailOnly
+                                ? Layout.headerLeadingCollapsed : Layout.headerLeadingExpanded
+                        )
+                        .padding(.trailing, Layout.headerLeadingExpanded)
+                        .padding(
+                            .top,
+                            store.columnVisibility == .detailOnly
+                                ? Layout.headerTopCollapsed : Layout.headerTopExpanded
+                        )
+                        .padding(.bottom, 4)
+
+                    ZStack(alignment: .bottom) {
+                    EditorViewSimple { documentURL, selectedText, selectedLineRange in
+                        let trimmedText = selectedText.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        )
+                        if trimmedText.isEmpty {
+                            selectionByDocument.removeValue(forKey: documentURL)
+                        } else {
+                            selectionByDocument[documentURL] = EditorSelectionContext(
+                                selectedText: selectedText,
+                                selectedLineRange: selectedLineRange
+                            )
+                        }
+                    }
+                        .id(currentDoc.url)
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                withAnimation(.easeOut(duration: 0.15)) {
+                                    store.toggleBacklinks()
+                                }
+                            } label: {
+                                Image(systemName: "link")
+                                    .font(Theme.uiSwiftUIFont(size: 14))
+                                    .foregroundStyle(
+                                        store.showBacklinks ? .primary : .secondary
+                                    )
+                                    .padding(8)
+                            }
+                            .buttonStyle(.plain)
+                            .glassEffect(.regular.interactive())
+                            .padding(12)
+                        }
+
+                    if chatState.undoSnapshot != nil {
+                        UndoToast {
+                            if let snapshot = chatState.undoSnapshot {
+                                if let idx = store.openFiles.firstIndex(
+                                    where: { $0.url == snapshot.url }
+                                ) {
+                                    store.openFiles[idx].content = NSAttributedString(
+                                        string: snapshot.content
+                                    )
+                                    store.openFiles[idx].isDirty = true
+                                }
+                                chatState.dismissUndo()
+                            }
+                        }
+                        .padding(.bottom, chatVisible ? 8 : 16)
+                    }
+                    }
+                }
+
+                if store.chatPlacement == .trailing && chatVisible {
+                    HStack(spacing: 0) {
+                        editorBlock
+                        chatView
+                            .frame(width: store.chatWidth)
+                            .padding(.vertical, 8)
+                            .padding(.trailing, 8)
+                            .transition(
+                                .move(edge: .trailing).combined(with: .opacity)
+                            )
+                    }
+                } else {
+                    editorBlock
+                    if chatVisible {
+                        chatView
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+            } else {
+                Text("Open a file to start editing")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if !store.isChatVisibleForCurrentTab
+                && !store.openFiles.isEmpty
+                && store.detailMode == .editor {
+                Button {
+                    store.toggleChatForCurrentTab()
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(Theme.uiSwiftUIFont(size: 16))
+                        .padding(10)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(.regular.interactive())
+                .keyboardShortcutHint("⌘J")
+                .padding(12)
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let emlURL = urls.first,
+                  emlURL.pathExtension.lowercased() == "eml"
+            else { return false }
+            store.newEmailNote(from: emlURL)
+            return true
+        } isTargeted: { targeted in
+            isEmailDropTargeted = targeted
+        }
+        .overlay {
+            if isEmailDropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 2, dash: [8, 4])
+                    )
+                    .background(Color.accentColor.opacity(0.05))
+                    .padding(4)
+                    .allowsHitTesting(false)
+            }
         }
     }
 
     var body: some View {
         @Bindable var store = store
-        NavigationSplitView(columnVisibility: $store.columnVisibility) {
-            VStack {
-                if store.workspace == nil {
-                    VStack(spacing: 12) {
-                        Image(systemName: "folder.badge.plus")
-                            .font(Theme.uiSwiftUIFont(size: 32))
-                            .foregroundStyle(.secondary)
-                        Text("No workspace open")
-                            .foregroundStyle(.secondary)
-                        Button("Open Workspace...") { store.pickWorkspace() }
-                            .keyboardShortcut("o")
-                            .keyboardShortcutHint("⌘O")
-                    }
-                    .frame(maxHeight: .infinity)
-                } else {
-                    List {
-                        // MARK: - Daily Notes sidebar button
-                        Button {
-                            store.activateDailyNotes()
-                        } label: {
-                            Label("Daily Notes", systemImage: "square.and.pencil")
-                                .fontWeight(
-                                    store.detailMode == .dailyNotes ? .semibold : .regular
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(
-                            Color.accentColor.opacity(
-                                SidebarSectionHoverRules.backgroundOpacity(
-                                    isSelected: store.detailMode == .dailyNotes,
-                                    isHovering: hoveredSidebarMode == .dailyNotes
-                                )
-                            ),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .onHover { isHovering in
-                            hoveredSidebarMode = isHovering ? .dailyNotes : nil
-                        }
-
-                        // MARK: - Search sidebar button
-                        Button {
-                            store.selectSearchTab()
-                        } label: {
-                            Label("Search", systemImage: "magnifyingglass")
-                                .fontWeight(
-                                    store.detailMode == .search ? .semibold : .regular
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(
-                            Color.accentColor.opacity(
-                                SidebarSectionHoverRules.backgroundOpacity(
-                                    isSelected: store.detailMode == .search,
-                                    isHovering: hoveredSidebarMode == .search
-                                )
-                            ),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .onHover { isHovering in
-                            hoveredSidebarMode = isHovering ? .search : nil
-                        }
-
-                        // MARK: - Links sidebar button
-                        Button {
-                            store.selectLinksTab()
-                        } label: {
-                            Label("Links", systemImage: "link")
-                                .fontWeight(
-                                    store.detailMode == .links ? .semibold : .regular
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(
-                            Color.accentColor.opacity(
-                                SidebarSectionHoverRules.backgroundOpacity(
-                                    isSelected: store.detailMode == .links,
-                                    isHovering: hoveredSidebarMode == .links
-                                )
-                            ),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .onHover { isHovering in
-                            hoveredSidebarMode = isHovering ? .links : nil
-                        }
-
-                        // MARK: - Media sidebar button
-                        Button {
-                            store.selectMediaTab()
-                        } label: {
-                            Label("Media", systemImage: "photo.on.rectangle")
-                                .fontWeight(
-                                    store.detailMode == .media ? .semibold : .regular
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(
-                            Color.accentColor.opacity(
-                                SidebarSectionHoverRules.backgroundOpacity(
-                                    isSelected: store.detailMode == .media,
-                                    isHovering: hoveredSidebarMode == .media
-                                )
-                            ),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .onHover { isHovering in
-                            hoveredSidebarMode = isHovering ? .media : nil
-                        }
-
-                        // MARK: - Kanban sidebar button
-                        Button {
-                            store.showKanbanModal()
-                        } label: {
-                            Label("Kanban", systemImage: "rectangle.3.group")
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-
-                        FileTreeView(nodes: store.fileTree, store: store)
-                            .id(store.workspace)
-                            .contextMenu {
-                                if let workspace = store.workspace {
-                                    Button {
-                                        store.promptNewFolder(in: workspace)
-                                    } label: {
-                                        Label("New Folder...", systemImage: "folder.badge.plus")
-                                    }
-                                }
-                            }
-                    }
-                    .font(Theme.sidebarSwiftUIFont(size: 13))
-                    .listStyle(.sidebar)
-                    .contentTransition(.identity)
-                    .transaction { $0.animation = nil }
-                }
+        HStack(spacing: 0) {
+            // MARK: - Sidebar
+            if store.columnVisibility != .detailOnly {
+                sidebarContent
+                    .frame(width: 280)
+                    .background(.ultraThinMaterial)
             }
-            .navigationTitle(store.workspace?.lastPathComponent ?? "Files")
-            .navigationSplitViewColumnWidth(min: 250, ideal: 320, max: 500)
-            .toolbar(id: "sidebar-main-v2") {
-                settingsToolbarButton
-                openWorkspaceButton
-            }
-        } detail: {
-            VStack(spacing: 0) {
-                // Kiro setup banner
-                if store.needsKiroSetup && store.workspace != nil && !dismissedSetup {
-                    KiroSetupBanner {
-                        store.bootstrapKiroConfig()
-                    } onDismiss: {
-                        dismissedSetup = true
-                    }
-                }
 
-                if store.detailMode == .dailyNotes {
-                    DailyNotesView()
-                } else if store.detailMode == .search {
-                    DedicatedSearchView()
-                } else if store.detailMode == .links {
-                    LinksView()
-                } else if store.detailMode == .media {
-                    MediaGridView()
-                } else if !store.openFiles.isEmpty, store.currentIndex >= 0 {
-                    let currentDoc = store.openFiles[store.currentIndex]
-                    let chatState = store.chatState(for: currentDoc.url)
-                    let selectionContext = selectionByDocument[currentDoc.url]
-                    let chatVisible = store.isChatVisibleForCurrentTab
-                    let chatView = DocumentChatTray(
-                        chatState: chatState,
-                        documentURL: currentDoc.url,
-                        documentContent: currentDoc.content.string,
-                        selectedText: selectionContext?.selectedText,
-                        selectedLineRange: selectionContext?.selectedLineRange,
-                        selectedImageURL: nil
-                    )
-
-                    let editorBlock = ZStack(alignment: .bottom) {
-                        EditorViewSimple { documentURL, selectedText, selectedLineRange in
-                            let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if trimmedText.isEmpty {
-                                selectionByDocument.removeValue(forKey: documentURL)
-                            } else {
-                                selectionByDocument[documentURL] = EditorSelectionContext(
-                                    selectedText: selectedText,
-                                    selectedLineRange: selectedLineRange
-                                )
-                            }
-                        }
-                            .id(currentDoc.url)
-
-                        // Undo toast overlay
-                        if chatState.undoSnapshot != nil {
-                            UndoToast {
-                                if let snapshot = chatState.undoSnapshot {
-                                    if let idx = store.openFiles.firstIndex(
-                                        where: { $0.url == snapshot.url }
-                                    ) {
-                                        store.openFiles[idx].content = NSAttributedString(
-                                            string: snapshot.content
-                                        )
-                                        store.openFiles[idx].isDirty = true
-                                    }
-                                    chatState.dismissUndo()
-                                }
-                            }
-                            .padding(.bottom, chatVisible ? 8 : 16)
-                        }
-                    }
-
-                    if store.chatPlacement == .trailing && chatVisible {
-                        HStack(spacing: 0) {
-                            editorBlock
-                            chatView
-                                .frame(width: store.chatWidth)
-                                .padding(.vertical, 8)
-                                .padding(.trailing, 8)
-                                .transition(
-                                    .move(edge: .trailing)
-                                    .combined(with: .opacity)
-                                )
-                        }
-                    } else {
-                        editorBlock
-
-                        if chatVisible {
-                            chatView
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                    }
-                } else {
-                    Text("Open a file to start editing")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if !store.isChatVisibleForCurrentTab
-                    && !store.openFiles.isEmpty
-                    && store.detailMode == .editor {
-                    Button {
-                        store.toggleChatForCurrentTab()
-                    } label: {
-                        Image(systemName: "sparkles")
-                            .font(Theme.uiSwiftUIFont(size: 16))
-                            .padding(10)
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive())
-                    .keyboardShortcutHint("⌘J")
-                    .padding(12)
-                }
-            }
-            .toolbar(id: "tabs") {
-                backlinksToolbarButton
-            }
-            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .dropDestination(for: URL.self) { urls, _ in
-                guard let emlURL = urls.first,
-                      emlURL.pathExtension.lowercased() == "eml"
-                else { return false }
-                store.newEmailNote(from: emlURL)
-                return true
-            } isTargeted: { targeted in
-                isEmailDropTargeted = targeted
-            }
-            .overlay {
-                if isEmailDropTargeted {
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(
-                            Color.accentColor,
-                            style: StrokeStyle(
-                                lineWidth: 2, dash: [8, 4]
-                            )
-                        )
-                        .background(
-                            Color.accentColor.opacity(0.05)
-                        )
-                        .padding(4)
-                        .allowsHitTesting(false)
-                }
-            }
+            // MARK: - Detail
+            detailContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .shadow(color: .black.opacity(0.08), radius: 4, x: -2, y: 0)
         }
         .frame(minWidth: 800, minHeight: 500)
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        store.columnVisibility = store.columnVisibility == .detailOnly
+                            ? .all : .detailOnly
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Toggle Sidebar")
+
+                Button {
+                    store.pickWorkspace()
+                } label: {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcutHint("⌘O")
+
+                Button {
+                    openWindow(id: "synth-settings-window")
+                } label: {
+                    Image(systemName: "gearshape")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+                .keyboardShortcutHint("⌘,")
+            }
+            .padding(.leading, 84)
+            .padding(.top, 10)
+        }
+        .ignoresSafeArea()
+        .background(Color(.windowBackgroundColor))
         .overlay {
             if store.activeModal != nil {
                 Color.primary.opacity(0.05)
@@ -497,14 +381,6 @@ struct ContentView: View {
                             ),
                             initialPerson: person
                         )
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    }
-
-                    if store.activeModal == .kanban {
-                        KanbanBoardView(isPresented: Binding(
-                            get: { store.activeModal == .kanban },
-                            set: { if !$0 { store.activeModal = nil } }
-                        ))
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
@@ -608,10 +484,9 @@ struct FileRow: View {
     var body: some View {
         HStack {
             Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
-                .fontWeight(isOpen ? .semibold : .regular)
             Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 1)
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -625,6 +500,7 @@ struct FileRow: View {
 struct FileTreeView: View {
     let nodes: [FileTreeNode]
     var store: DocumentStore
+    var isRoot: Bool = false
     @State private var isRootDropTargeted = false
 
     var body: some View {
@@ -632,7 +508,7 @@ struct FileTreeView: View {
             FileNodeView(node: node, store: store)
         }
         // Drop zone for moving items to workspace root
-        if let workspace = store.workspace {
+        if isRoot, let workspace = store.workspace {
             Rectangle()
                 .fill(isRootDropTargeted ? Color.accentColor.opacity(0.1) : Color.clear)
                 .frame(height: isRootDropTargeted ? 32 : 8)
@@ -872,6 +748,7 @@ struct EditorViewSimple: View {
                         )
                     }
                 }
+                .scrollIndicators(.hidden)
                 .frame(width: 260)
                 .background(Color(.textBackgroundColor).opacity(0.5))
             }
@@ -989,6 +866,7 @@ struct MediaGridView: View {
             }
             .padding(16)
         }
+        .scrollIndicators(.hidden)
         .background(Color(.textBackgroundColor))
         .sheet(item: $selectedMedia) { mediaURL in
             MediaDetailView(

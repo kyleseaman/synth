@@ -19,6 +19,7 @@ enum DetailViewMode: Equatable {
     case dailyNotes
     case links
     case media
+    case kanban
 }
 
 enum ChatPlacement: String {
@@ -32,7 +33,6 @@ enum ActiveModal: Equatable {
     case meetingNote
     case tagBrowser(String?)
     case peopleBrowser(String?)
-    case kanban
 }
 
 @MainActor
@@ -123,9 +123,7 @@ final class DocumentStore {
         if savedWidth > 0 { chatWidth = savedWidth }
         loadRecentFiles()
         dailyNoteManager.onSave = { [weak self] url, content in
-            self?.backlinkIndex.updateFile(url, content: content)
-            self?.tagIndex.updateFile(url, content: content)
-            self?.peopleIndex.updateFile(url, content: content)
+            self?.updateIndexes(for: url, content: content)
         }
         if let path = UserDefaults.standard.string(forKey: "lastWorkspace"),
            FileManager.default.fileExists(atPath: path) {
@@ -347,6 +345,13 @@ final class DocumentStore {
         return removed
     }
 
+    func updateIndexes(for url: URL, content: String) {
+        noteIndex.updateFile(url, content: content)
+        backlinkIndex.updateFile(url, content: content)
+        tagIndex.updateFile(url, content: content)
+        peopleIndex.updateFile(url, content: content)
+    }
+
     func loadKiroConfig() {
         guard let workspace else { return }
         let config = KiroConfigManager.loadConfig(workspace: workspace)
@@ -469,10 +474,7 @@ final class DocumentStore {
 
         let reloadedContent = reloadedDocument.content.string
         let reloadedURL = openFiles[fileIndex].url
-        noteIndex.updateFile(reloadedURL, content: reloadedContent)
-        backlinkIndex.updateFile(reloadedURL, content: reloadedContent)
-        tagIndex.updateFile(reloadedURL, content: reloadedContent)
-        peopleIndex.updateFile(reloadedURL, content: reloadedContent)
+        updateIndexes(for: reloadedURL, content: reloadedContent)
         return true
     }
 
@@ -536,10 +538,7 @@ final class DocumentStore {
 
         // Incremental index updates after save
         let savedContent = openFiles[currentIndex].content.string
-        noteIndex.updateFile(savedURL, content: savedContent)
-        backlinkIndex.updateFile(savedURL, content: savedContent)
-        tagIndex.updateFile(savedURL, content: savedContent)
-        peopleIndex.updateFile(savedURL, content: savedContent)
+        updateIndexes(for: savedURL, content: savedContent)
     }
 
     func exportAsDocx() {
@@ -586,10 +585,7 @@ final class DocumentStore {
             let savedURL = openFiles[index].url
             recentSaves[savedURL] = Date()
             let savedContent = openFiles[index].content.string
-            noteIndex.updateFile(savedURL, content: savedContent)
-            backlinkIndex.updateFile(savedURL, content: savedContent)
-            tagIndex.updateFile(savedURL, content: savedContent)
-            peopleIndex.updateFile(savedURL, content: savedContent)
+            updateIndexes(for: savedURL, content: savedContent)
         }
 
         // Background save for plain text files
@@ -1196,7 +1192,7 @@ extension DocumentStore {
     }
 
     func showKanbanModal() {
-        activeModal = .kanban
+        detailMode = detailMode == .kanban ? .editor : .kanban
     }
 
     // MARK: - Kanban Board

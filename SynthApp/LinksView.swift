@@ -27,6 +27,7 @@ struct LinksView: View {
                     }
                     .padding(16)
                 }
+                .scrollIndicators(.hidden)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

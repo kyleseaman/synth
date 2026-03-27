@@ -382,7 +382,7 @@ final class UtilityLogicTests: XCTestCase {
     func testDocumentChatTrayAgentSymbolFallsBackWhenPreferredUnavailable() {
         let fallbackSymbol = DocumentChatTray.agentSymbolName { _ in false }
 
-        XCTAssertEqual(fallbackSymbol, "person")
+        XCTAssertEqual(fallbackSymbol, "cpu")
     }
 
     func testShortcutHintRulesUsesOneSecondDelay() {
@@ -405,21 +405,6 @@ final class UtilityLogicTests: XCTestCase {
                 hoverStartDate: hoverStartDate,
                 currentDate: afterDelayDate
             )
-        )
-    }
-
-    func testSidebarSectionHoverRulesBackgroundOpacity() {
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: true, isHovering: false),
-            0.15
-        )
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: true),
-            0.08
-        )
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: false),
-            0.0
         )
     }
 

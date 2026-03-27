@@ -86,8 +86,7 @@ struct SynthApp: App {
                 .onAppear { appDelegate.store = store }
         }
         .defaultSize(width: 1200, height: 800)
-        .windowStyle(.automatic)
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .appSettings) {
                 SettingsLink()
@@ -201,5 +200,6 @@ struct SynthApp: App {
                 .environment(templateStore)
         }
         .defaultSize(width: 720, height: 560)
+        .windowStyle(.automatic)
     }
 }

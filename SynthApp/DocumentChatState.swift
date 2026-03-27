@@ -154,14 +154,7 @@ struct UndoSnapshot: Equatable {
             }
         }
 
-        client.onMcpServerInitialized = { [weak self] name in
-            self?.statusMessage = "MCP server ready: \(name)"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                if self?.statusMessage?.contains(name) == true {
-                    self?.statusMessage = nil
-                }
-            }
-        }
+        client.onMcpServerInitialized = { _ in }
 
         client.start(cwd: cwd, agent: agent)
 

@@ -270,6 +270,9 @@ import Observation
                 id: id, toolCallId: toolCallId, title: title, options: opts, diffContent: nil
             )
             request.diffContent = self.lastToolCallDiff[toolCallId]
+            if let input = toolCall?["input"] as? [String: Any] {
+                request.toolInput = input.mapValues { "\($0)" }
+            }
             print("[ACP] Setting pendingPermission: \(title), hasDiff=\(request.diffContent != nil)")
             pendingPermission = request
             onPermissionRequest?(request)

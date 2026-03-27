@@ -61,6 +61,7 @@ struct DailyNotesView: View {
                 }
                 .padding(.vertical, 16)
             }
+            .scrollIndicators(.hidden)
             .onChange(of: scrollTarget) { _, target in
                 guard let target = target else { return }
                 proxy.scrollTo(target, anchor: .top)
@@ -86,7 +87,7 @@ struct DailyNotesView: View {
 
     private func scrollToToday() {
         let todayId = DailyNoteManager.dateIdentifier(Date())
-        DispatchQueue.main.async {
+        Task { @MainActor in
             scrollTarget = todayId
         }
     }
