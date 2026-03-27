@@ -522,12 +522,10 @@ final class DocumentStore {
         let doc = openFiles[currentIndex]
         try? doc.save(doc.content)
 
-        // Rename Untitled files based on first line
-        if doc.url.lastPathComponent.hasPrefix("Untitled") {
-            if let newURL = renamedURL(for: doc) {
-                try? FileManager.default.moveItem(at: doc.url, to: newURL)
-                openFiles[currentIndex] = Document(url: newURL, content: doc.content)
-            }
+        // Sync filename to first-line heading
+        if let newURL = renamedURL(for: doc), newURL != doc.url {
+            try? FileManager.default.moveItem(at: doc.url, to: newURL)
+            openFiles[currentIndex] = Document(url: newURL, content: doc.content)
         }
         loadFileTree()
         openFiles[currentIndex].isDirty = false
@@ -621,6 +619,7 @@ final class DocumentStore {
         let ext = doc.url.pathExtension
         let newURL = doc.url.deletingLastPathComponent()
             .appendingPathComponent("\(safeName).\(ext)")
+        guard newURL != doc.url else { return nil }
         guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
         return newURL
     }
