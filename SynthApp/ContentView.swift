@@ -481,9 +481,14 @@ struct FileRow: View {
     let isOpen: Bool
     @State private var isHovering = false
 
+    private var displayName: String {
+        if node.isDirectory { return node.name }
+        return node.url.deletingPathExtension().lastPathComponent
+    }
+
     var body: some View {
         HStack {
-            Label(node.name, systemImage: node.isDirectory ? "folder" : "doc.text")
+            Label(displayName, systemImage: node.isDirectory ? "folder" : "doc.text")
             Spacer()
         }
         .padding(.vertical, 1)
