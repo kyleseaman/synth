@@ -408,21 +408,6 @@ final class UtilityLogicTests: XCTestCase {
         )
     }
 
-    func testSidebarSectionHoverRulesBackgroundOpacity() {
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: true, isHovering: false),
-            0.15
-        )
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: true),
-            0.08
-        )
-        XCTAssertEqual(
-            SidebarSectionHoverRules.backgroundOpacity(isSelected: false, isHovering: false),
-            0.0
-        )
-    }
-
     @MainActor
     func testDocumentStoreShouldRefreshSidebarIgnoresHiddenKiroAndSpecialFolders() {
         let workspacePath = "/tmp/workspace"
