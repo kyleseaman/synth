@@ -382,7 +382,7 @@ final class UtilityLogicTests: XCTestCase {
     func testDocumentChatTrayAgentSymbolFallsBackWhenPreferredUnavailable() {
         let fallbackSymbol = DocumentChatTray.agentSymbolName { _ in false }
 
-        XCTAssertEqual(fallbackSymbol, "person")
+        XCTAssertEqual(fallbackSymbol, "cpu")
     }
 
     func testShortcutHintRulesUsesOneSecondDelay() {
