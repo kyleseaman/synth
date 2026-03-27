@@ -254,8 +254,6 @@ import Observation
         case "session/request_permission":
             print("[ACP] Permission request received, id=\(id)")
             let toolCall = params?["toolCall"] as? [String: Any]
-            print("[ACP] Permission toolCall keys: \(toolCall?.keys.sorted() ?? [])")
-            print("[ACP] Permission toolCall: \(toolCall ?? [:])")
             let toolCallId = toolCall?["toolCallId"] as? String ?? ""
             let title = toolCall?["title"] as? String ?? "Permission requested"
             var opts: [PermissionOption] = []
@@ -273,11 +271,7 @@ import Observation
             )
             request.diffContent = self.lastToolCallDiff[toolCallId]
             if let input = toolCall?["input"] as? [String: Any] {
-                var stringInput: [String: String] = [:]
-                for (key, val) in input {
-                    stringInput[key] = "\(val)"
-                }
-                request.toolInput = stringInput
+                request.toolInput = input.mapValues { "\($0)" }
             }
             print("[ACP] Setting pendingPermission: \(title), hasDiff=\(request.diffContent != nil)")
             pendingPermission = request

@@ -3,6 +3,13 @@ import AppKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    private enum Layout {
+        static let headerLeadingCollapsed: CGFloat = 200
+        static let headerLeadingExpanded: CGFloat = 16
+        static let headerTopCollapsed: CGFloat = 32
+        static let headerTopExpanded: CGFloat = 10
+    }
+
     @Environment(DocumentStore.self) var store
     @Environment(\.openWindow) private var openWindow
     @State private var dismissedSetup = false
@@ -135,9 +142,17 @@ struct ContentView: View {
                         .font(Theme.sidebarSwiftUIFont(size: 12))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.leading, store.columnVisibility == .detailOnly ? 200 : 16)
-                        .padding(.trailing, 16)
-                        .padding(.top, store.columnVisibility == .detailOnly ? 32 : 10)
+                        .padding(
+                            .leading,
+                            store.columnVisibility == .detailOnly
+                                ? Layout.headerLeadingCollapsed : Layout.headerLeadingExpanded
+                        )
+                        .padding(.trailing, Layout.headerLeadingExpanded)
+                        .padding(
+                            .top,
+                            store.columnVisibility == .detailOnly
+                                ? Layout.headerTopCollapsed : Layout.headerTopExpanded
+                        )
                         .padding(.bottom, 4)
 
                     ZStack(alignment: .bottom) {
