@@ -527,9 +527,9 @@ final class DocumentStore {
             if let newURL = renamedURL(for: doc) {
                 try? FileManager.default.moveItem(at: doc.url, to: newURL)
                 openFiles[currentIndex] = Document(url: newURL, content: doc.content)
-                loadFileTree()
             }
         }
+        loadFileTree()
         openFiles[currentIndex].isDirty = false
 
         // Mark save to skip self-triggered FSEvent
@@ -885,15 +885,13 @@ final class DocumentStore {
 extension DocumentStore {
     func newDraft() {
         guard let workspace = workspace else { return }
-        let drafts = workspace.appendingPathComponent("drafts")
-        try? FileManager.default.createDirectory(at: drafts, withIntermediateDirectories: true)
 
         // Find next available Untitled number
         var num = 1
-        var url = drafts.appendingPathComponent("Untitled.md")
+        var url = workspace.appendingPathComponent("Untitled.md")
         while FileManager.default.fileExists(atPath: url.path) {
             num += 1
-            url = drafts.appendingPathComponent("Untitled \(num).md")
+            url = workspace.appendingPathComponent("Untitled \(num).md")
         }
 
         try? "# \n".write(to: url, atomically: true, encoding: .utf8)

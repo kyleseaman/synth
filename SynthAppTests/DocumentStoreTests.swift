@@ -273,8 +273,8 @@ final class DocumentStoreTests: XCTestCase {
         store.newDraft()
         store.newDraft()
 
-        let firstDraftURL = workspaceURL.appendingPathComponent("drafts/Untitled.md")
-        let secondDraftURL = workspaceURL.appendingPathComponent("drafts/Untitled 2.md")
+        let firstDraftURL = workspaceURL.appendingPathComponent("Untitled.md")
+        let secondDraftURL = workspaceURL.appendingPathComponent("Untitled 2.md")
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: firstDraftURL.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: secondDraftURL.path))
