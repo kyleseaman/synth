@@ -328,14 +328,13 @@ struct MarkdownFormat: DocumentFormat {
         // Hanging indent so wrapped lines align with text after bullet
         let indentRange = match.range(at: 1)
         let indentLevel = indentRange.length
-        let baseIndent = CGFloat(indentLevel) * 16
-        let textIndent = baseIndent + 20
+        let baseIndent = CGFloat(indentLevel) * 24 + 8
+        let textIndent = baseIndent + 14
         let para = NSMutableParagraphStyle()
         para.lineHeightMultiple = 1.25
         para.firstLineHeadIndent = baseIndent
         para.headIndent = textIndent
-        let tabStop = NSTextTab(textAlignment: .natural, location: textIndent)
-        para.tabStops = [tabStop]
+        para.tabStops = [NSTextTab(textAlignment: .natural, location: textIndent)]
         str.addAttribute(
             .paragraphStyle,
             value: para,

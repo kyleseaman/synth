@@ -1570,7 +1570,22 @@ extension MarkdownEditor.Coordinator {
                 prefixLen = 4
             }
 
-            guard let font = headingFont else { return }
+            guard let font = headingFont else {
+                // Bullet list hanging indent
+                if line.contains("•") {
+                    var indentLevel = 0
+                    for char in line where char == "\t" { indentLevel += 1 }
+                    let baseIndent = CGFloat(indentLevel) * 24 + 8
+                    let textIndent = baseIndent + 14
+                    let para = NSMutableParagraphStyle()
+                    para.lineHeightMultiple = 1.25
+                    para.firstLineHeadIndent = baseIndent
+                    para.headIndent = textIndent
+                    para.tabStops = [NSTextTab(textAlignment: .natural, location: textIndent)]
+                    storage.addAttribute(.paragraphStyle, value: para, range: paraRange)
+                }
+                return
+            }
             storage.addAttribute(
                 .font, value: font, range: paraRange
             )
