@@ -306,6 +306,8 @@ struct DedicatedSearchView: View {
     @State private var qmdResults: [NoteSearchResult] = []
     @State private var isQmdSearching = false
     @State private var qmdSearchTask: Task<Void, Never>?
+    @State private var localNoteResults: [NoteSearchResult] = []
+    @State private var localSearchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
 
     private var freeTextQuery: String {
@@ -314,11 +316,6 @@ struct DedicatedSearchView: View {
 
     private var activeQuery: String {
         store.dedicatedSearch.composedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var localNoteResults: [NoteSearchResult] {
-        guard !activeQuery.isEmpty else { return [] }
-        return store.noteIndex.search(activeQuery)
     }
 
     private var mergedNoteResults: [DedicatedSearchMergedNoteResult] {
@@ -449,6 +446,14 @@ struct DedicatedSearchView: View {
             refreshCachedFiles()
         }
         .onChange(of: activeQuery) {
+            localSearchTask?.cancel()
+            localSearchTask = Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                let query = activeQuery
+                let results = query.isEmpty ? [] : store.noteIndex.search(query)
+                localNoteResults = results
+            }
             qmdResults = []
             qmdSearchTask?.cancel()
             isQmdSearching = false

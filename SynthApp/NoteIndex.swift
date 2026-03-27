@@ -408,9 +408,9 @@ extension NoteIndex {
     }
 
     private enum RecencyWeights {
-        static let lastDay = 700
-        static let lastWeek = 450
-        static let lastMonth = 220
+        static let lastDay = 3_000
+        static let lastWeek = 1_800
+        static let lastMonth = 800
     }
 
     private static func buildSemanticMap() -> [String: Set<String>] {
@@ -538,7 +538,10 @@ extension NoteIndex {
     func search(_ query: String) -> [NoteSearchResult] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedQuery.isEmpty {
-            return Array(allNotes.prefix(20).map(\.result))
+            return allNotes
+                .sorted { $0.modifiedAt > $1.modifiedAt }
+                .prefix(20)
+                .map(\.result)
         }
 
         let parsedQuery = Self.parseLocalSearchQuery(trimmedQuery)
