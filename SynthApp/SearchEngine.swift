@@ -213,16 +213,14 @@ final class SearchEngine {
         baseFont: Font = .body,
         highlightColor: Color = .accentColor
     ) -> AttributedString {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         var attributed = AttributedString(text)
         attributed.font = baseFont
 
         guard !trimmed.isEmpty else { return attributed }
 
-        let lower = text.lowercased()
-
-        // First try: highlight full query as substring
-        if let range = lower.range(of: trimmed) {
+        // First try: highlight full query as substring (case-insensitive)
+        if let range = text.range(of: trimmed, options: .caseInsensitive) {
             let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
             let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
             if let attrStart, let attrEnd {
@@ -233,13 +231,18 @@ final class SearchEngine {
         }
 
         // Fallback: highlight individual query tokens
-        let tokens = trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        let tokens = trimmed.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map(String.init)
             .filter { $0.count >= 2 }
 
         for token in tokens {
-            var searchStart = lower.startIndex
-            while let range = lower.range(of: token, range: searchStart..<lower.endIndex) {
+            var searchStart = text.startIndex
+            while let range = text.range(
+                of: token,
+                options: .caseInsensitive,
+                range: searchStart..<text.endIndex
+            ) {
                 let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
                 let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
                 if let attrStart, let attrEnd {
