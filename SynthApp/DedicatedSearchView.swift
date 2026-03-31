@@ -308,6 +308,9 @@ struct DedicatedSearchView: View {
     @State private var qmdSearchTask: Task<Void, Never>?
     @State private var localNoteResults: [NoteSearchResult] = []
     @State private var localSearchTask: Task<Void, Never>?
+    @State private var asyncScoredFiles: [DedicatedSearchResult] = []
+    @State private var asyncPersonResults: [DedicatedSearchResult] = []
+    @State private var asyncTagResults: [DedicatedSearchResult] = []
     @FocusState private var isQueryFocused: Bool
 
     private var freeTextQuery: String {
@@ -367,38 +370,21 @@ struct DedicatedSearchView: View {
         guard !freeTextQuery.isEmpty else { return [] }
 
         let noteURLs = Set(mergedNoteResults.map(\.noteResult.url))
-        let recentFiles = Set(store.recentFiles)
-        let scoredResults: [DedicatedSearchResult] = cachedFiles
-            .filter { fileNode in
-                !noteURLs.contains(fileNode.url)
+        let filtered = asyncScoredFiles.filter { result in
+            if case .file(let node, _) = result {
+                return !noteURLs.contains(node.url)
             }
-            .compactMap { fileNode in
-                guard let fuzzyScore = fileNode.name.fuzzyScore(freeTextQuery) else { return nil }
-                let recentBonus = recentFiles.contains(fileNode.url) ? 2_000 : 0
-                return DedicatedSearchResult.file(node: fileNode, score: fuzzyScore + recentBonus)
-            }
-            .sorted { firstResult, secondResult in
-                firstResult.sortScore > secondResult.sortScore
-            }
-        return Array(scoredResults.prefix(20))
+            return true
+        }
+        return Array(filtered.prefix(20))
     }
 
     private var personResultItems: [DedicatedSearchResult] {
-        guard !freeTextQuery.isEmpty else { return [] }
-        let personMatches = Array(store.peopleIndex.search(freeTextQuery).prefix(10))
-        return personMatches.map { personMatch in
-            let score = personMatch.name.fuzzyScore(freeTextQuery) ?? 0
-            return .person(name: personMatch.name, count: personMatch.count, score: score)
-        }
+        asyncPersonResults
     }
 
     private var tagResultItems: [DedicatedSearchResult] {
-        guard !freeTextQuery.isEmpty else { return [] }
-        let tagMatches = Array(store.tagIndex.search(freeTextQuery).prefix(10))
-        return tagMatches.map { tagMatch in
-            let score = tagMatch.name.fuzzyScore(freeTextQuery) ?? 0
-            return .tag(name: tagMatch.name, count: tagMatch.count, score: score)
-        }
+        asyncTagResults
     }
 
     private var allResultItems: [DedicatedSearchResult] {
@@ -447,12 +433,53 @@ struct DedicatedSearchView: View {
         }
         .onChange(of: activeQuery) {
             localSearchTask?.cancel()
+            let query = activeQuery
+            let freeQuery = freeTextQuery
+
+            let noteIndex = store.noteIndex
+            let peopleIndex = store.peopleIndex
+            let tagIndex = store.tagIndex
+            let recentFiles = Set(store.recentFiles)
+            let cachedFilesCopy = cachedFiles
+
             localSearchTask = Task {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled else { return }
-                let query = activeQuery
-                let results = query.isEmpty ? [] : store.noteIndex.search(query)
-                localNoteResults = results
+
+                let (localNotes, persons, tags, files) = await Task.detached(priority: .userInitiated) {
+                    let localNotes = query.isEmpty ? [] : noteIndex.search(query)
+
+                    let persons = freeQuery.isEmpty ? [] : Array(peopleIndex.search(freeQuery).prefix(10)).map {
+                        DedicatedSearchResult.person(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(freeQuery) ?? 0)
+                    }
+
+                    let tags = freeQuery.isEmpty ? [] : Array(tagIndex.search(freeQuery).prefix(10)).map {
+                        DedicatedSearchResult.tag(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(freeQuery) ?? 0)
+                    }
+
+                    let files: [DedicatedSearchResult]
+                    if freeQuery.isEmpty {
+                        files = []
+                    } else {
+                        let scoredFiles = cachedFilesCopy
+                            .compactMap { fileNode -> DedicatedSearchResult? in
+                                guard let score = fileNode.name.fuzzyScore(freeQuery) else { return nil }
+                                let bonus = recentFiles.contains(fileNode.url) ? 2_000 : 0
+                                return .file(node: fileNode, score: score + bonus)
+                            }
+                            .sorted { $0.sortScore > $1.sortScore }
+                        files = scoredFiles
+                    }
+
+                    return (localNotes, persons, tags, files)
+                }.value
+
+                guard !Task.isCancelled else { return }
+
+                localNoteResults = localNotes
+                asyncPersonResults = persons
+                asyncTagResults = tags
+                asyncScoredFiles = files
             }
             qmdResults = []
             qmdSearchTask?.cancel()

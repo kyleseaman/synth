@@ -171,20 +171,37 @@ struct ContentView: View {
                     }
                         .id(currentDoc.url)
                         .overlay(alignment: .topTrailing) {
-                            Button {
-                                withAnimation(.easeOut(duration: 0.15)) {
-                                    store.toggleBacklinks()
+                            HStack(spacing: 4) {
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        store.toggleSplit()
+                                    }
+                                } label: {
+                                    Image(systemName: "square.split.2x1")
+                                        .font(Theme.uiSwiftUIFont(size: 14))
+                                        .foregroundStyle(
+                                            store.isSplitActive ? .primary : .secondary
+                                        )
+                                        .padding(8)
                                 }
-                            } label: {
-                                Image(systemName: "link")
-                                    .font(Theme.uiSwiftUIFont(size: 14))
-                                    .foregroundStyle(
-                                        store.showBacklinks ? .primary : .secondary
-                                    )
-                                    .padding(8)
+                                .buttonStyle(.plain)
+                                .glassEffect(.regular.interactive())
+
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        store.toggleBacklinks()
+                                    }
+                                } label: {
+                                    Image(systemName: "link")
+                                        .font(Theme.uiSwiftUIFont(size: 14))
+                                        .foregroundStyle(
+                                            store.showBacklinks ? .primary : .secondary
+                                        )
+                                        .padding(8)
+                                }
+                                .buttonStyle(.plain)
+                                .glassEffect(.regular.interactive())
                             }
-                            .buttonStyle(.plain)
-                            .glassEffect(.regular.interactive())
                             .padding(12)
                         }
 
@@ -691,6 +708,8 @@ struct EditorViewSimple: View {
     @State private var text: String = ""
     @State private var linePositions: [CGFloat] = []
     @State private var scrollOffset: CGFloat = 0
+    @State private var linePositions2: [CGFloat] = []
+    @State private var scrollOffset2: CGFloat = 0
     @State private var selectedText: String = ""
     @State private var selectedLineRange: String = ""
     var onSelectionChange: ((URL, String, String) -> Void)?
@@ -712,24 +731,52 @@ struct EditorViewSimple: View {
         HStack(spacing: 0) {
             // Editor
             HStack(spacing: 0) {
-                LineNumberGutter(
-                    linePositions: linePositions,
-                    scrollOffset: scrollOffset
-                )
-                    .frame(width: 44)
-                    .background(Color(.textBackgroundColor))
+                HStack(spacing: 0) {
+                    LineNumberGutter(
+                        linePositions: linePositions,
+                        scrollOffset: scrollOffset
+                    )
+                        .frame(width: 44)
+                        .background(Color(.textBackgroundColor))
 
-                MarkdownEditor(
-                    text: $text,
-                    scrollOffset: $scrollOffset,
-                    linePositions: $linePositions,
-                    selectedText: $selectedText,
-                    selectedLineRange: $selectedLineRange,
-                    hideSyntax: hideSyntax,
-                    store: store,
-                    templateStore: templateStore
-                )
-                .background(Color(.textBackgroundColor))
+                    MarkdownEditor(
+                        text: $text,
+                        scrollOffset: $scrollOffset,
+                        linePositions: $linePositions,
+                        selectedText: $selectedText,
+                        selectedLineRange: $selectedLineRange,
+                        documentURL: currentNoteURL,
+                        hideSyntax: hideSyntax,
+                        store: store,
+                        templateStore: templateStore
+                    )
+                    .background(Color(.textBackgroundColor))
+                }
+
+                if store.isSplitActive {
+                    Divider()
+                    HStack(spacing: 0) {
+                        LineNumberGutter(
+                            linePositions: linePositions2,
+                            scrollOffset: scrollOffset2
+                        )
+                            .frame(width: 44)
+                            .background(Color(.textBackgroundColor))
+
+                        MarkdownEditor(
+                            text: $text,
+                            scrollOffset: $scrollOffset2,
+                            linePositions: $linePositions2,
+                            selectedText: .constant(""),
+                            selectedLineRange: .constant(""),
+                            documentURL: currentNoteURL,
+                            hideSyntax: hideSyntax,
+                            store: store,
+                            templateStore: templateStore
+                        )
+                        .background(Color(.textBackgroundColor))
+                    }
+                }
             }
 
             // Backlinks right sidebar

@@ -988,12 +988,13 @@ struct MarkdownEditor: NSViewRepresentable {
     @Binding var linePositions: [CGFloat]
     @Binding var selectedText: String
     @Binding var selectedLineRange: String
+    var documentURL: URL?
     var hideSyntax: Bool
     weak var store: DocumentStore?
     weak var templateStore: TemplateStore?
 
     var format: DocumentFormat {
-        let baseDirectory = store?.currentDocumentURL?.deletingLastPathComponent()
+        let baseDirectory = documentURL?.deletingLastPathComponent()
         return MarkdownFormat(noteIndex: store?.noteIndex, baseURL: baseDirectory)
     }
 
@@ -1165,7 +1166,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         func markdownForPastedImage(_ image: NSImage) -> String? {
             guard let store,
-                  let noteURL = store.currentDocumentURL,
+                  let noteURL = parent.documentURL,
                   let relativePath = store.savePastedImageToMedia(
                       image, noteURL: noteURL
                   ) else { return nil }
@@ -1410,7 +1411,7 @@ extension MarkdownEditor.Coordinator {
             )
 
             let baseFont = Theme.editorNSFont(ofSize: 16)
-            let baseDirectory = store?.currentDocumentURL?
+            let baseDirectory = parent.documentURL?
                 .deletingLastPathComponent()
             let pendingRenders = MarkdownFormat.applyImageRendering(
                 in: storage,
@@ -1541,6 +1542,9 @@ extension MarkdownEditor.Coordinator {
                 range, in: storage, baseFont: bodyFont,
                 cursorParagraph: cursorParagraph
             )
+
+            // Format code blocks
+            formatCodeBlocks(range, in: storage)
         }
 
         private func formatParagraphHeading(
@@ -1900,6 +1904,87 @@ extension MarkdownEditor.Coordinator {
                     location: full.location + full.length - 1,
                     length: 1
                 ))
+            }
+        }
+
+        // swiftlint:disable force_try
+        private static let codeBlockLangRegex = try! NSRegularExpression(
+            pattern: "(?<=\\n|\\A)```([a-zA-Z0-9]*)\\n"
+        )
+        private static let codeKeywordRegex = try! NSRegularExpression(
+            pattern: "\\b(func|var|let|if|else|return|import|class|struct|def|function|guard|for|in|while|switch|case|break|continue|nil|true|false|self|init|public|private|static|enum)\\b"
+        )
+        private static let codeNumberRegex = try! NSRegularExpression(
+            pattern: "\\b\\d+(\\.\\d+)?\\b"
+        )
+        private static let codeStringRegex = try! NSRegularExpression(
+            pattern: "\"[^\"]*\"|'[^']*'"
+        )
+        private static let trailingBackticks = try! NSRegularExpression(
+            pattern: "\\n```(?=\\n|\\Z)"
+        )
+        // swiftlint:enable force_try
+
+        private func formatCodeBlocks(_ range: NSRange, in storage: NSTextStorage) {
+            let currentCodeBlocks = Self.findCodeBlockRanges(in: storage.string)
+            for block in currentCodeBlocks {
+                let intersection = NSIntersectionRange(block, range)
+                guard intersection.length > 0 else { continue }
+
+                let monoFont = Theme.terminalNSFont(ofSize: 14)
+                let para = NSMutableParagraphStyle()
+                para.lineHeightMultiple = 1.2
+
+                // Base block styling
+                storage.addAttributes([
+                    .font: monoFont,
+                    .backgroundColor: NSColor.quaternaryLabelColor.withAlphaComponent(0.2),
+                    .foregroundColor: NSColor.controlTextColor,
+                    .paragraphStyle: para
+                ], range: intersection)
+
+                // Clear any inline markdown styling (like links or bold) that matched inside
+                storage.removeAttribute(.link, range: intersection)
+                storage.removeAttribute(.underlineStyle, range: intersection)
+                storage.removeAttribute(.underlineColor, range: intersection)
+
+                // Strings
+                Self.codeStringRegex.enumerateMatches(in: storage.string, range: intersection) { match, _, _ in
+                    guard let matchRange = match?.range else { return }
+                    storage.addAttribute(.foregroundColor, value: NSColor.systemRed, range: matchRange)
+                }
+
+                // Numbers
+                Self.codeNumberRegex.enumerateMatches(in: storage.string, range: intersection) { match, _, _ in
+                    guard let matchRange = match?.range else { return }
+                    if storage.attribute(.foregroundColor, at: matchRange.location, effectiveRange: nil) as? NSColor != NSColor.systemRed {
+                        storage.addAttribute(.foregroundColor, value: NSColor.systemPurple, range: matchRange)
+                    }
+                }
+
+                // Keywords
+                Self.codeKeywordRegex.enumerateMatches(in: storage.string, range: intersection) { match, _, _ in
+                    guard let matchRange = match?.range else { return }
+                    if storage.attribute(.foregroundColor, at: matchRange.location, effectiveRange: nil) as? NSColor != NSColor.systemRed {
+                        storage.addAttribute(.foregroundColor, value: NSColor.systemPink, range: matchRange)
+                    }
+                }
+
+                // Dim the language specifier line
+                Self.codeBlockLangRegex.enumerateMatches(in: storage.string, range: intersection) { match, _, _ in
+                    guard let matchRange = match?.range else { return }
+                    storage.addAttributes([
+                        .foregroundColor: NSColor.tertiaryLabelColor
+                    ], range: matchRange)
+                }
+
+                // Dim the trailing backticks
+                Self.trailingBackticks.enumerateMatches(in: storage.string, range: intersection) { match, _, _ in
+                    guard let matchRange = match?.range else { return }
+                    storage.addAttributes([
+                        .foregroundColor: NSColor.tertiaryLabelColor
+                    ], range: matchRange)
+                }
             }
         }
 

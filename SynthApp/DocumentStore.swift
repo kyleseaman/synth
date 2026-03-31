@@ -68,6 +68,7 @@ final class DocumentStore {
     var activeModal: ActiveModal?
     var imageDetailURL: URL?
     var showBacklinks = false
+    var isSplitActive = false
     var dailyDateScrollTarget: String?
     var renameTarget: URL?
     var renameText: String = ""
@@ -1162,6 +1163,10 @@ extension DocumentStore {
 extension DocumentStore {
     func toggleSidebar() {
         columnVisibility = columnVisibility == .all ? .detailOnly : .all
+    }
+
+    func toggleSplit() {
+        isSplitActive.toggle()
     }
 
     func toggleBacklinks() {
