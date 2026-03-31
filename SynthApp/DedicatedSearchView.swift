@@ -306,6 +306,7 @@ struct DedicatedSearchView: View {
     @State private var scoredFiles: [ScoredFile] = []
     @State private var scoredPeople: [ScoredMatch] = []
     @State private var scoredTags: [ScoredMatch] = []
+    @State private var searchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
 
     private var engine: SearchEngine { store.searchEngine }
@@ -425,7 +426,13 @@ struct DedicatedSearchView: View {
             qmdResults = []
             engine.cancelQmdSearch()
 
-            engine.search(query: activeQuery) { [self] result in
+            searchTask?.cancel()
+            let query = activeQuery
+            searchTask = Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                let result = engine.searchImmediate(query: query)
+                guard !Task.isCancelled else { return }
                 localNoteResults = result.notes
                 scoredFiles = result.files
                 scoredPeople = result.people

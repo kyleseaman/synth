@@ -42,7 +42,6 @@ final class SearchEngine {
 
     // MARK: - Tasks
 
-    private var searchTask: Task<Void, Never>?
     private var qmdSearchTask: Task<Void, Never>?
 
     // MARK: - Configuration
@@ -71,37 +70,9 @@ final class SearchEngine {
         cachedFiles = Self.flattenFiles(fileTree)
     }
 
-    // MARK: - Debounced Search
+    // MARK: - Search
 
-    /// Run the full search pipeline off the main thread with a 150ms debounce.
-    func search(
-        query: String,
-        completion: @MainActor @Sendable @escaping (SearchResult) -> Void
-    ) {
-        searchTask?.cancel()
-
-        let noteIdx = noteIndex
-        let peopleIdx = peopleIndex
-        let tagIdx = tagIndex
-        let files = cachedFiles
-        let recent = recentFiles
-
-        searchTask = Task {
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
-
-            let result = Self.runSearchSync(
-                query: query, noteIndex: noteIdx,
-                peopleIndex: peopleIdx, tagIndex: tagIdx,
-                files: files, recentFiles: recent
-            )
-
-            guard !Task.isCancelled else { return }
-            completion(result)
-        }
-    }
-
-    /// Run search immediately (no debounce). For onAppear, after QMD, etc.
+    /// Run the full search pipeline synchronously.
     func searchImmediate(query: String) -> SearchResult {
         Self.runSearchSync(
             query: query, noteIndex: noteIndex,

@@ -90,6 +90,7 @@ struct FileLauncher: View {
     @State private var noteLookup: [URL: NoteSearchResult] = [:]
     @State private var qmdResults: [LauncherResult] = []
     @State private var searchResults: [LauncherResult] = []
+    @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
     private var engine: SearchEngine { store.searchEngine }
@@ -357,21 +358,25 @@ struct FileLauncher: View {
     }
 
     private func debounceSearch() {
-        let currentQuery = query
-        let trimmed = currentQuery.trimmingCharacters(in: .whitespaces)
+        searchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
 
-        // Handle @person prefix locally
-        if trimmed.hasPrefix("@") {
-            let personQuery = String(trimmed.dropFirst())
-            engine.search(query: personQuery) { [self] result in
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+
+            if trimmed.hasPrefix("@") {
+                let personQuery = String(trimmed.dropFirst())
+                let result = engine.searchImmediate(query: personQuery)
+                guard !Task.isCancelled else { return }
                 searchResults = result.people.map {
                     .person(name: $0.name, count: $0.count, score: $0.score)
                 }
+                return
             }
-            return
-        }
 
-        engine.search(query: trimmed) { [self] result in
+            let result = engine.searchImmediate(query: trimmed)
+            guard !Task.isCancelled else { return }
             applySearchResult(result)
         }
     }
