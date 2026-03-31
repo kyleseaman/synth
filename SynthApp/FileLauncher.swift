@@ -86,6 +86,7 @@ struct FileLauncher: View {
     @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     @State private var query = ""
+    @State private var debouncedQuery = ""
     @State private var selectedIndex = 0
     @State private var cachedFiles: [FileTreeNode] = []
     @State private var previewCache: [URL: String] = [:]
@@ -93,55 +94,11 @@ struct FileLauncher: View {
     @State private var qmdResults: [LauncherResult] = []
     @State private var isQmdSearching = false
     @State private var qmdSearchTask: Task<Void, Never>?
+    @State private var searchResults: [LauncherResult] = []
+    @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
 
-    var results: [LauncherResult] {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-
-        // Strip leading @ for people-specific search.
-        let isPersonQuery = trimmed.hasPrefix("@")
-        let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
-
-        if trimmed.isEmpty {
-            let recentSet = Set(store.recentFiles)
-            let recentNodes = store.recentFiles.compactMap { url in
-                cachedFiles.first { $0.url == url }
-            }
-            let others = cachedFiles.filter { !recentSet.contains($0.url) }.prefix(20 - recentNodes.count)
-            return (recentNodes + others).map { file in
-                if let note = noteLookup[file.url] {
-                    return .note(result: note)
-                }
-                return .file(node: file, score: 0)
-            }
-        }
-
-        // People results.
-        let peopleResults: [LauncherResult] = store.peopleIndex.search(searchQuery)
-            .map { .person(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(searchQuery) ?? 0) }
-
-        if isPersonQuery {
-            return peopleResults
-        }
-
-        // Semantic + fuzzy note results.
-        let noteResults = store.noteIndex.search(searchQuery)
-        let noteURLs = Set(noteResults.map(\.url))
-        let semanticResults: [LauncherResult] = noteResults.map { .note(result: $0) }
-
-        // Fallback for non-note files by file name.
-        let fileResults = Self.fallbackFileResults(
-            from: cachedFiles,
-            query: trimmed,
-            noteURLs: noteURLs,
-            recentFiles: Set(store.recentFiles)
-        )
-
-        return blendWithQmdResults(
-            base: (semanticResults + fileResults + peopleResults)
-                .sorted { $0.sortScore > $1.sortScore }
-        )
-    }
+    var results: [LauncherResult] { searchResults }
 
     private var selectedNoteResult: NoteSearchResult? {
         guard selectedIndex >= 0 && selectedIndex < results.count else { return nil }
@@ -181,6 +138,7 @@ struct FileLauncher: View {
             isSearchFocused = true
             cachedFiles = Self.flattenFiles(store.fileTree)
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
+            computeResults()
             if let selectedNoteResult {
                 loadPreview(for: selectedNoteResult.url)
             }
@@ -188,12 +146,14 @@ struct FileLauncher: View {
         .onChange(of: store.fileTree) {
             cachedFiles = Self.flattenFiles(store.fileTree)
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
+            computeResults()
         }
         .onChange(of: query) { _, _ in
             selectedIndex = 0
             qmdResults = []
             qmdSearchTask?.cancel()
             isQmdSearching = false
+            debounceSearch()
         }
         .onChange(of: results.count) { _, newValue in
             guard newValue > 0 else {
@@ -536,6 +496,67 @@ struct FileLauncher: View {
         return orderedTerms
     }
 
+    private func debounceSearch() {
+        searchTask?.cancel()
+        let currentQuery = query
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            debouncedQuery = currentQuery
+            computeResults()
+        }
+    }
+
+    private func computeResults() {
+        let trimmed = debouncedQuery.trimmingCharacters(in: .whitespaces)
+        let isPersonQuery = trimmed.hasPrefix("@")
+        let searchQuery = isPersonQuery ? String(trimmed.dropFirst()) : trimmed
+
+        if trimmed.isEmpty {
+            let recentSet = Set(store.recentFiles)
+            let recentNodes = store.recentFiles.compactMap { url in
+                cachedFiles.first { $0.url == url }
+            }
+            let others = cachedFiles.filter { !recentSet.contains($0.url) }
+                .prefix(20 - recentNodes.count)
+            searchResults = (recentNodes + others).map { file in
+                if let note = noteLookup[file.url] {
+                    return .note(result: note)
+                }
+                return .file(node: file, score: 0)
+            }
+            return
+        }
+
+        let peopleResults: [LauncherResult] = store.peopleIndex.search(searchQuery)
+            .map { .person(
+                name: $0.name,
+                count: $0.count,
+                score: $0.name.fuzzyScore(searchQuery) ?? 0
+            ) }
+
+        if isPersonQuery {
+            searchResults = peopleResults
+            return
+        }
+
+        let noteResults = store.noteIndex.search(searchQuery)
+        let noteURLs = Set(noteResults.map(\.url))
+        let semanticResults: [LauncherResult] = noteResults.map { .note(result: $0) }
+
+        let fileResults = Self.fallbackFileResults(
+            from: cachedFiles,
+            query: trimmed,
+            noteURLs: noteURLs,
+            recentFiles: Set(store.recentFiles)
+        )
+
+        searchResults = blendWithQmdResults(
+            base: (semanticResults + fileResults + peopleResults)
+                .sorted { $0.sortScore > $1.sortScore }
+        )
+    }
+
     func openSelected() {
         guard selectedIndex >= 0 && selectedIndex < results.count else { return }
         switch results[selectedIndex] {
@@ -624,6 +645,7 @@ struct FileLauncher: View {
                 qmdResults = mapped
                 isQmdSearching = false
                 selectedIndex = 0
+                computeResults()
             }
         }
     }
@@ -662,17 +684,10 @@ struct FileDatesLabel: View {
         return fmt
     }()
 
-    private var dates: (created: String, modified: String)? {
-        guard let values = try? url.resourceValues(
-            forKeys: [.creationDateKey, .contentModificationDateKey]
-        ) else { return nil }
-        let created = values.creationDate.map { Self.formatter.string(from: $0) } ?? "—"
-        let modified = values.contentModificationDate.map { Self.formatter.string(from: $0) } ?? "—"
-        return (created: created, modified: modified)
-    }
+    @State private var dates: (created: String, modified: String)?
 
     var body: some View {
-        if let dates = dates {
+        if let dates {
             HStack(spacing: 8) {
                 Text("Created \(dates.created)")
                 Text("Modified \(dates.modified)")
@@ -680,6 +695,19 @@ struct FileDatesLabel: View {
             .font(Theme.uiSwiftUIFont(size: 10))
             .foregroundStyle(.quaternary)
             .padding(.leading, 20)
+        }
+    }
+
+    init(url: URL) {
+        self.url = url
+        if let values = try? url.resourceValues(
+            forKeys: [.creationDateKey, .contentModificationDateKey]
+        ) {
+            let created = values.creationDate.map { Self.formatter.string(from: $0) } ?? "—"
+            let modified = values.contentModificationDate.map { Self.formatter.string(from: $0) } ?? "—"
+            _dates = State(initialValue: (created: created, modified: modified))
+        } else {
+            _dates = State(initialValue: nil)
         }
     }
 }
