@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// Unified result type for all search operations across FileLauncher and DedicatedSearchView.
 struct SearchResult: Sendable {
@@ -203,6 +203,55 @@ final class SearchEngine {
     }
 
     // MARK: - Text Utilities
+
+    // MARK: - Highlighting
+
+    /// Build an AttributedString with matching terms bolded and tinted.
+    nonisolated static func highlightedText(
+        _ text: String,
+        query: String,
+        baseFont: Font = .body,
+        highlightColor: Color = .accentColor
+    ) -> AttributedString {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var attributed = AttributedString(text)
+        attributed.font = baseFont
+
+        guard !trimmed.isEmpty else { return attributed }
+
+        let lower = text.lowercased()
+
+        // First try: highlight full query as substring
+        if let range = lower.range(of: trimmed) {
+            let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
+            let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
+            if let attrStart, let attrEnd {
+                attributed[attrStart..<attrEnd].font = baseFont.bold()
+                attributed[attrStart..<attrEnd].foregroundColor = highlightColor
+            }
+            return attributed
+        }
+
+        // Fallback: highlight individual query tokens
+        let tokens = trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count >= 2 }
+
+        for token in tokens {
+            var searchStart = lower.startIndex
+            while let range = lower.range(of: token, range: searchStart..<lower.endIndex) {
+                let attrStart = AttributedString.Index(range.lowerBound, within: attributed)
+                let attrEnd = AttributedString.Index(range.upperBound, within: attributed)
+                if let attrStart, let attrEnd {
+                    attributed[attrStart..<attrEnd].font = baseFont.bold()
+                    attributed[attrStart..<attrEnd].foregroundColor = highlightColor
+                }
+                searchStart = range.upperBound
+            }
+        }
+
+        return attributed
+    }
 
     nonisolated static func cleanPreviewText(_ text: String) -> String {
         text

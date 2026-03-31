@@ -673,7 +673,7 @@ struct DedicatedSearchView: View {
                 case .note(let noteResult, let source):
                     Image(systemName: "doc.text.magnifyingglass")
                         .foregroundStyle(.secondary)
-                    Text(noteResult.title)
+                    Text(SearchEngine.highlightedText(noteResult.title, query: activeQuery))
                         .lineLimit(1)
                     Spacer()
                     sourceBadge(source)
@@ -684,7 +684,7 @@ struct DedicatedSearchView: View {
                 case .file(let node, _):
                     Image(systemName: "doc")
                         .foregroundStyle(.secondary)
-                    Text(node.name)
+                    Text(SearchEngine.highlightedText(node.name, query: freeTextQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(node.url.deletingLastPathComponent().lastPathComponent)
@@ -694,7 +694,7 @@ struct DedicatedSearchView: View {
                 case .person(let name, let count, _):
                     Image(systemName: "person.fill")
                         .foregroundStyle(.secondary)
-                    Text("@\(name)")
+                    Text(SearchEngine.highlightedText("@\(name)", query: freeTextQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(count == 1 ? "1 note" : "\(count) notes")
@@ -703,7 +703,7 @@ struct DedicatedSearchView: View {
                 case .tag(let name, let count, _):
                     Image(systemName: "tag.fill")
                         .foregroundStyle(.secondary)
-                    Text("#\(name)")
+                    Text(SearchEngine.highlightedText("#\(name)", query: freeTextQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(count == 1 ? "1 note" : "\(count) notes")
@@ -713,8 +713,11 @@ struct DedicatedSearchView: View {
             }
 
             if case .note(let noteResult, _) = result {
-                Text(rowPreviewText(for: noteResult))
-                    .font(Theme.uiSwiftUIFont(size: 11))
+                Text(SearchEngine.highlightedText(
+                    rowPreviewText(for: noteResult),
+                    query: activeQuery,
+                    baseFont: Theme.uiSwiftUIFont(size: 11)
+                ))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .padding(.leading, 20)

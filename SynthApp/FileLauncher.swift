@@ -245,7 +245,8 @@ struct FileLauncher: View {
                 case .note(let note):
                     Image(systemName: "doc.text.magnifyingglass")
                         .foregroundStyle(.secondary)
-                    Text(note.title)
+                    Text(SearchEngine.highlightedText(note.title, query: query))
+                        .lineLimit(1)
                     Spacer()
                     if qmdResultURLs.contains(note.url) {
                         sourceBadge("QMD")
@@ -256,7 +257,8 @@ struct FileLauncher: View {
                 case .file(let node, _):
                     Image(systemName: "doc.text")
                         .foregroundStyle(.secondary)
-                    Text(node.name)
+                    Text(SearchEngine.highlightedText(node.name, query: query))
+                        .lineLimit(1)
                     Spacer()
                     if qmdResultURLs.contains(node.url) {
                         sourceBadge("QMD")
@@ -267,7 +269,7 @@ struct FileLauncher: View {
                 case .person(let name, let count, _):
                     Image(systemName: "person.fill")
                         .foregroundColor(.purple)
-                    Text("@\(name)")
+                    Text(SearchEngine.highlightedText("@\(name)", query: query))
                         .foregroundColor(.purple)
                     Spacer()
                     let label = count == 1 ? "1 note" : "\(count) notes"
@@ -277,8 +279,11 @@ struct FileLauncher: View {
                 }
             }
             if case .note(let note) = result {
-                Text(rowPreviewText(for: note))
-                    .font(Theme.uiSwiftUIFont(size: 11))
+                Text(SearchEngine.highlightedText(
+                    rowPreviewText(for: note),
+                    query: query,
+                    baseFont: Theme.uiSwiftUIFont(size: 11)
+                ))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .padding(.leading, 20)
