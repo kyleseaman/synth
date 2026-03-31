@@ -414,6 +414,7 @@ struct FileLauncher: View {
 
     private func computeResults() {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+        displayQuery = trimmed
 
         if trimmed.isEmpty {
             let cachedFiles = engine.cachedFiles
@@ -518,10 +519,10 @@ struct FileLauncher: View {
     }
 
     private func triggerQmdSearch(_ searchQuery: String) {
-        engine.triggerQmdSearch(query: searchQuery, limit: 15) { [self] mapped in
-            qmdResults = mapped.map { .note(result: $0) }
-            selectedIndex = 0
-            computeResults()
+        engine.triggerQmdSearch(query: searchQuery, limit: 15) { mapped in
+            self.qmdResults = mapped.map { .note(result: $0) }
+            self.selectedIndex = 0
+            self.computeResults()
         }
     }
 
