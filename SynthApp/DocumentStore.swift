@@ -62,6 +62,7 @@ final class DocumentStore {
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
     var dedicatedSearch = DedicatedSearchState()
+    let searchEngine = SearchEngine()
 
     // MARK: - Centralized UI State
     var columnVisibility: NavigationSplitViewVisibility = .all
@@ -198,6 +199,7 @@ final class DocumentStore {
             recentFiles = Array(recentFiles.prefix(maxRecentFiles))
         }
         UserDefaults.standard.set(recentFiles.map { $0.path }, forKey: "recentFiles")
+        searchEngine.updateRecentFiles(recentFiles)
     }
 
     func setWorkspace(_ url: URL) {
@@ -224,7 +226,20 @@ final class DocumentStore {
         dailyNoteManager.ensureFutureDays(workspace: url)
         mcpServer.start(workspace: url)
         initializeQmd(workspace: url)
+        configureSearchEngine()
         loadFileTree()
+    }
+
+    func configureSearchEngine() {
+        searchEngine.configure(
+            noteIndex: noteIndex,
+            peopleIndex: peopleIndex,
+            tagIndex: tagIndex,
+            recentFiles: recentFiles,
+            workspace: workspace,
+            qmdClient: qmdClient
+        )
+        searchEngine.refreshFileCache(from: fileTree)
     }
 
     func loadFileTree() {
@@ -287,6 +302,7 @@ final class DocumentStore {
     private func applyScanResult(_ scanResult: WorkspaceScanResult, workspace: URL) {
         fileTree = scanResult.tree
         mediaFiles = scanResult.media
+        searchEngine.refreshFileCache(from: scanResult.tree)
         // Use unified indexer - reads files in parallel off main thread
         let context = IndexContext(
             noteIndex: noteIndex,

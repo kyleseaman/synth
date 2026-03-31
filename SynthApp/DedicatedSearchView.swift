@@ -301,17 +301,14 @@ enum DedicatedSearchResult: Identifiable {
 
 struct DedicatedSearchView: View {
     @Environment(DocumentStore.self) private var store
-    @State private var cachedFiles: [FileTreeNode] = []
-    @State private var previewCache: [URL: String] = [:]
     @State private var qmdResults: [NoteSearchResult] = []
-    @State private var isQmdSearching = false
-    @State private var qmdSearchTask: Task<Void, Never>?
     @State private var localNoteResults: [NoteSearchResult] = []
-    @State private var localSearchTask: Task<Void, Never>?
-    @State private var asyncScoredFiles: [DedicatedSearchResult] = []
-    @State private var asyncPersonResults: [DedicatedSearchResult] = []
-    @State private var asyncTagResults: [DedicatedSearchResult] = []
+    @State private var scoredFiles: [ScoredFile] = []
+    @State private var scoredPeople: [ScoredMatch] = []
+    @State private var scoredTags: [ScoredMatch] = []
     @FocusState private var isQueryFocused: Bool
+
+    private var engine: SearchEngine { store.searchEngine }
 
     private var freeTextQuery: String {
         store.dedicatedSearch.textQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -370,21 +367,18 @@ struct DedicatedSearchView: View {
         guard !freeTextQuery.isEmpty else { return [] }
 
         let noteURLs = Set(mergedNoteResults.map(\.noteResult.url))
-        let filtered = asyncScoredFiles.filter { result in
-            if case .file(let node, _) = result {
-                return !noteURLs.contains(node.url)
-            }
-            return true
-        }
-        return Array(filtered.prefix(20))
+        return scoredFiles
+            .filter { !noteURLs.contains($0.node.url) }
+            .prefix(20)
+            .map { .file(node: $0.node, score: $0.score) }
     }
 
     private var personResultItems: [DedicatedSearchResult] {
-        asyncPersonResults
+        scoredPeople.map { .person(name: $0.name, count: $0.count, score: $0.score) }
     }
 
     private var tagResultItems: [DedicatedSearchResult] {
-        asyncTagResults
+        scoredTags.map { .tag(name: $0.name, count: $0.count, score: $0.score) }
     }
 
     private var allResultItems: [DedicatedSearchResult] {
@@ -426,64 +420,17 @@ struct DedicatedSearchView: View {
         }
         .onAppear {
             isQueryFocused = true
-            refreshCachedFiles()
-        }
-        .onChange(of: store.fileTree) {
-            refreshCachedFiles()
         }
         .onChange(of: activeQuery) {
-            localSearchTask?.cancel()
-            let query = activeQuery
-            let freeQuery = freeTextQuery
-
-            let noteIndex = store.noteIndex
-            let peopleIndex = store.peopleIndex
-            let tagIndex = store.tagIndex
-            let recentFiles = Set(store.recentFiles)
-            let cachedFilesCopy = cachedFiles
-
-            localSearchTask = Task {
-                try? await Task.sleep(for: .milliseconds(150))
-                guard !Task.isCancelled else { return }
-
-                let (localNotes, persons, tags, files) = await Task.detached(priority: .userInitiated) {
-                    let localNotes = query.isEmpty ? [] : noteIndex.search(query)
-
-                    let persons = freeQuery.isEmpty ? [] : Array(peopleIndex.search(freeQuery).prefix(10)).map {
-                        DedicatedSearchResult.person(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(freeQuery) ?? 0)
-                    }
-
-                    let tags = freeQuery.isEmpty ? [] : Array(tagIndex.search(freeQuery).prefix(10)).map {
-                        DedicatedSearchResult.tag(name: $0.name, count: $0.count, score: $0.name.fuzzyScore(freeQuery) ?? 0)
-                    }
-
-                    let files: [DedicatedSearchResult]
-                    if freeQuery.isEmpty {
-                        files = []
-                    } else {
-                        let scoredFiles = cachedFilesCopy
-                            .compactMap { fileNode -> DedicatedSearchResult? in
-                                guard let score = fileNode.name.fuzzyScore(freeQuery) else { return nil }
-                                let bonus = recentFiles.contains(fileNode.url) ? 2_000 : 0
-                                return .file(node: fileNode, score: score + bonus)
-                            }
-                            .sorted { $0.sortScore > $1.sortScore }
-                        files = scoredFiles
-                    }
-
-                    return (localNotes, persons, tags, files)
-                }.value
-
-                guard !Task.isCancelled else { return }
-
-                localNoteResults = localNotes
-                asyncPersonResults = persons
-                asyncTagResults = tags
-                asyncScoredFiles = files
-            }
             qmdResults = []
-            qmdSearchTask?.cancel()
-            isQmdSearching = false
+            engine.cancelQmdSearch()
+
+            engine.search(query: activeQuery) { [self] result in
+                localNoteResults = result.notes
+                scoredFiles = result.files
+                scoredPeople = result.people
+                scoredTags = result.tags
+            }
         }
         .onChange(of: resultIdentifiers) { _, availableIdentifiers in
             store.dedicatedSearch.selectedResultIdentifier = DedicatedSearchState.reconcileSelection(
@@ -493,7 +440,7 @@ struct DedicatedSearchView: View {
             preloadSelectedPreview()
         }
         .onDisappear {
-            qmdSearchTask?.cancel()
+            engine.cancelQmdSearch()
         }
         .background {
             KeyboardHandler(
@@ -520,7 +467,7 @@ struct DedicatedSearchView: View {
                     handleSubmit()
                 }
 
-                if isQmdSearching {
+                if engine.isQmdSearching {
                     ProgressView()
                         .controlSize(.small)
                 }
@@ -586,7 +533,7 @@ struct DedicatedSearchView: View {
                         triggerQmdSearch(activeQuery)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(activeQuery.isEmpty || isQmdSearching)
+                    .disabled(activeQuery.isEmpty || engine.isQmdSearching)
 
                     Text("QMD available")
                         .font(Theme.uiSwiftUIFont(size: 11))
@@ -822,7 +769,7 @@ struct DedicatedSearchView: View {
         }
         .padding(12)
         .onAppear {
-            loadPreview(for: noteResult.url)
+            engine.loadPreview(for: noteResult.url)
         }
     }
 
@@ -850,7 +797,7 @@ struct DedicatedSearchView: View {
 
             Divider()
 
-            if let previewText = previewCache[fileNode.url], !previewText.isEmpty {
+            if let previewText = engine.previewCache[fileNode.url], !previewText.isEmpty {
                 ScrollView {
                     Text(previewText)
                         .font(Theme.uiSwiftUIFont(size: 12))
@@ -869,7 +816,7 @@ struct DedicatedSearchView: View {
         }
         .padding(12)
         .onAppear {
-            loadPreview(for: fileNode.url)
+            engine.loadPreview(for: fileNode.url)
         }
     }
 
@@ -906,7 +853,7 @@ struct DedicatedSearchView: View {
     }
 
     private func previewText(for noteResult: NoteSearchResult) -> String {
-        let fullText = previewCache[noteResult.url] ?? noteResult.preview
+        let fullText = engine.previewCache[noteResult.url] ?? noteResult.preview
         let previewText = FileLauncher.focusedSnippet(
             from: fullText,
             query: activeQuery,
@@ -919,7 +866,7 @@ struct DedicatedSearchView: View {
     }
 
     private func rowPreviewText(for noteResult: NoteSearchResult) -> String {
-        let rowSource = previewCache[noteResult.url] ?? noteResult.preview
+        let rowSource = engine.previewCache[noteResult.url] ?? noteResult.preview
         let snippetText = FileLauncher.focusedSnippet(
             from: rowSource,
             query: activeQuery,
@@ -935,29 +882,12 @@ struct DedicatedSearchView: View {
         guard let selectedResult else { return }
         switch selectedResult {
         case .note(let noteResult, _):
-            loadPreview(for: noteResult.url)
+            engine.loadPreview(for: noteResult.url)
         case .file(let node, _):
-            loadPreview(for: node.url)
+            engine.loadPreview(for: node.url)
         case .person, .tag:
             return
         }
-    }
-
-    private func loadPreview(for fileURL: URL) {
-        if previewCache[fileURL] != nil {
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fileText = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-            let cleanedText = FileLauncher.cleanPreviewText(fileText)
-            DispatchQueue.main.async {
-                previewCache[fileURL] = cleanedText
-            }
-        }
-    }
-
-    private func refreshCachedFiles() {
-        cachedFiles = FileLauncher.flattenFiles(store.fileTree)
     }
 
     private func openResultKeepingSearch(_ result: DedicatedSearchResult) {
@@ -1015,46 +945,8 @@ struct DedicatedSearchView: View {
     }
 
     private func triggerQmdSearch(_ queryText: String) {
-        let trimmedQuery = queryText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty,
-              let qmdClient = store.qmdClient,
-              qmdClient.isWorkspaceIndexed,
-              let workspaceURL = store.workspace else {
-            return
-        }
-
-        qmdSearchTask?.cancel()
-        isQmdSearching = true
-
-        qmdSearchTask = Task {
-            let qmdHits = await qmdClient.search(query: trimmedQuery, limit: 20)
-            guard !Task.isCancelled else { return }
-            let mappedHits: [NoteSearchResult] = qmdHits.compactMap { qmdHit in
-                let fileURL: URL
-                if qmdHit.path.hasPrefix("/") {
-                    fileURL = URL(fileURLWithPath: qmdHit.path)
-                } else {
-                    fileURL = workspaceURL.appendingPathComponent(qmdHit.path)
-                }
-                guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                    return nil
-                }
-
-                let boostedScore = Int(qmdHit.score * 30_000) + 10_000
-                return NoteSearchResult(
-                    id: fileURL,
-                    title: qmdHit.title,
-                    relativePath: fileURL.deletingLastPathComponent().lastPathComponent,
-                    url: fileURL,
-                    preview: qmdHit.snippet,
-                    score: boostedScore
-                )
-            }
-
-            await MainActor.run {
-                qmdResults = mappedHits
-                isQmdSearching = false
-            }
+        engine.triggerQmdSearch(query: queryText) { [self] mapped in
+            qmdResults = mapped
         }
     }
 
