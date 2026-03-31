@@ -328,7 +328,7 @@ struct FileLauncher: View {
     private func previewText(for note: NoteSearchResult) -> String {
         let fullText = engine.previewCache[note.url] ?? note.preview
 
-        let content = Self.focusedSnippet(
+        let content = SearchEngine.focusedSnippet(
             from: fullText,
             query: query,
             fallback: note.preview
@@ -338,7 +338,7 @@ struct FileLauncher: View {
 
     private func rowPreviewText(for note: NoteSearchResult) -> String {
         let rowContent = engine.previewCache[note.url] ?? note.preview
-        let snippetText = Self.focusedSnippet(
+        let snippetText = SearchEngine.focusedSnippet(
             from: rowContent,
             query: query,
             fallback: note.preview
@@ -354,101 +354,6 @@ struct FileLauncher: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Color.secondary.opacity(0.12), in: Capsule())
-    }
-
-    nonisolated static func cleanPreviewText(_ text: String) -> String {
-        text
-            .components(separatedBy: .newlines)
-            .map { line in
-                line.replacingOccurrences(
-                    of: #"\s+"#,
-                    with: " ",
-                    options: .regularExpression
-                )
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-    }
-
-    nonisolated static func focusedSnippet(
-        from content: String,
-        query: String,
-        fallback: String
-    ) -> String {
-        let terms = snippetTerms(from: query)
-
-        if terms.isEmpty {
-            return String(content.prefix(650))
-        }
-
-        let lowerContent = content.lowercased()
-        var firstRange: Range<String.Index>?
-        for term in terms {
-            if let range = lowerContent.range(of: term) {
-                firstRange = range
-                break
-            }
-        }
-
-        guard let firstRange else {
-            if !fallback.isEmpty { return fallback }
-            return String(content.prefix(650))
-        }
-
-        let lowerBound = lowerContent.distance(from: lowerContent.startIndex, to: firstRange.lowerBound)
-        let upperBound = lowerContent.distance(from: lowerContent.startIndex, to: firstRange.upperBound)
-        let startOffset = max(0, lowerBound - 220)
-        let endOffset = min(content.count, upperBound + 420)
-
-        let startIndex = content.index(content.startIndex, offsetBy: startOffset)
-        let endIndex = content.index(content.startIndex, offsetBy: endOffset)
-        return String(content[startIndex..<endIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    nonisolated private static func snippetTerms(from query: String) -> [String] {
-        let parsedQuery = NoteIndex.parseLocalSearchQuery(query)
-        var orderedTerms: [String] = []
-        var seenTerms: Set<String> = []
-
-        func appendTerm(_ rawTerm: String) {
-            let normalizedTerm = rawTerm
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-            guard normalizedTerm.count >= 3 else { return }
-            guard seenTerms.insert(normalizedTerm).inserted else { return }
-            orderedTerms.append(normalizedTerm)
-        }
-
-        func appendTokens(from rawValue: String) {
-            for token in rawValue.lowercased().split(whereSeparator: { character in
-                !character.isLetter && !character.isNumber
-            }) {
-                appendTerm(String(token))
-            }
-        }
-
-        for phrase in parsedQuery.normalizedPhrases {
-            appendTerm(phrase)
-            appendTokens(from: phrase)
-        }
-        for requiredContent in parsedQuery.requiredContentTerms {
-            appendTerm(requiredContent)
-            appendTokens(from: requiredContent)
-        }
-        for requiredTitle in parsedQuery.requiredTitleTerms {
-            appendTerm(requiredTitle)
-            appendTokens(from: requiredTitle)
-        }
-        for queryToken in parsedQuery.queryTokens {
-            appendTerm(queryToken)
-        }
-
-        if orderedTerms.isEmpty {
-            appendTokens(from: parsedQuery.displayQuery)
-        }
-
-        return orderedTerms
     }
 
     private func debounceSearch() {

@@ -854,7 +854,7 @@ struct DedicatedSearchView: View {
 
     private func previewText(for noteResult: NoteSearchResult) -> String {
         let fullText = engine.previewCache[noteResult.url] ?? noteResult.preview
-        let previewText = FileLauncher.focusedSnippet(
+        let previewText = SearchEngine.focusedSnippet(
             from: fullText,
             query: activeQuery,
             fallback: noteResult.preview
@@ -867,7 +867,7 @@ struct DedicatedSearchView: View {
 
     private func rowPreviewText(for noteResult: NoteSearchResult) -> String {
         let rowSource = engine.previewCache[noteResult.url] ?? noteResult.preview
-        let snippetText = FileLauncher.focusedSnippet(
+        let snippetText = SearchEngine.focusedSnippet(
             from: rowSource,
             query: activeQuery,
             fallback: noteResult.preview
