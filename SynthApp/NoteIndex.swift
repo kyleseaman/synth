@@ -630,36 +630,39 @@ extension NoteIndex {
         let normalizedQuery = parsedQuery.normalizedQuery
         let normalizedPhrases = parsedQuery.normalizedPhrases
         let hasSearchTerms = parsedQuery.hasSearchTerms
-        var total = recencyBoost(for: indexed.modifiedAt)
-        var relevanceSignals = 0
+        var total = 0
+        var titleSignals = 0
+        var contentSignals = 0
         let lowerQuery = query.lowercased()
 
+        // Title matches (strong signals)
         if !normalizedQuery.isEmpty && indexed.normalizedTitle == normalizedQuery {
             total += Self.ScoreWeights.exactTitleMatch
-            relevanceSignals += 1
+            titleSignals += 1
         } else if !normalizedQuery.isEmpty && indexed.normalizedTitle.contains(normalizedQuery) {
             total += Self.ScoreWeights.partialTitleMatch
-            relevanceSignals += 1
-        }
-
-        if !normalizedQuery.isEmpty && indexed.normalizedContent.contains(normalizedQuery) {
-            total += Self.ScoreWeights.exactContentMatch
-            relevanceSignals += 1
+            titleSignals += 1
         }
 
         if !lowerQuery.isEmpty, let titleFuzzy = indexed.result.title.fuzzyScore(lowerQuery) {
             total += titleFuzzy * Self.ScoreWeights.titleFuzzyMultiplier
-            relevanceSignals += 1
+            titleSignals += 1
+        }
+
+        // Content matches (weaker signals)
+        if !normalizedQuery.isEmpty && indexed.normalizedContent.contains(normalizedQuery) {
+            total += Self.ScoreWeights.exactContentMatch
+            contentSignals += 1
         }
 
         for phrase in normalizedPhrases where !phrase.isEmpty {
             if indexed.normalizedTitle.contains(phrase) {
                 total += Self.ScoreWeights.titlePhraseMatch
-                relevanceSignals += 1
+                titleSignals += 1
             }
             if indexed.normalizedContent.contains(phrase) {
                 total += Self.ScoreWeights.contentPhraseMatch
-                relevanceSignals += 1
+                contentSignals += 1
             }
         }
 
@@ -668,10 +671,10 @@ extension NoteIndex {
             let tokenWeight = max(inverseDocumentWeight, 1)
             if indexed.titleTokens.contains(token) {
                 total += Self.ScoreWeights.titleTokenMatch * tokenWeight
-                relevanceSignals += 1
+                titleSignals += 1
             } else if indexed.titleTokens.contains(where: { $0.hasPrefix(token) || token.hasPrefix($0) }) {
                 total += Self.ScoreWeights.titlePrefixTokenMatch * tokenWeight
-                relevanceSignals += 1
+                titleSignals += 1
             }
 
             let frequency = indexed.contentTokenCounts[token] ?? 0
@@ -679,9 +682,11 @@ extension NoteIndex {
                 total += min(frequency, Self.ScoreWeights.maxContentFrequencyCount)
                     * Self.ScoreWeights.contentTokenMatch
                     * tokenWeight
-                relevanceSignals += 1
+                contentSignals += 1
             }
         }
+
+        let relevanceSignals = titleSignals + contentSignals
 
         let matchedTokenCount = queryTokens.filter { token in
             indexed.titleTokens.contains(token) || indexed.contentTokenCounts[token] != nil
@@ -699,6 +704,13 @@ extension NoteIndex {
 
         if hasSearchTerms && relevanceSignals == 0 {
             return 0
+        }
+
+        // Only apply recency boost if there's a title match;
+        // content-only matches shouldn't float up just because
+        // the file was recently edited.
+        if titleSignals > 0 {
+            total += recencyBoost(for: indexed.modifiedAt)
         }
 
         return total
