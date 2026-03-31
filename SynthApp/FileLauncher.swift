@@ -369,6 +369,12 @@ struct FileLauncher: View {
         searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
+        // Empty query → show recents immediately, no debounce
+        if trimmed.isEmpty {
+            computeResults()
+            return
+        }
+
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }

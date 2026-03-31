@@ -425,9 +425,17 @@ struct DedicatedSearchView: View {
         .onChange(of: activeQuery) {
             qmdResults = []
             engine.cancelQmdSearch()
-
             searchTask?.cancel()
+
             let query = activeQuery
+            if query.isEmpty {
+                localNoteResults = []
+                scoredFiles = []
+                scoredPeople = []
+                scoredTags = []
+                return
+            }
+
             searchTask = Task {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled else { return }
