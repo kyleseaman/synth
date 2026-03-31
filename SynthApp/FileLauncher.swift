@@ -86,6 +86,7 @@ struct FileLauncher: View {
     @Environment(DocumentStore.self) var store
     @Binding var isPresented: Bool
     @State private var query = ""
+    @State private var displayQuery = ""
     @State private var selectedIndex = 0
     @State private var noteLookup: [URL: NoteSearchResult] = [:]
     @State private var modDateCache: [URL: Date] = [:]
@@ -245,7 +246,7 @@ struct FileLauncher: View {
                 case .note(let note):
                     Image(systemName: "doc.text.magnifyingglass")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText(note.title, query: query))
+                    Text(SearchEngine.highlightedText(note.title, query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     if qmdResultURLs.contains(note.url) {
@@ -257,7 +258,7 @@ struct FileLauncher: View {
                 case .file(let node, _):
                     Image(systemName: "doc.text")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText(node.name, query: query))
+                    Text(SearchEngine.highlightedText(node.name, query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     if qmdResultURLs.contains(node.url) {
@@ -269,7 +270,7 @@ struct FileLauncher: View {
                 case .person(let name, let count, _):
                     Image(systemName: "person.fill")
                         .foregroundColor(.purple)
-                    Text(SearchEngine.highlightedText("@\(name)", query: query))
+                    Text(SearchEngine.highlightedText("@\(name)", query: displayQuery))
                         .foregroundColor(.purple)
                     Spacer()
                     let label = count == 1 ? "1 note" : "\(count) notes"
@@ -281,7 +282,7 @@ struct FileLauncher: View {
             if case .note(let note) = result {
                 Text(SearchEngine.highlightedText(
                     rowPreviewText(for: note),
-                    query: query,
+                    query: displayQuery,
                     baseFont: Theme.uiSwiftUIFont(size: 11)
                 ))
                     .foregroundStyle(.secondary)
@@ -339,7 +340,7 @@ struct FileLauncher: View {
 
         let content = SearchEngine.focusedSnippet(
             from: fullText,
-            query: query,
+            query: displayQuery,
             fallback: note.preview
         )
         return content.isEmpty ? note.preview : content
@@ -349,7 +350,7 @@ struct FileLauncher: View {
         let rowContent = engine.previewCache[note.url] ?? note.preview
         let snippetText = SearchEngine.focusedSnippet(
             from: rowContent,
-            query: query,
+            query: displayQuery,
             fallback: note.preview
         )
         return snippetText.isEmpty ? note.preview : snippetText
@@ -371,6 +372,7 @@ struct FileLauncher: View {
 
         // Empty query → show recents immediately, no debounce
         if trimmed.isEmpty {
+            displayQuery = ""
             computeResults()
             return
         }
@@ -383,6 +385,7 @@ struct FileLauncher: View {
                 let personQuery = String(trimmed.dropFirst())
                 let result = engine.searchImmediate(query: personQuery)
                 guard !Task.isCancelled else { return }
+                displayQuery = trimmed
                 searchResults = result.people.map {
                     .person(name: $0.name, count: $0.count, score: $0.score)
                 }
@@ -391,6 +394,7 @@ struct FileLauncher: View {
 
             let result = engine.searchImmediate(query: trimmed)
             guard !Task.isCancelled else { return }
+            displayQuery = trimmed
             applySearchResult(result)
         }
     }

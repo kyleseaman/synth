@@ -306,6 +306,7 @@ struct DedicatedSearchView: View {
     @State private var scoredFiles: [ScoredFile] = []
     @State private var scoredPeople: [ScoredMatch] = []
     @State private var scoredTags: [ScoredMatch] = []
+    @State private var displayQuery = ""
     @State private var searchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
 
@@ -429,6 +430,7 @@ struct DedicatedSearchView: View {
 
             let query = activeQuery
             if query.isEmpty {
+                displayQuery = ""
                 localNoteResults = []
                 scoredFiles = []
                 scoredPeople = []
@@ -441,6 +443,7 @@ struct DedicatedSearchView: View {
                 guard !Task.isCancelled else { return }
                 let result = engine.searchImmediate(query: query)
                 guard !Task.isCancelled else { return }
+                displayQuery = query
                 localNoteResults = result.notes
                 scoredFiles = result.files
                 scoredPeople = result.people
@@ -681,7 +684,7 @@ struct DedicatedSearchView: View {
                 case .note(let noteResult, let source):
                     Image(systemName: "doc.text.magnifyingglass")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText(noteResult.title, query: activeQuery))
+                    Text(SearchEngine.highlightedText(noteResult.title, query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     sourceBadge(source)
@@ -692,7 +695,7 @@ struct DedicatedSearchView: View {
                 case .file(let node, _):
                     Image(systemName: "doc")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText(node.name, query: freeTextQuery))
+                    Text(SearchEngine.highlightedText(node.name, query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(node.url.deletingLastPathComponent().lastPathComponent)
@@ -702,7 +705,7 @@ struct DedicatedSearchView: View {
                 case .person(let name, let count, _):
                     Image(systemName: "person.fill")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText("@\(name)", query: freeTextQuery))
+                    Text(SearchEngine.highlightedText("@\(name)", query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(count == 1 ? "1 note" : "\(count) notes")
@@ -711,7 +714,7 @@ struct DedicatedSearchView: View {
                 case .tag(let name, let count, _):
                     Image(systemName: "tag.fill")
                         .foregroundStyle(.secondary)
-                    Text(SearchEngine.highlightedText("#\(name)", query: freeTextQuery))
+                    Text(SearchEngine.highlightedText("#\(name)", query: displayQuery))
                         .lineLimit(1)
                     Spacer()
                     Text(count == 1 ? "1 note" : "\(count) notes")
@@ -723,7 +726,7 @@ struct DedicatedSearchView: View {
             if case .note(let noteResult, _) = result {
                 Text(SearchEngine.highlightedText(
                     rowPreviewText(for: noteResult),
-                    query: activeQuery,
+                    query: displayQuery,
                     baseFont: Theme.uiSwiftUIFont(size: 11)
                 ))
                     .foregroundStyle(.secondary)
@@ -874,7 +877,7 @@ struct DedicatedSearchView: View {
         let fullText = engine.previewCache[noteResult.url] ?? noteResult.preview
         let previewText = SearchEngine.focusedSnippet(
             from: fullText,
-            query: activeQuery,
+            query: displayQuery,
             fallback: noteResult.preview
         )
         if previewText.isEmpty {
@@ -887,7 +890,7 @@ struct DedicatedSearchView: View {
         let rowSource = engine.previewCache[noteResult.url] ?? noteResult.preview
         let snippetText = SearchEngine.focusedSnippet(
             from: rowSource,
-            query: activeQuery,
+            query: displayQuery,
             fallback: noteResult.preview
         )
         if snippetText.isEmpty {
