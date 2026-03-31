@@ -88,6 +88,7 @@ struct FileLauncher: View {
     @State private var query = ""
     @State private var selectedIndex = 0
     @State private var noteLookup: [URL: NoteSearchResult] = [:]
+    @State private var modDateCache: [URL: Date] = [:]
     @State private var qmdResults: [LauncherResult] = []
     @State private var searchResults: [LauncherResult] = []
     @State private var searchTask: Task<Void, Never>?
@@ -133,6 +134,7 @@ struct FileLauncher: View {
         .onAppear {
             isSearchFocused = true
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
+            buildModDateCache()
             computeResults()
             if let selectedNoteResult {
                 engine.loadPreview(for: selectedNoteResult.url)
@@ -140,6 +142,7 @@ struct FileLauncher: View {
         }
         .onChange(of: store.fileTree) {
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
+            buildModDateCache()
             computeResults()
         }
         .onChange(of: query) { _, _ in
@@ -381,6 +384,19 @@ struct FileLauncher: View {
         }
     }
 
+
+    private func buildModDateCache() {
+        var cache: [URL: Date] = [:]
+        for file in engine.cachedFiles {
+            if let date = (try? file.url.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate {
+                cache[file.url] = date
+            }
+        }
+        modDateCache = cache
+    }
+
     private func computeResults() {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
@@ -390,8 +406,15 @@ struct FileLauncher: View {
             let recentNodes = store.recentFiles.compactMap { url in
                 cachedFiles.first { $0.url == url }
             }
-            let others = cachedFiles.filter { !recentSet.contains($0.url) }
-                .prefix(20 - recentNodes.count)
+            let remainingFiles = cachedFiles
+                .filter { !recentSet.contains($0.url) }
+            let dateCache = modDateCache
+            let sortedByModDate = remainingFiles.sorted { first, second in
+                let firstDate = dateCache[first.url] ?? .distantPast
+                let secondDate = dateCache[second.url] ?? .distantPast
+                return firstDate > secondDate
+            }
+            let others = sortedByModDate.prefix(20 - recentNodes.count)
             searchResults = (recentNodes + others).map { file in
                 if let note = noteLookup[file.url] {
                     return .note(result: note)
