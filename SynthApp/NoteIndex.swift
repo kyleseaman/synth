@@ -706,11 +706,14 @@ extension NoteIndex {
             return 0
         }
 
-        // Only apply recency boost if there's a title match;
-        // content-only matches shouldn't float up just because
-        // the file was recently edited.
+        // Title matches get recency boost and pass through.
+        // Content-only matches (no title signal at all) are excluded
+        // from results — they clutter the list with irrelevant items.
+        // Users can use QMD deep search for content-only matching.
         if titleSignals > 0 {
             total += recencyBoost(for: indexed.modifiedAt)
+        } else if hasSearchTerms {
+            return 0
         }
 
         return total
