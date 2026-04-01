@@ -1060,23 +1060,17 @@ extension DocumentStore {
             closeTab(at: idx)
         }
 
-        let indexContext = IndexContext(
-            noteIndex: noteIndex,
-            backlinkIndex: backlinkIndex,
-            tagIndex: tagIndex,
-            peopleIndex: peopleIndex
-        )
         switch deleteFromDisk(url, scope: .workspace) {
         case .deleted(let deletedURL):
             resetFileTreeScanState()
             removeFileFromInMemoryTree(deletedURL)
-            UnifiedIndexer.removeFile(deletedURL, context: indexContext)
+            rebuildIndexesFromCurrentTree()
             scheduleFileTreeReload(delaySeconds: 0.6)
             return true
         case .notFound:
             resetFileTreeScanState()
             removeFileFromInMemoryTree(url)
-            UnifiedIndexer.removeFile(url, context: indexContext)
+            rebuildIndexesFromCurrentTree()
             scheduleFileTreeReload(delaySeconds: 0.6)
             return false
         case .failed(let message):

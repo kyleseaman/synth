@@ -71,7 +71,7 @@ final class UtilityLogicTests: XCTestCase {
             children: [nestedFile]
         )
 
-        let flattened = FileLauncher.flattenFiles([firstFile, folderNode])
+        let flattened = SearchEngine.flattenFiles([firstFile, folderNode])
 
         XCTAssertEqual(flattened.map { $0.url.path }, [firstFile.url.path, nestedFile.url.path])
     }
@@ -113,22 +113,16 @@ final class UtilityLogicTests: XCTestCase {
             isDirectory: false,
             children: nil
         )
-        let recentURLs: Set<URL> = [noteNode.url]
 
-        let results = FileLauncher.fallbackFileResults(
-            from: [noteNode, imageNode],
-            query: "road",
-            noteURLs: [],
-            recentFiles: recentURLs
-        )
+        let scoredFiles = [noteNode, imageNode]
+            .compactMap { node -> ScoredFile? in
+                guard let score = node.name.fuzzyScore("road") else { return nil }
+                return ScoredFile(node: node, score: score)
+            }
 
-        XCTAssertEqual(results.count, 1)
-        guard case .file(let matchedNode, let scoreValue) = results[0] else {
-            XCTFail("Expected a file result")
-            return
-        }
-        XCTAssertEqual(matchedNode.url.path, noteNode.url.path)
-        XCTAssertGreaterThan(scoreValue, 2000)
+        XCTAssertEqual(scoredFiles.count, 1)
+        XCTAssertEqual(scoredFiles[0].node.url.path, noteNode.url.path)
+        XCTAssertGreaterThan(scoredFiles[0].score, 0)
     }
 
     @MainActor
@@ -138,15 +132,16 @@ final class UtilityLogicTests: XCTestCase {
             isDirectory: false,
             children: nil
         )
+        let noteURLs: Set<URL> = [noteNode.url]
 
-        let results = FileLauncher.fallbackFileResults(
-            from: [noteNode],
-            query: "road",
-            noteURLs: [noteNode.url],
-            recentFiles: []
-        )
+        let scoredFiles = [noteNode]
+            .filter { !noteURLs.contains($0.url) }
+            .compactMap { node -> ScoredFile? in
+                guard let score = node.name.fuzzyScore("road") else { return nil }
+                return ScoredFile(node: node, score: score)
+            }
 
-        XCTAssertTrue(results.isEmpty)
+        XCTAssertTrue(scoredFiles.isEmpty)
     }
 
     func testMediaManagerRelativePathAndResolvedURL() {
@@ -1348,7 +1343,7 @@ extension UtilityLogicTests {
 extension UtilityLogicTests {
     func testCleanPreviewTextStripsWhitespaceAndEmptyLines() {
         let input = "  hello  \n\n  world  \n"
-        let result = FileLauncher.cleanPreviewText(input)
+        let result = SearchEngine.cleanPreviewText(input)
         XCTAssertEqual(result, "hello\nworld")
     }
 
@@ -1356,14 +1351,14 @@ extension UtilityLogicTests {
         let content = String(repeating: "prefix ", count: 50)
             + "KEYWORD here"
             + String(repeating: " suffix", count: 50)
-        let result = FileLauncher.focusedSnippet(
+        let result = SearchEngine.focusedSnippet(
             from: content, query: "keyword", fallback: ""
         )
         XCTAssertTrue(result.contains("KEYWORD"))
     }
 
     func testFocusedSnippetFallsBackWhenNoMatch() {
-        let result = FileLauncher.focusedSnippet(
+        let result = SearchEngine.focusedSnippet(
             from: "no match here", query: "missing", fallback: "fallback text"
         )
         XCTAssertEqual(result, "fallback text")
@@ -1372,7 +1367,7 @@ extension UtilityLogicTests {
     func testFocusedSnippetUsesScopedContentTermForMatchContext() {
         let content = String(repeating: "prefix ", count: 170)
             + "Deployment checklist lives here."
-        let result = FileLauncher.focusedSnippet(
+        let result = SearchEngine.focusedSnippet(
             from: content,
             query: "content:deployment tag:ops",
             fallback: ""

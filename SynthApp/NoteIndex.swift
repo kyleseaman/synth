@@ -349,7 +349,6 @@ extension NoteIndex {
     private struct IndexedNote {
         let result: NoteSearchResult
         let normalizedTitle: String
-        let titleLowercased: String
         let normalizedContent: String
         let rawContentLowercased: String
         let titleTokens: [String]
@@ -389,12 +388,6 @@ extension NoteIndex {
     )
     @ObservationIgnored private static let mentionPattern = try? NSRegularExpression(
         pattern: "(?<![\\w@])@([A-Za-z][A-Za-z0-9_-]*(?:\\s[A-Z][a-zA-Z0-9_-]*)*)(?=[^a-zA-Z0-9_-]|$)"
-    )
-    @ObservationIgnored private static let listHeadingPattern = try? NSRegularExpression(
-        pattern: "^\\s{0,3}(#{1,6}|[-*+]|>\\s?)\\s*"
-    )
-    @ObservationIgnored private static let whitespaceCollapsePattern = try? NSRegularExpression(
-        pattern: "\\s+"
     )
 
     @ObservationIgnored private static let semanticMap: [String: Set<String>] = buildSemanticMap()
@@ -640,7 +633,6 @@ extension NoteIndex {
         var total = 0
         var titleSignals = 0
         var contentSignals = 0
-        var matchedTokenCount = 0
         let lowerQuery = query.lowercased()
 
         // Title matches (strong signals)
@@ -652,7 +644,7 @@ extension NoteIndex {
             titleSignals += 1
         }
 
-        if !lowerQuery.isEmpty, let titleFuzzy = indexed.titleLowercased.fuzzyScore(lowerQuery) {
+        if !lowerQuery.isEmpty, let titleFuzzy = indexed.result.title.fuzzyScore(lowerQuery) {
             total += titleFuzzy * Self.ScoreWeights.titleFuzzyMultiplier
             titleSignals += 1
         }
@@ -677,15 +669,12 @@ extension NoteIndex {
         for token in queryTokens {
             let inverseDocumentWeight = inverseDocumentFrequency(for: token)
             let tokenWeight = max(inverseDocumentWeight, 1)
-            var tokenMatched = false
             if indexed.titleTokens.contains(token) {
                 total += Self.ScoreWeights.titleTokenMatch * tokenWeight
                 titleSignals += 1
-                tokenMatched = true
             } else if indexed.titleTokens.contains(where: { $0.hasPrefix(token) || token.hasPrefix($0) }) {
                 total += Self.ScoreWeights.titlePrefixTokenMatch * tokenWeight
                 titleSignals += 1
-                tokenMatched = true
             }
 
             let frequency = indexed.contentTokenCounts[token] ?? 0
@@ -694,12 +683,14 @@ extension NoteIndex {
                     * Self.ScoreWeights.contentTokenMatch
                     * tokenWeight
                 contentSignals += 1
-                tokenMatched = true
             }
-            if tokenMatched { matchedTokenCount += 1 }
         }
 
         let relevanceSignals = titleSignals + contentSignals
+
+        let matchedTokenCount = queryTokens.filter { token in
+            indexed.titleTokens.contains(token) || indexed.contentTokenCounts[token] != nil
+        }.count
 
         if matchedTokenCount == queryTokens.count && !queryTokens.isEmpty {
             total += Self.ScoreWeights.allTokensMatchBonus
@@ -873,7 +864,6 @@ extension NoteIndex {
         return IndexedNote(
             result: result,
             normalizedTitle: normalizeText(title),
-            titleLowercased: title.lowercased(),
             normalizedContent: normalizeText(content),
             rawContentLowercased: content.lowercased(),
             titleTokens: titleTokens,
@@ -925,17 +915,18 @@ extension NoteIndex {
     }
 
     private static func cleanPreviewLine(_ line: String) -> String {
-        var result = line
-        let fullRange = NSRange(result.startIndex..<result.endIndex, in: result)
-        if let regex = listHeadingPattern {
-            result = regex.stringByReplacingMatches(in: result, range: fullRange, withTemplate: "")
-        }
-        result = result.replacingOccurrences(of: "`", with: "")
-        let collapsedRange = NSRange(result.startIndex..<result.endIndex, in: result)
-        if let regex = whitespaceCollapsePattern {
-            result = regex.stringByReplacingMatches(in: result, range: collapsedRange, withTemplate: " ")
-        }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutListSyntax = line.replacingOccurrences(
+            of: #"^\s{0,3}(#{1,6}|[-*+]|>\s?)\s*"#,
+            with: "",
+            options: .regularExpression
+        )
+        let withoutInlineCode = withoutListSyntax.replacingOccurrences(of: "`", with: "")
+        let collapsed = withoutInlineCode.replacingOccurrences(
+            of: #"\s+"#,
+            with: " ",
+            options: .regularExpression
+        )
+        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func truncatedPreview(_ text: String, limit: Int) -> String {
