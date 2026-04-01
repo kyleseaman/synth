@@ -359,7 +359,7 @@ struct DedicatedSearchView: View {
     }
 
     private var resultSummaryLabel: String {
-        let totalCount = allResultItems.count
+        let totalCount = cachedResultItems.count
         return "Results \(totalCount) · Notes \(noteResultItems.count) · Files \(fileResultItems.count) "
             + "· People \(personResultItems.count) · Tags \(tagResultItems.count)"
     }
@@ -382,19 +382,14 @@ struct DedicatedSearchView: View {
         scoredTags.map { .tag(name: $0.name, count: $0.count, score: $0.score) }
     }
 
-    private var allResultItems: [DedicatedSearchResult] {
-        noteResultItems + fileResultItems + personResultItems + tagResultItems
-    }
-
-    private var resultIdentifiers: [String] {
-        allResultItems.map(\.id)
-    }
+    @State private var cachedResultItems: [DedicatedSearchResult] = []
+    @State private var cachedResultIdentifiers: [String] = []
 
     private var selectedResult: DedicatedSearchResult? {
         guard let selectedIdentifier = store.dedicatedSearch.selectedResultIdentifier else {
             return nil
         }
-        return allResultItems.first { result in
+        return cachedResultItems.first { result in
             result.id == selectedIdentifier
         }
     }
@@ -433,6 +428,7 @@ struct DedicatedSearchView: View {
                 scoredFiles = []
                 scoredPeople = []
                 scoredTags = []
+                rebuildCachedResults()
                 return
             }
 
@@ -445,16 +441,11 @@ struct DedicatedSearchView: View {
                 scoredFiles = result.files
                 scoredPeople = result.people
                 scoredTags = result.tags
+                rebuildCachedResults()
             }
         }
-        .onChange(of: resultIdentifiers) { _, availableIdentifiers in
-            store.dedicatedSearch.selectedResultIdentifier = DedicatedSearchState.reconcileSelection(
-                currentIdentifier: store.dedicatedSearch.selectedResultIdentifier,
-                availableIdentifiers: availableIdentifiers
-            )
-            preloadSelectedPreview()
-        }
         .onDisappear {
+            searchTask?.cancel()
             engine.cancelQmdSearch()
         }
         .background {
@@ -536,7 +527,7 @@ struct DedicatedSearchView: View {
                 }
             }
 
-            if !allResultItems.isEmpty {
+            if !cachedResultItems.isEmpty {
                 Text(resultSummaryLabel)
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
@@ -589,7 +580,7 @@ struct DedicatedSearchView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if allResultItems.isEmpty {
+            } else if cachedResultItems.isEmpty {
                 VStack(spacing: 10) {
                     Spacer()
                     Text("No results")
@@ -925,7 +916,7 @@ struct DedicatedSearchView: View {
         let currentIdentifier = store.dedicatedSearch.selectedResultIdentifier
         let nextIdentifier = DedicatedSearchState.stepSelection(
             currentIdentifier: currentIdentifier,
-            availableIdentifiers: resultIdentifiers,
+            availableIdentifiers: cachedResultIdentifiers,
             direction: direction
         )
         guard nextIdentifier != currentIdentifier else { return }
@@ -938,6 +929,17 @@ struct DedicatedSearchView: View {
             state: store.dedicatedSearch,
             qmdResults: &qmdResults
         )
+        rebuildCachedResults()
+    }
+
+    private func rebuildCachedResults() {
+        cachedResultItems = noteResultItems + fileResultItems + personResultItems + tagResultItems
+        cachedResultIdentifiers = cachedResultItems.map(\.id)
+        store.dedicatedSearch.selectedResultIdentifier = DedicatedSearchState.reconcileSelection(
+            currentIdentifier: store.dedicatedSearch.selectedResultIdentifier,
+            availableIdentifiers: cachedResultIdentifiers
+        )
+        preloadSelectedPreview()
     }
 
     private func handleSubmit() {
@@ -965,6 +967,7 @@ struct DedicatedSearchView: View {
     private func triggerQmdSearch(_ queryText: String) {
         engine.triggerQmdSearch(query: queryText) { [self] mapped in
             qmdResults = mapped
+            rebuildCachedResults()
         }
     }
 

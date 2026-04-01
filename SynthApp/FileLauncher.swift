@@ -103,18 +103,7 @@ struct FileLauncher: View {
         return note
     }
 
-    private var qmdResultURLs: Set<URL> {
-        Set(qmdResults.compactMap { launcherResult in
-            switch launcherResult {
-            case .note(let noteResult):
-                return noteResult.url
-            case .file(let node, _):
-                return node.url
-            case .person:
-                return nil
-            }
-        })
-    }
+    @State private var qmdResultURLs: Set<URL> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -140,6 +129,9 @@ struct FileLauncher: View {
                 engine.loadPreview(for: selectedNoteResult.url)
             }
         }
+        .onDisappear {
+            searchTask?.cancel()
+        }
         .onChange(of: store.fileTree) {
             noteLookup = Dictionary(uniqueKeysWithValues: store.noteIndex.notes.map { ($0.url, $0) })
             buildModDateCache()
@@ -148,6 +140,7 @@ struct FileLauncher: View {
         .onChange(of: query) { _, _ in
             selectedIndex = 0
             qmdResults = []
+            qmdResultURLs = []
             engine.cancelQmdSearch()
             debounceSearch()
         }
@@ -395,7 +388,6 @@ struct FileLauncher: View {
         }
     }
 
-
     private func buildModDateCache() {
         var cache: [URL: Date] = [:]
         for file in engine.cachedFiles {
@@ -516,6 +508,7 @@ struct FileLauncher: View {
     private func triggerQmdSearch(_ searchQuery: String) {
         engine.triggerQmdSearch(query: searchQuery, limit: 15) { mapped in
             self.qmdResults = mapped.map { .note(result: $0) }
+            self.qmdResultURLs = Set(mapped.map(\.url))
             self.selectedIndex = 0
             self.computeResults()
         }

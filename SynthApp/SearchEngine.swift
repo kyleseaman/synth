@@ -28,7 +28,7 @@ final class SearchEngine {
     // MARK: - Cached State
 
     private(set) var cachedFiles: [FileTreeNode] = []
-    private(set) var previewCache: [URL: String] = [:]
+    @ObservationIgnored private(set) var previewCache: [URL: String] = [:]
     private(set) var isQmdSearching = false
 
     // MARK: - Dependencies (set via configure)
@@ -140,11 +140,19 @@ final class SearchEngine {
         if previewCache[fileURL] != nil { return }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-            let cleaned = Self.cleanPreviewText(text)
+            let cleaned = SearchEngine.cleanPreviewText(text)
             DispatchQueue.main.async {
                 self?.previewCache[fileURL] = cleaned
             }
         }
+    }
+
+    func invalidatePreview(for fileURL: URL) {
+        previewCache.removeValue(forKey: fileURL)
+    }
+
+    func clearPreviewCache() {
+        previewCache.removeAll()
     }
 
     // MARK: - Internals

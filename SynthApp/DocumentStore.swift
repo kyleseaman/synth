@@ -137,6 +137,7 @@ final class DocumentStore {
             checkKiroSetup()
             mcpServer.start(workspace: restoredWorkspace)
             initializeQmd(workspace: restoredWorkspace)
+            configureSearchEngine()
         }
     }
 
@@ -226,6 +227,8 @@ final class DocumentStore {
         dailyNoteManager.ensureFutureDays(workspace: url)
         mcpServer.start(workspace: url)
         initializeQmd(workspace: url)
+        searchEngine.cancelQmdSearch()
+        searchEngine.clearPreviewCache()
         configureSearchEngine()
         loadFileTree()
     }
@@ -367,6 +370,7 @@ final class DocumentStore {
         backlinkIndex.updateFile(url, content: content)
         tagIndex.updateFile(url, content: content)
         peopleIndex.updateFile(url, content: content)
+        searchEngine.invalidatePreview(for: url)
     }
 
     func loadKiroConfig() {
@@ -1056,17 +1060,23 @@ extension DocumentStore {
             closeTab(at: idx)
         }
 
+        let indexContext = IndexContext(
+            noteIndex: noteIndex,
+            backlinkIndex: backlinkIndex,
+            tagIndex: tagIndex,
+            peopleIndex: peopleIndex
+        )
         switch deleteFromDisk(url, scope: .workspace) {
         case .deleted(let deletedURL):
             resetFileTreeScanState()
             removeFileFromInMemoryTree(deletedURL)
-            rebuildIndexesFromCurrentTree()
+            UnifiedIndexer.removeFile(deletedURL, context: indexContext)
             scheduleFileTreeReload(delaySeconds: 0.6)
             return true
         case .notFound:
             resetFileTreeScanState()
             removeFileFromInMemoryTree(url)
-            rebuildIndexesFromCurrentTree()
+            UnifiedIndexer.removeFile(url, context: indexContext)
             scheduleFileTreeReload(delaySeconds: 0.6)
             return false
         case .failed(let message):
