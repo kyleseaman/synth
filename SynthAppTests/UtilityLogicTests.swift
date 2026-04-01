@@ -604,6 +604,55 @@ final class NoteIndexTests: XCTestCase {
         XCTAssertEqual(betaResults.count, 1)
         XCTAssertEqual(betaResults.first?.title, "First")
     }
+
+    func testSearchTitlesOnlyExcludesBodyOnlyMatches() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let untitledURL = workspaceURL.appendingPathComponent("Untitled Draft.md")
+        let pricingURL = workspaceURL.appendingPathComponent("Pricing.md")
+
+        try "draft content".write(to: untitledURL, atomically: true, encoding: .utf8)
+        try "This document mentions untitled in the body only".write(
+            to: pricingURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+
+        let results = noteIndex.searchTitlesOnly("untitled")
+
+        XCTAssertEqual(results.map(\.title), ["Untitled Draft"])
+    }
+
+    func testGeneralSearchStillAllowsBodyMatches() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let untitledURL = workspaceURL.appendingPathComponent("Untitled Draft.md")
+        let pricingURL = workspaceURL.appendingPathComponent("Pricing.md")
+
+        try "draft content".write(to: untitledURL, atomically: true, encoding: .utf8)
+        try "This document mentions untitled in the body only".write(
+            to: pricingURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+
+        let results = noteIndex.search("untitled")
+
+        XCTAssertTrue(results.contains { $0.title == "Untitled Draft" })
+        XCTAssertTrue(results.contains { $0.title == "Pricing" })
+    }
 }
 
 final class DocumentModelTests: XCTestCase {

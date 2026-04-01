@@ -73,11 +73,12 @@ final class SearchEngine {
     // MARK: - Search
 
     /// Run the full search pipeline synchronously.
-    func searchImmediate(query: String) -> SearchResult {
+    func searchImmediate(query: String, titleOnlyNotes: Bool = false) -> SearchResult {
         Self.runSearchSync(
             query: query, noteIndex: noteIndex,
             peopleIndex: peopleIndex, tagIndex: tagIndex,
-            files: cachedFiles, recentFiles: recentFiles
+            files: cachedFiles, recentFiles: recentFiles,
+            titleOnlyNotes: titleOnlyNotes
         )
     }
 
@@ -163,11 +164,19 @@ final class SearchEngine {
         peopleIndex: PeopleIndex?,
         tagIndex: TagIndex?,
         files: [FileTreeNode],
-        recentFiles: Set<URL>
+        recentFiles: Set<URL>,
+        titleOnlyNotes: Bool
     ) -> SearchResult {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
 
-        let notes = trimmed.isEmpty ? [] : (noteIndex?.search(trimmed) ?? [])
+        let notes: [NoteSearchResult]
+        if trimmed.isEmpty {
+            notes = []
+        } else if titleOnlyNotes {
+            notes = noteIndex?.searchTitlesOnly(trimmed) ?? []
+        } else {
+            notes = noteIndex?.search(trimmed) ?? []
+        }
 
         let people: [ScoredMatch] = trimmed.isEmpty ? [] :
             (peopleIndex?.search(trimmed) ?? []).prefix(10).map {

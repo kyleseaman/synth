@@ -582,6 +582,53 @@ extension NoteIndex {
             .map { $0.0 }
     }
 
+    func searchTitlesOnly(_ query: String) -> [NoteSearchResult] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedQuery.isEmpty {
+            return search("")
+        }
+
+        let parsedQuery = Self.parseLocalSearchQuery(trimmedQuery)
+        let expandedTokens = Set(Self.expandQueryTokens(parsedQuery.queryTokens))
+
+        let ranked: [(NoteSearchResult, Int)] = allNotes
+            .compactMap { indexed -> (NoteSearchResult, Int)? in
+                guard matchesFilters(indexed, query: parsedQuery) else { return nil }
+                guard matchesTitleSearch(indexed, query: parsedQuery, queryTokens: expandedTokens) else {
+                    return nil
+                }
+                let rank = score(
+                    indexed,
+                    parsedQuery: parsedQuery,
+                    queryTokens: expandedTokens
+                )
+                guard rank > 0 else { return nil }
+                let preview = Self.preview(
+                    from: indexed,
+                    normalizedQuery: parsedQuery.normalizedQuery,
+                    queryTokens: expandedTokens
+                )
+                let result = NoteSearchResult(
+                    id: indexed.result.id,
+                    title: indexed.result.title,
+                    relativePath: indexed.result.relativePath,
+                    url: indexed.result.url,
+                    preview: preview,
+                    score: rank
+                )
+                return (result, rank)
+            }
+
+        return ranked
+            .sorted { first, second in
+                if first.1 == second.1 {
+                    return first.0.title.localizedCaseInsensitiveCompare(second.0.title) == .orderedAscending
+                }
+                return first.1 > second.1
+            }
+            .map { $0.0 }
+    }
+
     func findExact(_ title: String) -> NoteSearchResult? {
         allNotes.map(\.result).first { $0.title.lowercased() == title.lowercased() }
     }
@@ -706,17 +753,55 @@ extension NoteIndex {
             return 0
         }
 
-        // Title matches get recency boost and pass through.
-        // Content-only matches (no title signal at all) are excluded
-        // from results — they clutter the list with irrelevant items.
-        // Users can use QMD deep search for content-only matching.
         if titleSignals > 0 {
             total += recencyBoost(for: indexed.modifiedAt)
-        } else if hasSearchTerms {
-            return 0
         }
 
         return total
+    }
+
+    private func matchesTitleSearch(
+        _ indexed: IndexedNote,
+        query: LocalSearchQuery,
+        queryTokens: Set<String>
+    ) -> Bool {
+        if !query.requiredTitleTerms.isEmpty {
+            return true
+        }
+
+        if !query.hasSearchTerms {
+            return true
+        }
+
+        if !query.normalizedQuery.isEmpty {
+            if indexed.normalizedTitle == query.normalizedQuery {
+                return true
+            }
+            if indexed.normalizedTitle.contains(query.normalizedQuery) {
+                return true
+            }
+        }
+
+        for phrase in query.normalizedPhrases where !phrase.isEmpty {
+            if indexed.normalizedTitle.contains(phrase) {
+                return true
+            }
+        }
+
+        for token in queryTokens {
+            if indexed.titleTokens.contains(token) {
+                return true
+            }
+            if indexed.titleTokens.contains(where: { $0.hasPrefix(token) || token.hasPrefix($0) }) {
+                return true
+            }
+        }
+
+        if !query.displayQuery.isEmpty, indexed.result.title.fuzzyScore(query.displayQuery) != nil {
+            return true
+        }
+
+        return false
     }
 
     private func matchesFilters(_ indexed: IndexedNote, query: LocalSearchQuery) -> Bool {

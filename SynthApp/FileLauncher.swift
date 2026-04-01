@@ -381,7 +381,7 @@ struct FileLauncher: View {
 
             if trimmed.hasPrefix("@") {
                 let personQuery = String(trimmed.dropFirst())
-                let result = engine.searchImmediate(query: personQuery)
+                let result = engine.searchImmediate(query: personQuery, titleOnlyNotes: true)
                 guard !Task.isCancelled else { return }
                 searchResults = result.people.map {
                     .person(name: $0.name, count: $0.count, score: $0.score)
@@ -389,7 +389,7 @@ struct FileLauncher: View {
                 return
             }
 
-            let result = engine.searchImmediate(query: trimmed)
+            let result = engine.searchImmediate(query: trimmed, titleOnlyNotes: true)
             guard !Task.isCancelled else { return }
             applySearchResult(result)
         }
@@ -436,14 +436,14 @@ struct FileLauncher: View {
 
         if trimmed.hasPrefix("@") {
             let personQuery = String(trimmed.dropFirst())
-            let result = engine.searchImmediate(query: personQuery)
+            let result = engine.searchImmediate(query: personQuery, titleOnlyNotes: true)
             searchResults = result.people.map {
                 .person(name: $0.name, count: $0.count, score: $0.score)
             }
             return
         }
 
-        let result = engine.searchImmediate(query: trimmed)
+        let result = engine.searchImmediate(query: trimmed, titleOnlyNotes: true)
         applySearchResult(result)
     }
 
