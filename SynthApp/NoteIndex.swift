@@ -466,13 +466,13 @@ extension NoteIndex {
     func updateFile(_ url: URL, content: String) {
         guard let noteIndex = allNotes.firstIndex(where: { $0.result.url == url }) else { return }
         let previous = allNotes[noteIndex]
-        let existing = allNotes[noteIndex].result
+        let fallbackTitle = url.deletingPathExtension().lastPathComponent
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
         let modifiedAt = values?.contentModificationDate ?? Date()
         let updated = Self.makeIndexedNote(
             url: url,
-            title: existing.title,
-            relativePath: existing.relativePath,
+            title: fallbackTitle,
+            relativePath: previous.result.relativePath,
             content: content,
             modifiedAt: modifiedAt
         )
@@ -926,7 +926,8 @@ extension NoteIndex {
         content: String,
         modifiedAt: Date
     ) -> IndexedNote {
-        let titleTokens = tokens(from: title)
+        let resolvedTitle = displayTitle(from: content, fallbackTitle: title)
+        let titleTokens = tokens(from: resolvedTitle)
         let contentTokens = tokens(from: content)
         let tags = extractTags(from: content)
         let mentions = extractMentions(from: content)
@@ -941,14 +942,14 @@ extension NoteIndex {
 
         let result = NoteSearchResult(
             id: url,
-            title: title,
+            title: resolvedTitle,
             relativePath: relativePath,
             url: url,
             preview: defaultPreview
         )
         return IndexedNote(
             result: result,
-            normalizedTitle: normalizeText(title),
+            normalizedTitle: normalizeText(resolvedTitle),
             normalizedContent: normalizeText(content),
             rawContentLowercased: content.lowercased(),
             titleTokens: titleTokens,
@@ -958,6 +959,28 @@ extension NoteIndex {
             mentions: mentions,
             modifiedAt: modifiedAt
         )
+    }
+
+    private static func displayTitle(from content: String, fallbackTitle: String) -> String {
+        let firstLine = content.components(separatedBy: .newlines).first ?? ""
+        let trimmedFirstLine = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedFirstLine.range(
+            of: #"^#{1,6}\s+.+$"#,
+            options: .regularExpression
+        ) != nil else {
+            return fallbackTitle
+        }
+
+        let cleaned = trimmedFirstLine
+            .replacingOccurrences(of: #"^#{1,6}\s+"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !cleaned.isEmpty {
+            return cleaned
+        }
+
+        return fallbackTitle
     }
 
     private static func preview(

@@ -472,7 +472,7 @@ struct DedicatedSearchView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    "Search notes, files, tags, and people",
+                    "Search titles, note content, files, tags, and people",
                     text: binding(for: \.textQuery)
                 )
                 .textFieldStyle(.plain)
@@ -550,23 +550,23 @@ struct DedicatedSearchView: View {
                     .buttonStyle(.bordered)
                     .disabled(activeQuery.isEmpty || engine.isQmdSearching)
 
-                    Text("QMD available")
+                    Text("QMD deep content search available")
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
                 } else {
-                    Text("QMD unavailable. Showing local index results.")
+                    Text("QMD unavailable. Showing local title/content index results.")
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
                 }
 
                 if !qmdResults.isEmpty {
-                    Text("Blending \(qmdResults.count) QMD result(s) with local results.")
+                    Text("Blending \(qmdResults.count) deep content result(s) with local results.")
                         .font(Theme.uiSwiftUIFont(size: 11))
                         .foregroundStyle(.tertiary)
                 }
 
                 Spacer()
-                Text("Persistent search mode. Cmd+P stays optimized for quick jumping.")
+                Text("Persistent search includes note content. Cmd+P stays optimized for title/file jumping.")
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
             }
@@ -581,9 +581,9 @@ struct DedicatedSearchView: View {
             if shouldShowEmptyQueryPrompt {
                 VStack(spacing: 10) {
                     Spacer()
-                    Text("Start typing to search")
+                    Text("Start typing to search the workspace")
                         .font(Theme.uiSwiftUIFont(size: 15, weight: .semibold))
-                    Text("Add optional facet filters to narrow by title, content, path, tag, or person.")
+                    Text("Search titles and note content, then narrow with title, content, path, tag, or person filters.")
                         .font(Theme.uiSwiftUIFont(size: 12))
                         .foregroundStyle(.secondary)
                     Spacer()

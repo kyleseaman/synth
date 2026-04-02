@@ -373,6 +373,27 @@ final class DocumentStore {
         searchEngine.invalidatePreview(for: url)
     }
 
+    private func addIndexes(for url: URL, content: String) {
+        noteIndex.addFile(url, content: content, workspace: workspace)
+        backlinkIndex.addFile(url, content: content)
+        tagIndex.addFile(url, content: content)
+        peopleIndex.addFile(url, content: content)
+        searchEngine.invalidatePreview(for: url)
+    }
+
+    private func removeIndexes(for url: URL) {
+        noteIndex.removeFile(url)
+        backlinkIndex.removeFile(url)
+        tagIndex.removeFile(url)
+        peopleIndex.removeFile(url)
+        searchEngine.invalidatePreview(for: url)
+    }
+
+    private func replaceIndexes(from oldURL: URL, to newURL: URL, content: String) {
+        removeIndexes(for: oldURL)
+        addIndexes(for: newURL, content: content)
+    }
+
     func loadKiroConfig() {
         guard let workspace else { return }
         let config = KiroConfigManager.loadConfig(workspace: workspace)
@@ -541,23 +562,23 @@ final class DocumentStore {
     func save() {
         guard currentIndex >= 0 && currentIndex < openFiles.count else { return }
         let doc = openFiles[currentIndex]
+        let originalURL = doc.url
+        let savedContent = doc.content.string
         try? doc.save(doc.content)
 
         // Sync filename to first-line heading
         if let newURL = renamedURL(for: doc), newURL != doc.url {
             try? FileManager.default.moveItem(at: doc.url, to: newURL)
             openFiles[currentIndex] = Document(url: newURL, content: doc.content)
+            recentSaves[originalURL] = Date()
+            recentSaves[newURL] = Date()
+            replaceIndexes(from: originalURL, to: newURL, content: savedContent)
+        } else {
+            recentSaves[originalURL] = Date()
+            updateIndexes(for: originalURL, content: savedContent)
         }
         loadFileTree()
         openFiles[currentIndex].isDirty = false
-
-        // Mark save to skip self-triggered FSEvent
-        let savedURL = openFiles[currentIndex].url
-        recentSaves[savedURL] = Date()
-
-        // Incremental index updates after save
-        let savedContent = openFiles[currentIndex].content.string
-        updateIndexes(for: savedURL, content: savedContent)
     }
 
     func exportAsDocx() {
@@ -578,33 +599,34 @@ final class DocumentStore {
 
     func saveAll() {
         // Collect documents to save on main thread
-        var docsToSave: [(url: URL, content: String, isDocx: Bool, index: Int)] = []
-        var renameOps: [(index: Int, oldURL: URL, newURL: URL)] = []
+        var docsToSave: [(url: URL, content: String)] = []
+        var renamedDocument = false
 
         for index in openFiles.indices where openFiles[index].isDirty {
             let doc = openFiles[index]
-            let isDocx = doc.url.pathExtension.lowercased() == "docx"
+            let originalURL = doc.url
+            let savedContent = doc.content.string
+            let maybeRenamedURL = renamedURL(for: doc)
 
-            // For docx, save synchronously (needs attributed string)
-            if isDocx {
+            if let newURL = maybeRenamedURL, newURL != originalURL {
                 try? doc.save(doc.content)
+                try? FileManager.default.moveItem(at: originalURL, to: newURL)
+                openFiles[index] = Document(url: newURL, content: doc.content)
+                recentSaves[originalURL] = Date()
+                recentSaves[newURL] = Date()
+                replaceIndexes(from: originalURL, to: newURL, content: savedContent)
+                renamedDocument = true
+            } else if originalURL.pathExtension.lowercased() == "docx" {
+                try? doc.save(doc.content)
+                recentSaves[originalURL] = Date()
+                updateIndexes(for: originalURL, content: savedContent)
             } else {
-                docsToSave.append((doc.url, doc.content.string, isDocx, index))
-            }
-
-            // Check for rename
-            if doc.url.lastPathComponent.hasPrefix("Untitled"),
-               let newURL = renamedURL(for: doc) {
-                renameOps.append((index, doc.url, newURL))
+                docsToSave.append((originalURL, savedContent))
+                recentSaves[originalURL] = Date()
+                updateIndexes(for: originalURL, content: savedContent)
             }
 
             openFiles[index].isDirty = false
-
-            // Mark save + update indexes
-            let savedURL = openFiles[index].url
-            recentSaves[savedURL] = Date()
-            let savedContent = openFiles[index].content.string
-            updateIndexes(for: savedURL, content: savedContent)
         }
 
         // Background save for plain text files
@@ -617,13 +639,7 @@ final class DocumentStore {
             saveQueue.addOperation(operation)
         }
 
-        // Handle renames on main thread
-        for rename in renameOps {
-            try? FileManager.default.moveItem(at: rename.oldURL, to: rename.newURL)
-            let content = openFiles[rename.index].content
-            openFiles[rename.index] = Document(url: rename.newURL, content: content)
-        }
-        if !renameOps.isEmpty { loadFileTree() }
+        if renamedDocument { loadFileTree() }
 
         dailyNoteManager.saveAll()
     }

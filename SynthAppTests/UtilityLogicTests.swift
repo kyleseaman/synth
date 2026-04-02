@@ -629,6 +629,59 @@ final class NoteIndexTests: XCTestCase {
         XCTAssertEqual(results.map(\.title), ["Untitled Draft"])
     }
 
+    func testSearchUsesHeadingAsDisplayTitleWhenFilenameIsUntitled() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let noteURL = workspaceURL.appendingPathComponent("Untitled.md")
+        let standardizedNoteURL = noteURL.standardizedFileURL
+        try "# Overall Feedback\n\nDraft notes".write(
+            to: noteURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+
+        let results = noteIndex.searchTitlesOnly("overall")
+
+        XCTAssertEqual(results.map(\.title), ["Overall Feedback"])
+        XCTAssertEqual(results.first?.url.standardizedFileURL, standardizedNoteURL)
+        XCTAssertNil(noteIndex.findExact("Untitled"))
+        XCTAssertNotNil(noteIndex.findExact("overall feedback"))
+    }
+
+    func testUpdateFileRefreshesIndexedTitleFromHeading() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+
+        let noteURL = workspaceURL.appendingPathComponent("Untitled.md")
+        try "# First Title\n\nBody".write(to: noteURL, atomically: true, encoding: .utf8)
+
+        let noteIndex = NoteIndex()
+        noteIndex.rebuild(from: fileContents(at: workspaceURL), workspace: workspaceURL)
+        guard let indexedURL = noteIndex.findExact("First Title")?.url else {
+            XCTFail("Missing indexed URL")
+            return
+        }
+
+        let updatedText = "# Overall Feedback\n\nUpdated body"
+        try updatedText.write(to: noteURL, atomically: true, encoding: .utf8)
+        noteIndex.updateFile(indexedURL, content: updatedText)
+
+        XCTAssertNil(noteIndex.findExact("First Title"))
+        XCTAssertNotNil(noteIndex.findExact("Overall Feedback"))
+        XCTAssertEqual(
+            noteIndex.searchTitlesOnly("overall").map(\.title),
+            ["Overall Feedback"]
+        )
+    }
+
     func testGeneralSearchStillAllowsBodyMatches() throws {
         let workspaceURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1965,5 +2018,54 @@ extension DocumentModelTests {
             ),
             .triggerQmdSearch
         )
+    }
+
+    func testFileLauncherImmediatelyFiltersVisibleResultsForPlainQuery() {
+        let noteURL = URL(fileURLWithPath: "/tmp/roadmap.md")
+        let fileURL = URL(fileURLWithPath: "/tmp/invoice.md")
+        let results: [LauncherResult] = [
+            .note(result: NoteSearchResult(
+                id: noteURL,
+                title: "Roadmap",
+                relativePath: "root",
+                url: noteURL,
+                preview: "preview",
+                score: 200
+            )),
+            .file(node: FileTreeNode(url: fileURL, isDirectory: false, children: nil), score: 150),
+            .person(name: "alice", count: 2, score: 100)
+        ]
+
+        let filtered = FileLauncher.filterVisibleResultsImmediately(results, query: "road")
+
+        XCTAssertEqual(filtered.count, 1)
+        guard case .note(let note) = filtered.first else {
+            return XCTFail("Expected note result")
+        }
+        XCTAssertEqual(note.title, "Roadmap")
+    }
+
+    func testFileLauncherImmediatelyFiltersVisibleResultsForPeopleQuery() {
+        let noteURL = URL(fileURLWithPath: "/tmp/roadmap.md")
+        let results: [LauncherResult] = [
+            .note(result: NoteSearchResult(
+                id: noteURL,
+                title: "Roadmap",
+                relativePath: "root",
+                url: noteURL,
+                preview: "preview",
+                score: 200
+            )),
+            .person(name: "alice", count: 2, score: 100),
+            .person(name: "bob", count: 1, score: 90)
+        ]
+
+        let filtered = FileLauncher.filterVisibleResultsImmediately(results, query: "@ali")
+
+        XCTAssertEqual(filtered.count, 1)
+        guard case .person(let name, _, _) = filtered.first else {
+            return XCTFail("Expected person result")
+        }
+        XCTAssertEqual(name, "alice")
     }
 }

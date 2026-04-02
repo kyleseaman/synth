@@ -149,6 +149,7 @@ struct FileLauncher: View {
             selectedIndex = 0
             qmdResults = []
             engine.cancelQmdSearch()
+            searchResults = Self.filterVisibleResultsImmediately(searchResults, query: query)
             debounceSearch()
         }
         .onChange(of: results.count) { _, newValue in
@@ -179,7 +180,7 @@ struct FileLauncher: View {
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search notes, files & people...", text: $query)
+                TextField("Quick jump by title, file, tag, or person...", text: $query)
                     .textFieldStyle(.plain)
                     .font(Theme.uiSwiftUIFont(size: 18))
                     .focused($isSearchFocused)
@@ -198,8 +199,8 @@ struct FileLauncher: View {
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                 let hint = store.qmdClient?.isWorkspaceIndexed == true
-                    ? "Press Enter to deep search · tag:project  person:alex  \"exact phrase\""
-                    : "Try: tag:project  person:alex  path:meetings  \"exact phrase\""
+                    ? "Cmd+P matches titles/files locally · Press Enter for deep content search"
+                    : "Cmd+P is a quick jump for titles/files · Use Search for note content"
                 Text(hint)
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
@@ -210,7 +211,7 @@ struct FileLauncher: View {
             .padding(.bottom, 8)
 
             if !qmdResults.isEmpty {
-                Text("Blending \(qmdResults.count) QMD result(s) with local results.")
+                Text("Blending \(qmdResults.count) deep content result(s) with local quick-jump results.")
                     .font(Theme.uiSwiftUIFont(size: 11))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -510,6 +511,43 @@ struct FileLauncher: View {
             return .triggerQmdSearch
         }
         return .noAction
+    }
+
+    nonisolated static func filterVisibleResultsImmediately(
+        _ results: [LauncherResult],
+        query: String
+    ) -> [LauncherResult] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return results }
+
+        if trimmed.hasPrefix("@") {
+            let personQuery = String(trimmed.dropFirst())
+            guard !personQuery.isEmpty else {
+                return results.compactMap { result in
+                    guard case .person = result else { return nil }
+                    return result
+                }
+            }
+
+            return results.compactMap { result in
+                guard case .person(let name, _, _) = result,
+                      name.fuzzyScore(personQuery) != nil else {
+                    return nil
+                }
+                return result
+            }
+        }
+
+        return results.compactMap { result in
+            switch result {
+            case .note(let note):
+                return note.title.fuzzyScore(trimmed) != nil ? result : nil
+            case .file(let node, _):
+                return node.name.fuzzyScore(trimmed) != nil ? result : nil
+            case .person(let name, _, _):
+                return name.fuzzyScore(trimmed) != nil ? result : nil
+            }
+        }
     }
 
     private func triggerQmdSearch(_ searchQuery: String) {

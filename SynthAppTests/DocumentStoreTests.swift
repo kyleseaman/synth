@@ -318,6 +318,47 @@ final class DocumentStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testSaveAllRenamesFileBasedOnFirstLineAndDoesNotRecreateOldPath() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        let draftsDirectory = workspaceURL.appendingPathComponent("drafts", isDirectory: true)
+        try FileManager.default.createDirectory(at: draftsDirectory, withIntermediateDirectories: true)
+
+        let originalURL = draftsDirectory.appendingPathComponent("Old Title.md")
+        try "# Old Title\n\nOriginal".write(
+            to: originalURL,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.open(originalURL)
+        guard let currentIndex = store.currentIndex >= 0 ? Optional(store.currentIndex) : nil else {
+            XCTFail("Missing current document")
+            return
+        }
+
+        let updatedContent = "# New Project Name\n\nUpdated body"
+        store.openFiles[currentIndex].content = NSAttributedString(string: updatedContent)
+        store.openFiles[currentIndex].isDirty = true
+
+        store.saveAll()
+
+        let renamedURL = draftsDirectory.appendingPathComponent("New Project Name.md")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: originalURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: renamedURL.path))
+        XCTAssertEqual(store.openFiles[currentIndex].url, renamedURL)
+        XCTAssertEqual(try String(contentsOf: renamedURL, encoding: .utf8), updatedContent)
+
+        let noteResults = store.noteIndex.searchTitlesOnly("new project")
+        XCTAssertEqual(noteResults.map(\.url), [renamedURL])
+    }
+
+    @MainActor
     func testNewMeetingNoteCreatesTemplateAndUniqueFilename() throws {
         let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             UUID().uuidString,
