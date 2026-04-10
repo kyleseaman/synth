@@ -932,4 +932,34 @@ final class DocumentStoreTests: XCTestCase {
         XCTAssertEqual(Set(updatedFilesByColumn["Drafts"] ?? []), Set([existingURL, movedURL]))
         XCTAssertFalse(updatedFilesByColumn["Drafts", default: []].contains(sourceURL))
     }
+
+    @MainActor
+    func testSelectSearchTabWithTagFocusSetsDetailModeAndFlag() throws {
+        let workspaceURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString,
+            isDirectory: true
+        )
+        defer { try? FileManager.default.removeItem(at: workspaceURL) }
+        try FileManager.default.createDirectory(at: workspaceURL, withIntermediateDirectories: true)
+
+        let store = DocumentStore()
+        store.workspace = workspaceURL
+        store.detailMode = .editor
+
+        store.selectSearchTabWithTagFocus()
+
+        XCTAssertEqual(store.detailMode, .search)
+        XCTAssertTrue(store.searchTagFocusRequested)
+    }
+
+    @MainActor
+    func testSelectSearchTabWithTagFocusRequiresWorkspace() {
+        let store = DocumentStore()
+        store.detailMode = .editor
+
+        store.selectSearchTabWithTagFocus()
+
+        XCTAssertEqual(store.detailMode, .editor)
+        XCTAssertFalse(store.searchTagFocusRequested)
+    }
 }

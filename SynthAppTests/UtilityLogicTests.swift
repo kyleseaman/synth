@@ -1923,3 +1923,133 @@ extension DocumentModelTests {
         )
     }
 }
+
+// MARK: - HashtagGraphSearch (BRAD) Tests
+
+extension UtilityLogicTests {
+    func testHashtagGraphSearchFindsRelatedNotesViaSharedTags() {
+        let tagIndex = TagIndex()
+        let backlinkIndex = BacklinkIndex()
+
+        let noteAlpha = URL(fileURLWithPath: "/tmp/Alpha.md")
+        let noteBeta = URL(fileURLWithPath: "/tmp/Beta.md")
+        let noteGamma = URL(fileURLWithPath: "/tmp/Gamma.md")
+
+        tagIndex.addFile(noteAlpha, content: "#project #swift")
+        tagIndex.addFile(noteBeta, content: "#project #design")
+        tagIndex.addFile(noteGamma, content: "#swift #testing")
+
+        let results = HashtagGraphSearch.relatedNotes(
+            forTags: ["project"],
+            tagIndex: tagIndex,
+            backlinkIndex: backlinkIndex
+        )
+
+        // Beta and Gamma share tags with Alpha (which has #project).
+        // Gamma shares #swift with Alpha (weight 2).
+        // Beta shares #project and #design - but Beta is already tagged,
+        // so only Gamma should appear as a related note via #swift.
+        let resultURLs = results.map(\.url)
+        XCTAssertTrue(resultURLs.contains(noteGamma))
+    }
+
+    func testHashtagGraphSearchFindsRelatedNotesViaMutualBacklinks() {
+        let tagIndex = TagIndex()
+        let backlinkIndex = BacklinkIndex()
+
+        let noteAlpha = URL(fileURLWithPath: "/tmp/Alpha.md")
+        let noteBeta = URL(fileURLWithPath: "/tmp/Beta.md")
+
+        tagIndex.addFile(noteAlpha, content: "#project")
+        // Beta links to Alpha and Alpha links to Beta
+        backlinkIndex.addFile(noteAlpha, content: "See [[Beta]]")
+        backlinkIndex.addFile(noteBeta, content: "See [[Alpha]]")
+
+        let results = HashtagGraphSearch.relatedNotes(
+            forTags: ["project"],
+            tagIndex: tagIndex,
+            backlinkIndex: backlinkIndex
+        )
+
+        let resultURLs = results.map(\.url)
+        XCTAssertTrue(resultURLs.contains(noteBeta))
+        let betaResult = results.first { $0.url == noteBeta }
+        XCTAssertNotNil(betaResult)
+        // Mutual backlink weight is 3
+        XCTAssertTrue((betaResult?.score ?? 0) >= 3)
+    }
+
+    func testHashtagGraphSearchFindsRelatedNotesViaCommonLinkTargets() {
+        let tagIndex = TagIndex()
+        let backlinkIndex = BacklinkIndex()
+
+        let noteAlpha = URL(fileURLWithPath: "/tmp/Alpha.md")
+        let noteBeta = URL(fileURLWithPath: "/tmp/Beta.md")
+
+        tagIndex.addFile(noteAlpha, content: "#project")
+        // Both Alpha and Beta link to the same target "SharedTarget"
+        backlinkIndex.addFile(noteAlpha, content: "See [[SharedTarget]]")
+        backlinkIndex.addFile(noteBeta, content: "See [[SharedTarget]]")
+
+        let results = HashtagGraphSearch.relatedNotes(
+            forTags: ["project"],
+            tagIndex: tagIndex,
+            backlinkIndex: backlinkIndex
+        )
+
+        let resultURLs = results.map(\.url)
+        XCTAssertTrue(resultURLs.contains(noteBeta))
+    }
+
+    func testHashtagGraphSearchReturnsEmptyForUnknownTag() {
+        let tagIndex = TagIndex()
+        let backlinkIndex = BacklinkIndex()
+
+        let noteAlpha = URL(fileURLWithPath: "/tmp/Alpha.md")
+        tagIndex.addFile(noteAlpha, content: "#swift")
+
+        let results = HashtagGraphSearch.relatedNotes(
+            forTags: ["nonexistent"],
+            tagIndex: tagIndex,
+            backlinkIndex: backlinkIndex
+        )
+
+        XCTAssertTrue(results.isEmpty)
+    }
+
+    func testHashtagGraphSearchLimitCapsResults() {
+        let tagIndex = TagIndex()
+        let backlinkIndex = BacklinkIndex()
+
+        let taggedNote = URL(fileURLWithPath: "/tmp/Tagged.md")
+        tagIndex.addFile(taggedNote, content: "#rare #common")
+
+        // Create many notes sharing #common but NOT #rare
+        for index in 1...15 {
+            let relatedURL = URL(fileURLWithPath: "/tmp/Related\(index).md")
+            tagIndex.addFile(relatedURL, content: "#common #other\(index)")
+        }
+
+        let results = HashtagGraphSearch.relatedNotes(
+            forTags: ["rare"],
+            tagIndex: tagIndex,
+            backlinkIndex: backlinkIndex,
+            limit: 5
+        )
+
+        XCTAssertEqual(results.count, 5)
+    }
+
+    func testHashtagGraphSearchFormatReasonFormatsCorrectly() {
+        let tagReasons = ["#swift", "#project"]
+        let result = HashtagGraphSearch.formatReason(tagReasons)
+        XCTAssertTrue(result.contains("shares"))
+
+        let mutualReasons = ["mutual link"]
+        let mutualResult = HashtagGraphSearch.formatReason(mutualReasons)
+        XCTAssertEqual(mutualResult, "mutual link")
+
+        let emptyResult = HashtagGraphSearch.formatReason([])
+        XCTAssertEqual(emptyResult, "related content")
+    }
+}
