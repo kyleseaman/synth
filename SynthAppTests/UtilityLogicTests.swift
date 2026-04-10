@@ -1923,3 +1923,66 @@ extension DocumentModelTests {
         )
     }
 }
+
+// MARK: - DedicatedSearchState Tag Filter Tests
+
+extension UtilityLogicTests {
+    func testDedicatedSearchStateClearResetsTagFocusFlag() {
+        let state = DedicatedSearchState()
+        state.initialTagFocusRequested = true
+        state.tagFilterText = "project"
+
+        state.clear()
+
+        XCTAssertFalse(state.initialTagFocusRequested)
+        XCTAssertEqual(state.tagFilterText, "")
+    }
+
+    func testDedicatedSearchStateFacetTokensIncludeTagTokens() {
+        let state = DedicatedSearchState()
+        state.tagFilterText = "project, release"
+
+        let tagTokens = state.facetTokens.filter { $0.kind == .tag }
+
+        XCTAssertEqual(tagTokens.count, 2)
+        let tagValues = Set(tagTokens.map { $0.value.lowercased() })
+        XCTAssertTrue(tagValues.contains("project"))
+        XCTAssertTrue(tagValues.contains("release"))
+    }
+
+    func testDedicatedSearchStateComposedQueryIncludesTagFacets() {
+        let state = DedicatedSearchState()
+        state.textQuery = "notes"
+        state.tagFilterText = "project"
+
+        let composed = state.composedQuery
+
+        XCTAssertTrue(composed.contains("notes"))
+        XCTAssertTrue(composed.contains("tag:project"))
+    }
+
+    func testDedicatedSearchStateSelectionStepsPreviousAndNext() {
+        let identifiers = ["note:a", "note:b", "note:c"]
+
+        let nextFromFirst = DedicatedSearchState.stepSelection(
+            currentIdentifier: "note:a",
+            availableIdentifiers: identifiers,
+            direction: .next
+        )
+        XCTAssertEqual(nextFromFirst, "note:b")
+
+        let prevFromSecond = DedicatedSearchState.stepSelection(
+            currentIdentifier: "note:b",
+            availableIdentifiers: identifiers,
+            direction: .previous
+        )
+        XCTAssertEqual(prevFromSecond, "note:a")
+
+        let prevFromFirst = DedicatedSearchState.stepSelection(
+            currentIdentifier: "note:a",
+            availableIdentifiers: identifiers,
+            direction: .previous
+        )
+        XCTAssertEqual(prevFromFirst, "note:a")
+    }
+}

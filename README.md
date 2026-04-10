@@ -51,6 +51,7 @@ A native macOS 26 text editor built for writers who think in links, tags, and da
 | `Cmd+\` | Toggle sidebar |
 | `Cmd+1`–`9` | Switch tabs |
 | `Cmd+Shift+T` | Tag browser |
+| `Cmd+Shift+H` | Tag search |
 | `Cmd+Shift+P` | People browser |
 | `Cmd+Shift+B` | Toggle backlinks |
 | `Cmd+Shift+L` | Capture link (global) |
