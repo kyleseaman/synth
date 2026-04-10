@@ -147,6 +147,11 @@ struct SynthApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
+                Button("Hashtag Search") {
+                    store.selectSearchTabWithTagFocus()
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+
                 Button("People Browser") {
                     store.showPeopleBrowserModal()
                 }

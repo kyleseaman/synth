@@ -62,6 +62,7 @@ final class DocumentStore {
     var detailMode: DetailViewMode = .editor
     var mediaFiles: [URL] = []
     var dedicatedSearch = DedicatedSearchState()
+    var searchTagFocusRequested = false
 
     // MARK: - Centralized UI State
     var columnVisibility: NavigationSplitViewVisibility = .all
@@ -392,6 +393,12 @@ final class DocumentStore {
     func selectSearchTab() {
         guard workspace != nil else { return }
         detailMode = .search
+    }
+
+    func selectSearchTabWithTagFocus() {
+        guard workspace != nil else { return }
+        detailMode = .search
+        searchTagFocusRequested = true
     }
 
     func open(_ url: URL) {

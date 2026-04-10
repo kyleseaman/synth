@@ -299,6 +299,142 @@ enum DedicatedSearchResult: Identifiable {
     }
 }
 
+// MARK: - Hashtag Graph Search
+
+enum HashtagGraphSearch {
+    struct GraphResult {
+        let url: URL
+        let title: String
+        let score: Int
+        let reason: String
+    }
+
+    static func relatedNotes(
+        forTags tags: [String],
+        tagIndex: TagIndex,
+        backlinkIndex: BacklinkIndex,
+        limit: Int = 10
+    ) -> [GraphResult] {
+        guard !tags.isEmpty else { return [] }
+
+        // Collect all notes that have the given tags
+        var taggedNotes: Set<URL> = []
+        for tag in tags {
+            taggedNotes.formUnion(tagIndex.notes(for: tag))
+        }
+        guard !taggedNotes.isEmpty else { return [] }
+
+        var candidates: [URL: Int] = [:]
+        var reasons: [URL: [String]] = [:]
+
+        for noteURL in taggedNotes {
+            let noteTitle = noteURL.deletingPathExtension()
+                .lastPathComponent.lowercased()
+            let noteTags = tagIndex.tags(for: noteURL)
+            let noteOutgoing = backlinkIndex.outgoing(from: noteURL)
+            let noteIncoming = backlinkIndex.links(to: noteTitle)
+
+            // 1. Shared tags (weight: 2 per shared tag)
+            for tag in noteTags {
+                for fileURL in tagIndex.notes(for: tag) {
+                    guard !taggedNotes.contains(fileURL) else { continue }
+                    candidates[fileURL, default: 0] += 2
+                    reasons[fileURL, default: []].append("#\(tag)")
+                }
+            }
+
+            // 2. Mutual backlinks (weight: 3)
+            for fileURL in noteIncoming {
+                guard !taggedNotes.contains(fileURL) else { continue }
+                let theirTitle = fileURL.deletingPathExtension()
+                    .lastPathComponent.lowercased()
+                if noteOutgoing.contains(theirTitle) {
+                    candidates[fileURL, default: 0] += 3
+                    reasons[fileURL, default: []].append("mutual link")
+                }
+            }
+
+            // 3. Common outgoing link targets (weight: 1 per shared target)
+            let allURLs = collectAllNoteURLs(
+                tagIndex: tagIndex, backlinkIndex: backlinkIndex
+            )
+            for otherURL in allURLs {
+                guard !taggedNotes.contains(otherURL) else { continue }
+                let otherTitle = otherURL.deletingPathExtension()
+                    .lastPathComponent.lowercased()
+                guard otherTitle != noteTitle else { continue }
+
+                let otherOutgoing = backlinkIndex.outgoing(from: otherURL)
+                let sharedTargets = noteOutgoing.intersection(otherOutgoing)
+                if !sharedTargets.isEmpty {
+                    candidates[otherURL, default: 0] += sharedTargets.count
+                    for target in sharedTargets.prefix(2) {
+                        reasons[otherURL, default: []]
+                            .append("links to [[\(target)]]")
+                    }
+                }
+
+                // 4. Shared incoming sources (weight: 1 per source)
+                let otherIncoming = backlinkIndex.links(to: otherTitle)
+                let sharedSources = noteIncoming.intersection(otherIncoming)
+                if !sharedSources.isEmpty {
+                    candidates[otherURL, default: 0] += sharedSources.count
+                }
+            }
+        }
+
+        return candidates
+            .sorted { $0.value > $1.value }
+            .prefix(limit)
+            .map { (url, score) in
+                GraphResult(
+                    url: url,
+                    title: url.deletingPathExtension().lastPathComponent,
+                    score: score,
+                    reason: formatReason(reasons[url] ?? [])
+                )
+            }
+    }
+
+    private static func collectAllNoteURLs(
+        tagIndex: TagIndex,
+        backlinkIndex: BacklinkIndex
+    ) -> Set<URL> {
+        var urls: Set<URL> = []
+        for urlSet in tagIndex.tagToFiles.values {
+            urls.formUnion(urlSet)
+        }
+        for urlSet in backlinkIndex.incomingLinks.values {
+            urls.formUnion(urlSet)
+        }
+        return urls
+    }
+
+    static func formatReason(_ reasons: [String]) -> String {
+        let unique = Array(Set(reasons))
+        if unique.isEmpty { return "related content" }
+
+        var parts: [String] = []
+        let tags = unique.filter { $0.hasPrefix("#") }
+        let links = unique.filter { $0.hasPrefix("links to") }
+        let mutual = unique.filter { $0 == "mutual link" }
+
+        if !tags.isEmpty {
+            let tagList = tags.prefix(3).joined(separator: ", ")
+            parts.append("shares \(tagList)")
+        }
+        if !mutual.isEmpty {
+            parts.append("mutual link")
+        }
+        if !links.isEmpty {
+            let linkList = links.prefix(2).joined(separator: ", ")
+            parts.append(linkList)
+        }
+
+        return parts.joined(separator: " * ")
+    }
+}
+
 struct DedicatedSearchView: View {
     @Environment(DocumentStore.self) private var store
     @State private var cachedFiles: [FileTreeNode] = []
@@ -307,6 +443,7 @@ struct DedicatedSearchView: View {
     @State private var isQmdSearching = false
     @State private var qmdSearchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
+    @FocusState private var isTagFieldFocused: Bool
 
     private var freeTextQuery: String {
         store.dedicatedSearch.textQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -362,8 +499,13 @@ struct DedicatedSearchView: View {
 
     private var resultSummaryLabel: String {
         let totalCount = allResultItems.count
-        return "Results \(totalCount) · Notes \(noteResultItems.count) · Files \(fileResultItems.count) "
+        var label = "Results \(totalCount) · Notes \(noteResultItems.count)"
+        if !graphRelatedItems.isEmpty {
+            label += " · Graph \(graphRelatedItems.count)"
+        }
+        label += " · Files \(fileResultItems.count) "
             + "· People \(personResultItems.count) · Tags \(tagResultItems.count)"
+        return label
     }
 
     private var fileResultItems: [DedicatedSearchResult] {
@@ -404,8 +546,38 @@ struct DedicatedSearchView: View {
         }
     }
 
+    private var graphRelatedItems: [DedicatedSearchResult] {
+        let tagText = store.dedicatedSearch.tagFilterText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tagText.isEmpty else { return [] }
+        let tagValues = tagText.components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        guard !tagValues.isEmpty else { return [] }
+
+        let graphResults = HashtagGraphSearch.relatedNotes(
+            forTags: tagValues,
+            tagIndex: store.tagIndex,
+            backlinkIndex: store.backlinkIndex
+        )
+        return graphResults.map { graphResult in
+            .note(
+                result: NoteSearchResult(
+                    id: graphResult.url,
+                    title: graphResult.title,
+                    relativePath: "",
+                    url: graphResult.url,
+                    preview: graphResult.reason,
+                    score: graphResult.score
+                ),
+                source: .local
+            )
+        }
+    }
+
     private var allResultItems: [DedicatedSearchResult] {
-        noteResultItems + fileResultItems + personResultItems + tagResultItems
+        noteResultItems + graphRelatedItems + fileResultItems
+            + personResultItems + tagResultItems
     }
 
     private var resultIdentifiers: [String] {
@@ -423,6 +595,7 @@ struct DedicatedSearchView: View {
 
     private var shouldShowEmptyQueryPrompt: Bool {
         activeQuery.isEmpty && !store.dedicatedSearch.hasFacetFilters
+            && graphRelatedItems.isEmpty
     }
 
     private var selectionBinding: Binding<String?> {
@@ -444,6 +617,16 @@ struct DedicatedSearchView: View {
         .onAppear {
             isQueryFocused = true
             refreshCachedFiles()
+            if store.searchTagFocusRequested {
+                store.searchTagFocusRequested = false
+                isTagFieldFocused = true
+            }
+        }
+        .onChange(of: store.searchTagFocusRequested) {
+            if store.searchTagFocusRequested {
+                store.searchTagFocusRequested = false
+                isTagFieldFocused = true
+            }
         }
         .onChange(of: store.fileTree) {
             refreshCachedFiles()
@@ -511,7 +694,12 @@ struct DedicatedSearchView: View {
             }
 
             HStack(spacing: 8) {
-                facetField("Tag", text: binding(for: \.tagFilterText), placeholder: "project")
+                facetField(
+                    "Tag",
+                    text: binding(for: \.tagFilterText),
+                    placeholder: "project",
+                    focused: $isTagFieldFocused
+                )
                 facetField("Person", text: binding(for: \.personFilterText), placeholder: "alex")
                 Spacer()
                 Button("Reset") {
@@ -611,6 +799,18 @@ struct DedicatedSearchView: View {
                     if !noteResultItems.isEmpty {
                         Section(noteSectionLabel) {
                             ForEach(noteResultItems) { resultItem in
+                                resultRow(resultItem)
+                                    .tag(resultItem.id)
+                                    .onTapGesture(count: 2) {
+                                        openResultKeepingSearch(resultItem)
+                                    }
+                            }
+                        }
+                    }
+
+                    if !graphRelatedItems.isEmpty {
+                        Section("Related via Graph (\(graphRelatedItems.count))") {
+                            ForEach(graphRelatedItems) { resultItem in
                                 resultRow(resultItem)
                                     .tag(resultItem.id)
                                     .onTapGesture(count: 2) {
@@ -1051,6 +1251,23 @@ struct DedicatedSearchView: View {
             TextField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
                 .font(Theme.uiSwiftUIFont(size: 12))
+        }
+    }
+
+    private func facetField(
+        _ title: String,
+        text: Binding<String>,
+        placeholder: String,
+        focused: FocusState<Bool>.Binding
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text("\(title):")
+                .font(Theme.uiSwiftUIFont(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .font(Theme.uiSwiftUIFont(size: 12))
+                .focused(focused)
         }
     }
 }
