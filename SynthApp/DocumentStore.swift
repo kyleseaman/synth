@@ -1191,6 +1191,15 @@ extension DocumentStore {
         activeModal = .peopleBrowser(person)
     }
 
+    func selectSearchTabWithTagFilter(tag: String? = nil) {
+        guard workspace != nil else { return }
+        detailMode = .search
+        dedicatedSearch.initialTagFocusRequested = true
+        if let tag, !tag.isEmpty {
+            dedicatedSearch.tagFilterText = tag
+        }
+    }
+
     func showKanbanModal() {
         detailMode = detailMode == .kanban ? .editor : .kanban
     }

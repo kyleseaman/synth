@@ -141,6 +141,7 @@ final class DedicatedSearchState {
     var tagFilterText = ""
     var personFilterText = ""
     var selectedResultIdentifier: String?
+    var initialTagFocusRequested = false
 
     var composedQuery: String {
         let trimmedTextQuery = textQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -192,6 +193,7 @@ final class DedicatedSearchState {
         tagFilterText = ""
         personFilterText = ""
         selectedResultIdentifier = nil
+        initialTagFocusRequested = false
     }
 
     static func reconcileSelection(
@@ -307,6 +309,7 @@ struct DedicatedSearchView: View {
     @State private var isQmdSearching = false
     @State private var qmdSearchTask: Task<Void, Never>?
     @FocusState private var isQueryFocused: Bool
+    @FocusState private var isTagFilterFocused: Bool
 
     private var freeTextQuery: String {
         store.dedicatedSearch.textQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -405,7 +408,52 @@ struct DedicatedSearchView: View {
     }
 
     private var allResultItems: [DedicatedSearchResult] {
-        noteResultItems + fileResultItems + personResultItems + tagResultItems
+        if freeTextQuery.isEmpty && !store.dedicatedSearch.facetTokens.isEmpty {
+            return tagGraphNoteResults + noteResultItems + fileResultItems
+                + personResultItems + tagResultItems
+        }
+        return noteResultItems + fileResultItems + personResultItems
+            + tagResultItems
+    }
+
+    private var tagGraphNoteResults: [DedicatedSearchResult] {
+        let tagTokens = store.dedicatedSearch.facetTokens.filter { $0.kind == .tag }
+        guard !tagTokens.isEmpty else { return [] }
+        let tagNames = Set(tagTokens.map { $0.value.lowercased() })
+        let matchingURLs = store.tagIndex.files(matchingAll: tagNames)
+        guard !matchingURLs.isEmpty else { return [] }
+
+        return matchingURLs.compactMap { fileURL -> DedicatedSearchResult? in
+            let title = fileURL.deletingPathExtension().lastPathComponent
+            let parent = fileURL.deletingLastPathComponent().lastPathComponent
+            let fileTags = store.tagIndex.tags(for: fileURL)
+            let sharedTagCount = fileTags.intersection(tagNames).count
+
+            // Bonus for backlink connections
+            let outgoing = store.backlinkIndex.outgoing(from: fileURL)
+            var backlinkBonus = 0
+            for otherURL in matchingURLs where otherURL != fileURL {
+                let otherTitle = otherURL.deletingPathExtension()
+                    .lastPathComponent.lowercased()
+                if outgoing.contains(otherTitle) {
+                    backlinkBonus += 500
+                }
+            }
+
+            let score = sharedTagCount * 1000 + backlinkBonus
+            let tagPreview = fileTags.intersection(tagNames)
+                .sorted().map { "#\($0)" }.joined(separator: ", ")
+            let result = NoteSearchResult(
+                id: fileURL,
+                title: title,
+                relativePath: parent,
+                url: fileURL,
+                preview: "Tags: " + tagPreview,
+                score: score
+            )
+            return .note(result: result, source: .local)
+        }
+        .sorted { $0.sortScore > $1.sortScore }
     }
 
     private var resultIdentifiers: [String] {
@@ -443,6 +491,11 @@ struct DedicatedSearchView: View {
         }
         .onAppear {
             isQueryFocused = true
+            if store.dedicatedSearch.initialTagFocusRequested {
+                isTagFilterFocused = true
+                isQueryFocused = false
+                store.dedicatedSearch.initialTagFocusRequested = false
+            }
             refreshCachedFiles()
         }
         .onChange(of: store.fileTree) {
@@ -511,7 +564,7 @@ struct DedicatedSearchView: View {
             }
 
             HStack(spacing: 8) {
-                facetField("Tag", text: binding(for: \.tagFilterText), placeholder: "project")
+                tagFacetField
                 facetField("Person", text: binding(for: \.personFilterText), placeholder: "alex")
                 Spacer()
                 Button("Reset") {
@@ -608,6 +661,18 @@ struct DedicatedSearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(selection: selectionBinding) {
+                    if !tagGraphNoteResults.isEmpty {
+                        Section("Related via Tags (\(tagGraphNoteResults.count))") {
+                            ForEach(tagGraphNoteResults) { resultItem in
+                                resultRow(resultItem)
+                                    .tag(resultItem.id)
+                                    .onTapGesture(count: 2) {
+                                        openResultKeepingSearch(resultItem)
+                                    }
+                            }
+                        }
+                    }
+
                     if !noteResultItems.isEmpty {
                         Section(noteSectionLabel) {
                             ForEach(noteResultItems) { resultItem in
@@ -1037,6 +1102,18 @@ struct DedicatedSearchView: View {
                 store.dedicatedSearch[keyPath: keyPath] = newValue
             }
         )
+    }
+
+    private var tagFacetField: some View {
+        HStack(spacing: 6) {
+            Text("Tag:")
+                .font(Theme.uiSwiftUIFont(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            TextField("project", text: binding(for: \.tagFilterText))
+                .textFieldStyle(.roundedBorder)
+                .font(Theme.uiSwiftUIFont(size: 12))
+                .focused($isTagFilterFocused)
+        }
     }
 
     private func facetField(
